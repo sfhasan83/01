@@ -1,6 +1,6 @@
 # My Amazon Shop
 
-Everything needed to launch and grow an Amazon store (US marketplace by default).
+Everything needed to launch and grow an Amazon store on Amazon.com (US), Amazon.ae (UAE) and Amazon.sa (Saudi Arabia).
 
 | File | What it is |
 |---|---|
@@ -10,4 +10,4 @@ Everything needed to launch and grow an Amazon store (US marketplace by default)
 | [daily-reports/TEMPLATE.md](daily-reports/TEMPLATE.md) | The repeatable report format |
 | [daily-reports/HOW-TO-RUN.md](daily-reports/HOW-TO-RUN.md) | How each report is researched and scored |
 
-Latest report: [daily-reports/2026-11-10.md](daily-reports/2026-11-10.md)
+Latest report: [daily-reports/2026-11-11.md](daily-reports/2026-11-11.md)

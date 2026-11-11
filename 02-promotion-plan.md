@@ -1,4 +1,6 @@
-# Shop Promotion Plan
+# Shop Promotion Plan: US, UAE and Saudi Arabia
+
+Sections 1–7 apply to all three stores (written with US examples). **Section 8** covers what to change for Amazon.ae and Amazon.sa.
 
 Goal: get the first product to **steady daily sales with a healthy ad cost (TACoS under ~15%) within 90 days.**
 
@@ -105,3 +107,52 @@ External traffic helps Amazon rank you higher, and with Brand Registry you earn 
 | Star rating | 4.3+ |
 | Return rate | Under 5% (category dependent) |
 | Inventory | Never out of stock; 45–90 days of cover |
+
+
+---
+
+## 8. UAE and Saudi Arabia: what to do differently
+
+### 8.1 Listings
+- Write every listing in **English and Arabic** (Amazon.sa shoppers search mostly in Arabic; Amazon.ae is mixed). Use Arabic keywords in backend search terms, including common spellings in Gulf dialect and Arabizi (e.g. "عباية", "مبخرة", "mabkhara").
+- Show prices and sizes in local units (AED / SAR, cm, ml). Use images with Gulf-relevant lifestyle settings (majlis, villa kitchens, Ramadan table).
+- Make sure your product is **Prime eligible via FBA**: fast delivery (often same/next day in Dubai, Riyadh, Jeddah) is the main reason Gulf shoppers choose Amazon over other sites.
+
+### 8.2 Ads (PPC)
+- Use the same campaign structure as Section 2, with **separate budgets per store**. Do not split evenly: Amazon.sa usually has **cheaper clicks and fewer competitors**; Amazon.ae is more competitive.
+- Launch budget guide: **AED 40–80/day** on Amazon.ae, **SAR 40–80/day** on Amazon.sa.
+- Run **separate Arabic-keyword and English-keyword campaigns** so you can see which language converts.
+- Raise bids in the **evening (after 8 pm)**, and during Ramadan **after Iftar until 2 am**, when Gulf shoppers are most active. Use Amazon's dayparting / schedule rules where available.
+
+### 8.3 Gulf sales calendar (plan stock 8–12 weeks ahead)
+
+| Event | Expected dates | What sells | Store |
+|---|---|---|---|
+| **11.11 Singles' Day** | 11 Nov | Electronics, beauty, fashion | AE, SA |
+| **White Friday** | about 20–30 Nov 2026 (deal submission deadline 19 Nov) | Everything; beauty gifting, electronics, home | AE, SA |
+| **UAE National Day** | 2 Dec | Gifting, themed bundles (UAE flag colours) | AE |
+| **Dubai Shopping Festival** | Dec–Jan | Electronics, fashion, beauty, premium gifts | AE |
+| **New Year / January** | Jan | Fitness, wellness, organisation | All |
+| **Saudi Founding Day** | 22 Feb | Gifting, traditional / heritage products | SA |
+| **Ramadan** | ~8 Feb – 9 Mar 2027 | Home & kitchen (serving sets, dates boxes, lanterns), food, decor, prayer items, beauty, perfume/oud, gifts | AE, SA (biggest season) |
+| **Eid al-Fitr** | ~9–10 Mar 2027 | Gifts, fashion, kids' toys, beauty, perfume | AE, SA |
+| **Prime Day** | Usually July | Electronics, home | All |
+| **Back to school** | Aug | Stationery, bags, lunch boxes, kids' tech | AE, SA |
+| **Saudi National Day** | 23 Sep | Green-themed gifting, deals | SA |
+
+### 8.4 Social media in the Gulf
+| Channel | Why | What to post |
+|---|---|---|
+| **Snapchat** | Very high usage in Saudi Arabia, especially 18–35 | Short how-to videos, behind-the-scenes, Snap ads with "Shop on Amazon" link |
+| **TikTok** | Huge in KSA and UAE | Arabic voice-over product demos, Ramadan prep videos |
+| **Instagram** | Main channel for UAE; strong in KSA | Reels, Stories with Amazon links, UGC from customers |
+| **X (Twitter)** | Popular in KSA for news and trends | Deal announcements around White Friday, Ramadan |
+| **WhatsApp Business** | How Gulf customers prefer to ask questions | Catalogue + Channel for repeat customers (send them back to Amazon to buy) |
+
+- **Influencers:** UAE requires paid influencers to hold an advertiser permit (UAE Media Council); in KSA, influencers need a **Mawthooq** licence. Work only with licensed influencers and ask for their licence number.
+- Use **Amazon Attribution** links (where available in your store) or a Social Media Promo Code to measure what each influencer brings.
+
+### 8.5 Reviews and trust
+- **Amazon Vine** and the **Request a Review** button work on Amazon.ae and Amazon.sa as in the US, once Brand Registry is active in that store.
+- Gulf shoppers rely heavily on **cash on delivery** and easy returns; FBA handles both. Keep an Arabic-speaking contact for buyer messages.
+- The same review rules apply: no paid, incentivised or filtered review requests.

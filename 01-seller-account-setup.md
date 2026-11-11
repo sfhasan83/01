@@ -1,6 +1,14 @@
-# Amazon Seller Account Setup Guide (US marketplace)
+# Amazon Seller Account Setup Guide: US, UAE and Saudi Arabia
 
-> Assumes the **US marketplace (amazon.com)**. If you sell in another country (UK, UAE, Saudi Arabia, India, etc.), the steps are similar but the documents, fees and tax forms change. Tell me your country and I will adapt this guide.
+Covers three stores: **Amazon.com (US)**, **Amazon.ae (UAE)** and **Amazon.sa (Saudi Arabia / KSA)**.
+
+- **Part A** below is the general process, written for the US store. Most of it (product choice, FBA, listings, Brand Registry) works the same in all three.
+- **Part B** covers what is different in the UAE and Saudi Arabia: licences, documents, fees, customs and VAT.
+- **Part C** recommends which store to open first.
+
+> Each store needs its **own legal documents, tax registration and FBA stock in that country**. You can manage them from one Seller Central login once the accounts are linked, but you cannot ship US stock to UAE or Saudi customers through FBA.
+
+# Part A — General setup (written for Amazon.com)
 
 Legend: 👤 **only you can do this** (needs your identity, bank, tax or legal signature) · 🤝 **I can help you prepare it**
 
@@ -82,3 +90,67 @@ Have these ready **before** you start; mismatched details are the #1 reason acco
 - Selling restricted / gated products without approval (supplements, toys in Q4, topicals, etc. may need extra approval or testing)
 - Using another brand's trademark in your listing
 - Multiple seller accounts
+
+
+---
+
+# Part B — UAE (Amazon.ae) and Saudi Arabia (Amazon.sa)
+
+## B1. Side-by-side comparison
+
+| | 🇺🇸 Amazon.com | 🇦🇪 Amazon.ae | 🇸🇦 Amazon.sa |
+|---|---|---|---|
+| Who can open an account | Anyone with a passport, international credit card and bank account. No US company needed | **UAE trade licence required** (Amazon now requires a commercial licence for every UAE seller) | **Saudi Commercial Registration (CR) required.** Foreigners usually need a **MISA investment licence** first |
+| Cheapest legal setup | Sole trader in your home country, or a US LLC | Free-zone e-commerce licence (from ~AED 5,750/yr) or Dubai E-Trader licence (AED 1,370, Dubai residents only, limited) | Saudi/GCC citizen: sole establishment CR (~SAR 1,200–2,000) + Chamber of Commerce (~SAR 2,000–3,000/yr) |
+| Monthly plan | $39.99 | ~AED 184 (Amazon currently shows **no monthly fee for a limited time**) | ~SAR 137 after a free trial period |
+| Referral fees | ~15% most categories | 5–15% by category. Pet, beauty, health, baby: **8% up to AED 50**, 15% above | Category-based, similar to UAE. Check the Amazon.sa fee page for your category |
+| FBA fee (small standard item) | ~$3.50–6.50 | ~AED 7–20 | Size/weight based, check Revenue Calculator |
+| Sales tax / VAT | Amazon collects state sales tax for you | **5% VAT**. Must register above AED 375,000/yr sales (voluntary from AED 187,500). You account for VAT, not Amazon | **15% VAT**. Must register above SAR 375,000/yr (voluntary from SAR 187,500). Fatoora e-invoicing applies |
+| Import duty | Varies by product (HTS code) | 5% customs duty + 5% import VAT on CIF value | Usually 5–15% duty + 15% import VAT |
+| You are importer of record? | Yes (or your freight forwarder) | **Yes, you need your own Dubai Customs importer code** | Yes, via your CR |
+| Product certificates | Category-specific (e.g. UL for electrics, CPC for kids) | Conformity certificates for regulated categories (ECAS / MoIAT) | **SABER / SASO** certificate for most regulated goods; SFDA for cosmetics, food, supplements, medical |
+| Language | English | English + Arabic recommended | **Arabic strongly recommended**; Arabic labelling where required |
+| Payout bank | Any (Payoneer / Wise work) | **UAE corporate bank account (IBAN)** | **Saudi corporate bank account (IBAN)** |
+| Corporate tax | Depends on your home country / US entity | 9% above AED 375,000 profit (Small Business Relief available under AED 3m revenue to 2029) | Zakat (Saudi/GCC owned) or 20% income tax (foreign owned) |
+
+> Figures are indicative (2026 snapshots from licence providers and Amazon pages). Confirm on Seller Central and with a local accountant before committing.
+
+## B2. UAE (Amazon.ae) step by step
+
+| # | Step | Who |
+|---|------|-----|
+| U1 | Choose a licence: **free-zone e-commerce licence** is the usual choice (cheaper, 100% foreign ownership). Mainland DET licence (~AED 15,000+) if you also want to sell to shops. | 👤 (I can compare free zones for you) |
+| U2 | Get the licence, Memorandum of Association, and establishment card. | 👤 |
+| U3 | Open a **UAE corporate bank account** and get the IBAN letter. | 👤 |
+| U4 | Register for a **Dubai Customs importer code** (via Dubai Trade) so you can clear FBA stock. | 👤 |
+| U5 | Register for **VAT (TRN)** once you approach AED 375,000 sales (or voluntarily from day 1 to reclaim import VAT). | 👤 |
+| U6 | Sign up at **sell.amazon.ae** with: trade licence, MoA, Emirates ID + passport of the signatory, IBAN letter, credit card, VAT certificate (if registered). Complete identity verification. | 👤 |
+| U7 | File a **UAE trademark** (Ministry of Economy) to enrol in Brand Registry for Amazon.ae. | 👤 |
+| U8 | Create listings in **English and Arabic** (I can write both). Ship stock to the Amazon.ae fulfilment centre with commercial invoice, packing list, certificate of origin and HS codes. | 🤝 |
+
+## B3. Saudi Arabia (Amazon.sa) step by step
+
+| # | Step | Who |
+|---|------|-----|
+| S1 | **If you are a Saudi or GCC citizen:** register a sole establishment or company on the Saudi Business Center and get a **CR**. **If you are an expat or foreign investor:** get a **MISA investment licence** first, then incorporate and get a CR (expect 1–3 months and a business-setup consultant). | 👤 |
+| S2 | Join the **Chamber of Commerce**; open a **Saudi corporate bank account**. | 👤 |
+| S3 | Register with **ZATCA** for VAT once near SAR 375,000 sales (voluntarily earlier to reclaim import VAT); set up Fatoora e-invoicing when your wave applies. | 👤 |
+| S4 | Check your product on **SABER**: get the Product Certificate of Conformity and Shipment Certificate before shipping. Cosmetics, supplements and food also need **SFDA** registration. Choose products that need **little or no certification** for your first launch. | 👤 (I can check which certificates a product needs) |
+| S5 | Sign up at **sell.amazon.sa** with: CR, ID/Iqama/passport of the owner, Saudi IBAN, VAT certificate (if registered), credit card. Complete identity verification. | 👤 |
+| S6 | File a **Saudi trademark** (SAIP) for Brand Registry on Amazon.sa. | 👤 |
+| S7 | Create listings in **Arabic and English** with Arabic keywords; ship stock to FBA centres near Riyadh, Jeddah or Dammam. | 🤝 |
+
+---
+
+# Part C — Which store to open first
+
+Opening all three at once triples the paperwork, stock and ad budgets. Recommended order:
+
+1. **Start in the country where you already live and can get licences fastest.**
+   - Living in the **UAE**: start with **Amazon.ae** (free-zone licence) **and/or Amazon.com** (no local company needed).
+   - **Saudi/GCC citizen in KSA**: start with **Amazon.sa** (CR is quick for citizens; competition is thinner and ad clicks cheaper than the UAE).
+   - Living elsewhere: start with **Amazon.com** (no local company needed, biggest market).
+2. **Launch one product in one store**, get it to steady sales and 20+ reviews (6–12 weeks).
+3. **Expand the same product to the next store**, re-using photos, listing copy and supplier. Only the paperwork, Arabic listing and certificates are new.
+
+**Timing:** Ramadan 2027 is expected to start around **8 February 2027**, with Eid al-Fitr around **9–10 March 2027**. This is the biggest shopping season in the UAE and KSA. If you want to catch it, your stock needs to be at Amazon.ae / Amazon.sa by **late January 2027**, so licence and supplier decisions need to be made in the next 2–3 weeks.

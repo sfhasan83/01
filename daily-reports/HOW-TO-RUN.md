@@ -21,3 +21,12 @@ A new file `daily-reports/YYYY-MM-DD.md` is added every day, following `TEMPLATE
 
 ## Better data (optional, paid)
 With **Helium 10**, **Jungle Scout** or **SellerSprite**, or Amazon **Brand Analytics** (free with Brand Registry), the report can include exact search volumes and estimated monthly sales.
+
+## PDF copy
+After writing the report, create a PDF next to it for easy reading and download:
+
+```
+node scripts/md2pdf.js daily-reports/YYYY-MM-DD.md
+```
+
+This needs `pandoc` and Playwright (Chromium). The style is in `scripts/pdf-style.css`.

@@ -15,6 +15,13 @@ A small offline app for running the books and stock of a ~300 sq ft grocery (baq
 2. **Suppliers**: add each supplier with its credit days, for example the dairy van at 14 days, the drinks distributor at 30 days and cash-and-carry at 0.
 3. **Items**: add each product with its barcode (click the box and scan), category, cost excl. VAT, shelf price incl. VAT, reorder level and how many you have now. The margin shows as you type.
 
+## Barcode scanning
+
+- **USB or Bluetooth scanner (recommended, about AED 60 to 150):** plug it in and scan. It works on **Sell**, **Buy stock**, **Items** and **Stock count**, even when you have not clicked in a box first.
+- **New barcode?** When you scan a barcode the app does not know on Sell or Buy stock, a small **New item** form opens with the barcode already filled in. Enter the name, cost and price and save, and the item goes straight into the sale or invoice.
+- **Items page:** scan at the top. A known item opens for editing, and a new barcode starts a new item.
+- **Camera:** a **📷 Camera** button appears where the browser has a built-in barcode reader (Chrome on Android phones and tablets, Mac and ChromeOS). Chrome on Windows usually does not have one, so use a USB scanner there.
+
 ## Daily use
 
 | Page | What to do |

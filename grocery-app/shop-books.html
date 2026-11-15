@@ -51,6 +51,10 @@ tr.sub td{font-weight:600;background:#fafbfa}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1d2421;color:#fff;padding:9px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
 .toast.on{opacity:1}
 #print{display:none}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:30;padding:16px}
+.ov .card{max-width:640px;width:100%;margin:0;max-height:90vh;overflow:auto}
+.ov video{width:100%;border-radius:8px;background:#000;max-height:60vh}
+.cam{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}
 @media (max-width:600px){main{padding:10px}.row>div{min-width:100%}.row>div.narrow{flex:1 1 45%;min-width:0}}
 @media print{
   body{background:#fff}
@@ -67,6 +71,7 @@ tr.sub td{font-weight:600;background:#fafbfa}
 <main id="app"></main>
 <div id="print"></div>
 <div class="toast" id="toast"></div>
+<div id="ovl"></div>
 
 <script>
 'use strict';
@@ -209,6 +214,43 @@ function txTable(rows,cols){
 function bindDel(){document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>delTx(b.dataset.del))}
 const recent=(type,n=30)=>db.tx.filter(t=>t.type===type).sort((a,b)=>(b.date+b.id)>(a.date+a.id)?1:-1).slice(0,n);
 function itemDatalist(){return `<datalist id="itemlist">${db.items.map(i=>`<option value="${esc(i.name)}">${esc([i.barcode,i.sku].filter(Boolean).join(' · '))}</option>`).join('')}</datalist>`}
+const looksLikeBarcode=q=>/^[0-9A-Za-z\-]{6,}$/.test(String(q).trim())&&/\d{4}/.test(q);
+function closeOv(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null}$('#ovl').innerHTML=''}
+// Quick "new item" form for a barcode that is not in the list yet
+function quickItem(code,onDone){
+  $('#ovl').innerHTML=`<div class="ov"><div class="card"><h2>New item for barcode ${esc(code)}</h2>
+  <div class="row"><div style="flex:2"><label>Name</label><input id="qi_n"></div><div><label>Category</label><select id="qi_c">${opts(SALES_CATS.map(c=>[c,c]))}</select></div></div>
+  <div class="row" style="margin-top:8px"><div><label>Cost excl. VAT</label><input id="qi_cost" type="number" step="0.001"></div><div><label>Selling price incl. VAT</label><input id="qi_p" type="number" step="0.01"></div>
+  <div class="narrow"><label>VAT %</label><input id="qi_v" type="number" step="any" value="${db.settings.vatRate}"></div><div class="narrow"><label>Reorder at</label><input id="qi_r" type="number" step="any" value="0"></div></div>
+  <div class="row" style="margin-top:12px"><div><button class="b" id="qi_s">Save item</button> <button class="s" id="qi_x">Cancel</button></div></div>
+  <p class="hint">You can add the stock you have now through Buy stock or a stock count. More details can be edited later on the Items page.</p></div></div>`;
+  $('#qi_n').focus();
+  const go=()=>{const name=$('#qi_n').value.trim();if(!name){toast('Enter a name');$('#qi_n').focus();return}
+    const i={id:uid(),name,barcode:String(code).trim(),sku:'',category:$('#qi_c').value,cost:num($('#qi_cost').value),price:num($('#qi_p').value),vatRate:num($('#qi_v').value),unit:'pc',reorder:num($('#qi_r').value),openingQty:0,supplierId:''};
+    db.items.push(i);save();closeOv();toast('Item added');onDone&&onDone(i)};
+  $('#qi_s').onclick=go;$('#qi_x').onclick=closeOv;
+  $('#ovl').querySelectorAll('input').forEach(x=>x.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go()}if(e.key==='Escape')closeOv()})}
+// Camera scanning (Chrome/Edge on Android, Mac and ChromeOS have a built-in barcode reader)
+let camStream=null;
+const hasCam=()=>'BarcodeDetector' in window&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia;
+const camBtn=target=>hasCam()?`<button class="cam" type="button" data-cam="${target}" title="Scan with camera">📷 Camera</button>`:'';
+function bindCam(){document.querySelectorAll('[data-cam]').forEach(b=>b.onclick=()=>camScan(b.dataset.cam))}
+async function camScan(targetId){
+  $('#ovl').innerHTML=`<div class="ov"><div class="card"><h2>Point the camera at the barcode</h2><video id="camv" playsinline muted></video><p class="hint" id="camh">Starting camera…</p><button class="s" id="camx">Cancel</button></div></div>`;
+  $('#camx').onclick=closeOv;
+  try{const fm=await BarcodeDetector.getSupportedFormats();const det=new BarcodeDetector({formats:fm.filter(f=>['ean_13','ean_8','upc_a','upc_e','code_128','code_39','code_93','itf','codabar','qr_code'].includes(f))});
+    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const v=$('#camv');v.srcObject=camStream;await v.play();$('#camh').textContent='Hold steady; it reads automatically.';
+    const tick=async()=>{if(!camStream)return;try{const r=await det.detect(v);if(r.length){const code=r[0].rawValue;closeOv();sendScan(targetId,code);return}}catch(e){}setTimeout(tick,200)};tick()}
+  catch(e){$('#camh').textContent='Camera not available: '+e.message+'. Use a USB or Bluetooth scanner instead.'}}
+// Put a scanned code into a field and press Enter for it
+function sendScan(targetId,code){const el=document.getElementById(targetId);if(!el)return;el.value=code;el.focus();el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))}
+// A USB/Bluetooth scanner types very fast and ends with Enter. If no box is selected, send the code to this page's scan box.
+const SCAN_TARGET={sell:'scan',buy:'pscan',items:'iscan',count:'cscan'};
+(()=>{let buf='',last=0;document.addEventListener('keydown',e=>{
+  const t=e.target,inField=t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT');if(inField||$('#ovl').innerHTML)return;
+  const now=Date.now();if(now-last>80)buf='';last=now;
+  if(e.key==='Enter'){if(buf.length>=4&&SCAN_TARGET[page]){e.preventDefault();sendScan(SCAN_TARGET[page],buf)}buf='';return}
+  if(e.key.length===1)buf+=e.key})})();
 function findItem(q){q=String(q).trim();if(!q)return null;const l=q.toLowerCase();return db.items.find(i=>i.barcode===q||(i.sku&&i.sku.toLowerCase()===l))||db.items.find(i=>i.name.toLowerCase()===l)||null}
 
 /* ============ Views ============ */
@@ -254,7 +296,7 @@ VIEWS.sell=()=>{
   const sm=stockMap();
   const tot=saleTotals({lines:cart});
   $('#app').innerHTML=`<div class="card"><h2>New sale</h2>
-  <div class="row"><div style="flex:3"><label>Scan barcode or type item name, then press Enter</label><input id="scan" list="itemlist" autocomplete="off" placeholder="Barcode, SKU or name">${itemDatalist()}</div>
+  <div class="row"><div style="flex:3"><label>Scan barcode or type item name, then press Enter</label><input id="scan" list="itemlist" autocomplete="off" placeholder="Barcode, SKU or name">${itemDatalist()}</div>${hasCam()?`<div class="narrow">${camBtn('scan')}</div>`:''}
   <div class="narrow"><label>Qty</label><input id="sq" type="number" step="any" value="1"></div>
   <div class="narrow"><button class="b" id="addl">Add</button></div></div>
   <div class="row" style="margin-top:8px"><div style="flex:3"><label>Item not in the list? Enter a description and price</label><input id="qn" placeholder="e.g. Loose vegetables"></div>
@@ -271,7 +313,7 @@ VIEWS.sell=()=>{
   <div class="row" style="margin-top:12px"><div><button class="b" id="done" ${cart.length?'':'disabled'}>Save sale</button> <button class="s" id="clr">Clear</button></div></div></div>
   <div class="card"><h2>Recent sales</h2>${txTable(recent('sale'),[{h:'Date',f:t=>t.date},{h:'Items',f:t=>esc(t.lines.map(l=>qfmt(l.qty)+'× '+l.name).join(', ').slice(0,90))},{h:'Paid by',f:t=>t.pay==='credit'?'Credit: '+esc((customer(t.customerId)||{}).name||'?'):PAY[t.pay]},{h:'Total',n:1,f:t=>aed(saleTotals(t).gross)}])}</div>`;
   const add=()=>{const it=findItem($('#scan').value);const q=num($('#sq').value)||1;
-    if(!it){toast('Item not found');$('#scan').select();return}
+    if(!it){const code=$('#scan').value.trim();if(looksLikeBarcode(code)){quickItem(code,ni=>{cart.push({itemId:ni.id,name:ni.name,qty:q,price:+ni.price,cost:+ni.cost||0,vatRate:+ni.vatRate});VIEWS.sell();$('#scan').focus()})}else{toast('Item not found');$('#scan').select()}return}
     const ex=cart.find(l=>l.itemId===it.id&&l.price===+it.price);if(ex)ex.qty+=q;else cart.push({itemId:it.id,name:it.name,qty:q,price:+it.price,cost:+it.cost||0,vatRate:+it.vatRate});
     VIEWS.sell();$('#scan').focus()};
   $('#scan').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add()}};$('#addl').onclick=add;
@@ -292,7 +334,7 @@ VIEWS.sell=()=>{
   $('#done').onclick=()=>{const ls=cart.filter(l=>l.qty);if(!ls.length)return;const pay=$('#spay').value;const t={id:uid(),type:'sale',date:$('#sd').value||today(),pay,lines:ls};
     if(pay==='credit'){if(!$('#scust').value){toast('Choose the customer for a credit sale');return}t.customerId=$('#scust').value}
     db.tx.push(t);save();cart=[];sellState={pay:'cash',cust:''};toast('Sale saved');render()};
-  bindDel();$('#scan').focus();
+  bindDel();bindCam();$('#scan').focus();
 };
 
 /* ---- Buy ---- */
@@ -304,7 +346,7 @@ VIEWS.buy=()=>{
   <div><label>Invoice number</label><input id="pinv"></div><div><label>Invoice date</label><input type="date" id="pd" value="${today()}"></div>
   <div><label>Paid by</label><select id="ppay">${opts([['credit',PAY.credit],['cash',PAY.cash],['bank',PAY.bank]],'credit')}</select></div></div>
   <div class="row" id="pnew" style="display:${db.suppliers.length?'none':''};margin-top:8px"><div style="flex:2"><label>New supplier name</label><input id="pnn"></div><div><label>Phone</label><input id="pnp"></div><div class="narrow"><label>Credit days</label><input id="pnd" type="number" value="0"></div><div class="narrow"><button class="b" id="pnadd">Save supplier</button></div></div>
-  <div class="row" style="margin-top:10px"><div style="flex:3"><label>Scan or type item</label><input id="pscan" list="itemlist" autocomplete="off">${itemDatalist()}</div>
+  <div class="row" style="margin-top:10px"><div style="flex:3"><label>Scan or type item</label><input id="pscan" list="itemlist" autocomplete="off" placeholder="Barcode, SKU or name">${itemDatalist()}</div>${hasCam()?`<div class="narrow">${camBtn('pscan')}</div>`:''}
   <div class="narrow"><label>Qty</label><input id="pq" type="number" step="any" value="1"></div>
   <div class="narrow"><label>Unit cost excl. VAT</label><input id="pc" type="number" step="0.001"></div>
   <div class="narrow"><button class="b" id="padd">Add</button></div></div>
@@ -319,9 +361,11 @@ VIEWS.buy=()=>{
   const keep=()=>{const s={sup:$('#psup').value,inv:$('#pinv').value,d:$('#pd').value,pay:$('#ppay').value};return()=>{$('#psup').value=s.sup;$('#pinv').value=s.inv;$('#pd').value=s.d;$('#ppay').value=s.pay}};
   const re=()=>{const k=keep();VIEWS.buy();k()};
   $('#pscan').onchange=()=>{const it=findItem($('#pscan').value);if(it)$('#pc').value=it.cost||''};
-  const add=()=>{const it=findItem($('#pscan').value);if(!it){toast('Item not found. Add it on the Items page first.');return}
+  const newFromScan=()=>{const code=$('#pscan').value.trim();if(!looksLikeBarcode(code)){toast('Item not found');return}const k=keep();quickItem(code,ni=>{VIEWS.buy();k();$('#pscan').value=ni.name;$('#pc').value=ni.cost||'';$('#pq').focus();$('#pq').select()})};
+  const add=()=>{const it=findItem($('#pscan').value);if(!it){newFromScan();return}
     const c=num($('#pc').value)||(+it.cost||0);pcart.push({itemId:it.id,qty:num($('#pq').value)||1,cost:c});const k=keep();VIEWS.buy();k();$('#pscan').focus()};
-  $('#pscan').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const it=findItem($('#pscan').value);if(it&&!$('#pc').value)$('#pc').value=it.cost||'';$('#pq').focus();$('#pq').select()}};
+  $('#pscan').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const it=findItem($('#pscan').value);if(!it){newFromScan();return}$('#pc').value=it.cost||'';$('#pq').focus();$('#pq').select()}};
+  bindCam();
   $('#pq').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add()}};$('#pc').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add()}};
   $('#padd').onclick=add;
   $('#pnewl').onclick=e=>{e.preventDefault();$('#pnew').style.display='';$('#pnn').focus()};
@@ -444,7 +488,8 @@ VIEWS.items=()=>{
   if(itemFilter.cat)list=list.filter(i=>i.category===itemFilter.cat);
   if(itemFilter.low)list=list.filter(i=>sm[i.id]<=(+i.reorder||0));
   const val=list.reduce((a,i)=>a+Math.max(0,sm[i.id])*(+i.cost||0),0);
-  $('#app').innerHTML=`<div class="card"><h2>${editItem?'Edit item':'Add an item'}</h2>
+  $('#app').innerHTML=`<div class="card"><div class="row"><div style="flex:3"><label>Scan a barcode: an existing item opens for editing, a new one starts a new item</label><input id="iscan" autocomplete="off" placeholder="Scan or type barcode, then Enter"></div>${hasCam()?`<div class="narrow">${camBtn('iscan')}</div>`:''}</div></div>
+  <div class="card"><h2>${editItem?'Edit item':'Add an item'}</h2>
   <div class="row"><div style="flex:2"><label>Name</label><input id="iname" value="${esc(e.name)}"></div>
   <div><label>Barcode</label><input id="ibar" value="${esc(e.barcode)}" placeholder="Scan here"></div><div><label>SKU / short code</label><input id="isku" value="${esc(e.sku)}"></div>
   <div><label>Category</label><select id="icat">${opts(SALES_CATS.map(c=>[c,c]),e.category)}</select></div></div>
@@ -467,6 +512,10 @@ VIEWS.items=()=>{
   ${list.map(i=>{const net=(+i.price||0)*100/(100+(+i.vatRate||0));const m=net?(net-(+i.cost||0))/net*100:0;const s=sm[i.id];
     return `<tr><td>${esc(i.name)}</td><td class="muted">${esc([i.barcode,i.sku].filter(Boolean).join(' · '))}</td><td>${esc(i.category)}</td><td class="n">${aed(+i.cost||0)}</td><td class="n">${aed(+i.price||0)}</td><td class="n">${m.toFixed(0)}%</td><td class="n">${qfmt(s)} ${s<=(+i.reorder||0)?'<span class="pill '+(s<=0?'bad':'warn')+'">low</span>':''}</td><td class="n">${aed(Math.max(0,s)*(+i.cost||0))}</td><td><button class="s" data-ed="${i.id}">Edit</button> <button class="s" data-hist="${i.id}">History</button></td></tr>`}).join('')}</table></div></div>
   <div id="hist"></div>`;
+  $('#iscan').onkeydown=ev=>{if(ev.key!=='Enter')return;ev.preventDefault();const code=$('#iscan').value.trim();if(!code)return;const it=db.items.find(i=>i.barcode===code)||findItem(code);
+    if(it){editItem=it.id;VIEWS.items();toast('Found: '+it.name);$('#iname').focus()}else{editItem=null;VIEWS.items();$('#ibar').value=code;$('#iname').focus();toast('New barcode: enter the item details')}};
+  $('#ibar').onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();const code=$('#ibar').value.trim();const o=db.items.find(i=>i.barcode===code&&i.id!==editItem);if(o){toast('Already used by '+o.name)}else $('#iname').focus()}};
+  bindCam();
   const mg=()=>{const p=num($('#iprice').value),c=num($('#icost').value),v=num($('#ivat').value);const net=p*100/(100+v);$('#imarg').textContent=net?((net-c)/net*100).toFixed(1)+'%':'–'};
   ['#iprice','#icost','#ivat'].forEach(s=>$(s).oninput=mg);mg();
   $('#isave').onclick=()=>{const name=$('#iname').value.trim();if(!name){toast('Enter a name');return}
@@ -512,7 +561,7 @@ VIEWS.count=()=>{
   const vs=rows.filter(r=>r.v);
   $('#app').innerHTML=`<div class="card"><h2>Stock count ${c.date} · ${esc(c.scope||'All items')} ${closed?'<span class="pill">applied</span>':'<span class="pill warn">open</span>'}</h2>
   <div class="row"><div><button class="s" id="cback">← All counts</button> <button class="s" id="cprint">Print count sheet</button> <label style="display:inline;margin-left:6px"><input type="checkbox" id="cshow"> show expected qty on sheet</label> <button class="s" id="cvprint">Print variance report</button></div></div>
-  ${closed?'':`<div class="row" style="margin-top:10px"><div style="flex:2"><label>Scan a barcode to jump to its row</label><input id="cscan" autocomplete="off"></div></div>`}
+  ${closed?'':`<div class="row" style="margin-top:10px"><div style="flex:2"><label>Scan a barcode to jump to its row</label><input id="cscan" autocomplete="off"></div>${hasCam()?`<div class="narrow">${camBtn('cscan')}</div>`:''}</div>`}
   <p class="hint"><span id="ccnt">${counted}</span> of ${rows.length} items counted. Items left blank are not adjusted. ${closed?'':'Expected quantities are the live system figures, so do not sell while counting.'}</p>
   <div class="tw"><table><tr><th>Item</th><th>Barcode</th><th class="n">Expected</th><th class="n">Counted</th><th class="n">Variance</th><th class="n">Value</th></tr>
   ${rows.map((r,i)=>`<tr><td>${esc(r.it.name)}</td><td class="muted">${esc(r.it.barcode||'')}</td><td class="n">${qfmt(r.exp)}</td><td class="n">${closed?(r.l.counted==null?'–':qfmt(r.l.counted)):`<input data-cn="${i}" type="number" step="any" value="${r.l.counted??''}" style="width:90px">`}</td><td class="n ${r.v<0?'bad':r.v>0?'good':''}" id="cv${i}">${r.v==null?'':(r.v>0?'+':'')+qfmt(r.v)}</td><td class="n ${r.val<0?'bad':''}" id="cw${i}">${r.v?aed(r.val):''}</td></tr>`).join('')}
@@ -528,6 +577,7 @@ VIEWS.count=()=>{
     x.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const n2=document.querySelector(`[data-cn="${+x.dataset.cn+1}"]`);if(n2){n2.focus();n2.select()}else x.blur()}}});
   $('#cscan').onkeydown=e=>{if(e.key!=='Enter')return;e.preventDefault();const it=findItem($('#cscan').value);const i=it?c.lines.findIndex(l=>l.itemId===it.id):-1;
     if(i<0){toast('Not in this count');return}const inp=document.querySelector(`[data-cn="${i}"]`);inp.scrollIntoView({block:'center'});inp.focus();inp.select()};
+  bindCam();
   $('#cdel').onclick=()=>{if(confirm('Discard this count? Nothing will be adjusted.')){db.counts=db.counts.filter(x=>x.id!==c.id);openCountId=null;save();VIEWS.count()}};
   $('#capply').onclick=()=>{const vs=rows.filter(r=>r.v),vv=rows.reduce((a,r)=>a+r.val,0);if(!confirm(`Adjust stock for ${vs.length} item(s), net ${AED(vv)} at cost?`))return;
     for(const r of rows){r.l.expected=r.exp;r.l.cost=+r.it.cost||0}

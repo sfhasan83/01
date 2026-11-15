@@ -50,6 +50,27 @@ tr.sub td{font-weight:600;background:#fafbfa}
 .hint{font-size:13px;color:var(--muted);margin:6px 0 0}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1d2421;color:#fff;padding:9px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
 .toast.on{opacity:1}
+.dash .card h2{font-size:15px}
+.hero{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;align-items:stretch;background:linear-gradient(135deg,#1f7a4d,#2a9663);color:#fff;border:none}
+.hero .k,.hero .s{color:rgba(255,255,255,.85)}.hero .s{font-size:13px;margin-top:4px}.hero .good{color:#b9f5cf}.hero .bad{color:#ffd0c9}.hero a{color:#fff}
+.hv{font-size:34px;font-weight:750;letter-spacing:-.01em;margin:2px 0}
+.meter{height:10px;border-radius:99px;background:rgba(255,255,255,.25);margin:10px 0 2px;overflow:hidden}.mf{height:100%;background:#ffd166;border-radius:99px}.mf.ok{background:#b9f5cf}
+.heroR{display:grid;gap:10px}.heroR .kpi{background:rgba(255,255,255,.12);border:none;color:#fff}.heroR .kpi .k,.heroR .kpi .s{color:rgba(255,255,255,.85)}
+.sec{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:18px 0 8px}
+.kgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.kpi .k{color:var(--muted);font-size:13px}.kpi .v{font-size:19px;white-space:nowrap;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}.kpi .s{font-size:12.5px;color:var(--muted);margin-top:2px}
+.cgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}.cgrid .card{margin:0}.cgrid .wide{grid-column:1/-1}
+.chart{width:100%;height:auto;display:block}.chart .grid{stroke:var(--line);stroke-width:1}.chart .ax{fill:var(--muted);font-size:11px}
+.chart .ref{stroke:#b45309;stroke-width:1.5;stroke-dasharray:5 4}.chart .reflab{fill:#7a3a05;font-size:11.5px;font-weight:600;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--muted);margin:-4px 0 6px}.legend i,.mixl i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.stack{display:flex;gap:2px;height:22px;border-radius:6px;overflow:hidden;margin:6px 0 12px}.stack>div{min-width:3px}
+.mixl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;font-size:14px}.mixl b{margin-left:6px}.mixl span{display:block;font-size:12.5px;margin-left:16px}
+.hb{display:grid;gap:7px}.hbr{display:grid;grid-template-columns:minmax(90px,38%) 1fr auto;gap:8px;align-items:center;font-size:13.5px}
+.hbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hbt{background:#eef1ee;border-radius:4px;height:12px}.hbf{height:100%;border-radius:0 4px 4px 0}.hbv{font-variant-numeric:tabular-nums;min-width:64px;text-align:right}
+.alert.bad{background:#fdeceb;color:#7d1a12;border-color:#f3c3be}.alert.info{background:#eef4fb;color:#173f6b;border-color:#cfe0f3}
+#tip{position:fixed;display:none;z-index:40;background:#1d2421;color:#fff;font-size:12.5px;padding:6px 9px;border-radius:6px;pointer-events:none;max-width:260px;line-height:1.4}
+@media (max-width:760px){.hero{grid-template-columns:1fr}.cgrid{grid-template-columns:1fr}.hv{font-size:28px}}
 #print{display:none}
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:30;padding:16px}
 .ov .card{max-width:640px;width:100%;margin:0;max-height:90vh;overflow:auto}
@@ -72,6 +93,7 @@ tr.sub td{font-weight:600;background:#fafbfa}
 <div id="print"></div>
 <div class="toast" id="toast"></div>
 <div id="ovl"></div>
+<div id="tip"></div>
 
 <script>
 'use strict';
@@ -256,38 +278,141 @@ function findItem(q){q=String(q).trim();if(!q)return null;const l=q.toLowerCase(
 /* ============ Views ============ */
 const VIEWS={};
 
+/* ---- Dashboard (Home) ---- */
+const BREAKEVEN_DAY=3500; // plan: cash break-even about AED 3,500 of sales a day
+const SER=['#2a78d6','#eb6834','#1baf7a','#eda100']; // validated categorical order
+const kfmt=n=>Math.abs(n)>=1000?(n/1000).toFixed(Math.abs(n)>=10000?0:1)+'k':Math.round(n).toString();
+function tipBind(root){
+  const tip=$('#tip');root.querySelectorAll('[data-tip]').forEach(el=>{
+    el.addEventListener('mousemove',e=>{tip.innerHTML=el.dataset.tip;tip.style.display='block';const w=tip.offsetWidth;tip.style.left=Math.min(window.innerWidth-w-8,e.clientX+12)+'px';tip.style.top=(e.clientY+14)+'px'});
+    el.addEventListener('mouseleave',()=>{tip.style.display='none'})})}
+// vertical bar chart with optional dashed reference line; data=[{label,value,tip}]
+function barChart(data,{W=640,h=190,refLine=null,refLabel='',color='var(--accent)',fmt=kfmt,everyN=1}={}){
+  const pl=40,pr=8,pt=12,pb=24,ih=h-pt-pb,iw=W-pl-pr;
+  const max=Math.max(1,refLine||0,...data.map(d=>d.value))*1.08;
+  const step=niceStep(max/4);const ticks=[];for(let v=0;v<=max;v+=step)ticks.push(v);
+  const y=v=>pt+ih-(v/max)*ih;const bw=iw/data.length;const barW=Math.max(2,Math.min(28,bw-2));
+  let s=`<svg viewBox="0 0 ${W} ${h}" class="chart" role="img">`;
+  s+=ticks.map(v=>`<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${pl-6}" y="${y(v)+4}" class="ax" text-anchor="end">${fmt(v)}</text>`).join('');
+  data.forEach((d,i)=>{const x=pl+i*bw+(bw-barW)/2;const top=y(Math.max(0,d.value));const hh=Math.max(0,pt+ih-top);
+    s+=`<g data-tip="${esc(d.tip||d.label+': '+aed(d.value))}"><rect x="${pl+i*bw}" y="${pt}" width="${bw}" height="${ih}" fill="transparent"/>${hh>0?`<path d="${roundTop(x,top,barW,hh)}" fill="${d.color||color}"/>`:''}</g>`;
+    if(i%everyN===0||(i===data.length-1&&i%everyN>=everyN/2))s+=`<text x="${pl+i*bw+bw/2}" y="${h-6}" class="ax" text-anchor="middle">${esc(d.label)}</text>`});
+  if(refLine){const ry=y(refLine);s+=`<line x1="${pl}" x2="${W-pr}" y1="${ry}" y2="${ry}" class="ref"/><text x="${pl+6}" y="${ry-6}" class="reflab">${esc(refLabel)}</text>`}
+  return s+'</svg>'}
+function roundTop(x,y,w,h){const r=Math.min(4,w/2,h);return `M${x},${y+h}V${y+r}Q${x},${y} ${x+r},${y}H${x+w-r}Q${x+w},${y} ${x+w},${y+r}V${y+h}Z`}
+function niceStep(raw){const p=Math.pow(10,Math.floor(Math.log10(raw||1)));const f=raw/p;return (f<=1?1:f<=2?2:f<=5?5:10)*p}
+// grouped bars, 2 series
+function groupChart(groups,series,{W=640,h=200}={}){
+  const pl=44,pr=8,pt=12,pb=24,ih=h-pt-pb,iw=W-pl-pr;
+  const max=Math.max(1,...groups.flatMap(g=>g.values))*1.08;const step=niceStep(max/4);const ticks=[];for(let v=0;v<=max;v+=step)ticks.push(v);
+  const y=v=>pt+ih-(v/max)*ih;const gw=iw/groups.length;const bw=Math.min(26,(gw-14)/series.length-2);
+  let s=`<svg viewBox="0 0 ${W} ${h}" class="chart" role="img">`;
+  s+=ticks.map(v=>`<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${pl-6}" y="${y(v)+4}" class="ax" text-anchor="end">${kfmt(v)}</text>`).join('');
+  groups.forEach((g,i)=>{const total=series.length*(bw+2)-2;const x0=pl+i*gw+(gw-total)/2;
+    s+=`<g data-tip="<b>${esc(g.label)}</b><br>${series.map((se,j)=>esc(se)+': AED '+aed(g.values[j])).join('<br>')}<br>Net: AED ${aed(g.values[0]-g.values[1])}"><rect x="${pl+i*gw}" y="${pt}" width="${gw}" height="${ih}" fill="transparent"/>`;
+    g.values.forEach((v,j)=>{const top=y(v),hh=pt+ih-top;if(hh>0)s+=`<path d="${roundTop(x0+j*(bw+2),top,bw,hh)}" fill="${SER[j]}"/>`});
+    s+=`</g><text x="${pl+i*gw+gw/2}" y="${h-6}" class="ax" text-anchor="middle">${esc(g.label)}</text>`});
+  return s+'</svg>'}
+// horizontal ranked bars; rows=[{label,value,sub}]
+function hbars(rows,color='var(--accent)'){
+  if(!rows.length)return '<p class="muted">No sales yet in this period.</p>';
+  const max=Math.max(...rows.map(r=>r.value),1);
+  return `<div class="hb">${rows.map(r=>`<div class="hbr" data-tip="${esc(r.label)}: AED ${aed(r.value)}${r.sub?' · '+esc(r.sub):''}"><div class="hbl">${esc(r.label)}</div><div class="hbt"><div class="hbf" style="width:${Math.max(1,r.value/max*100)}%;background:${color}"></div></div><div class="hbv">${aed(r.value)}</div></div>`).join('')}</div>`}
+
 VIEWS.home=()=>{
   const td=today(),sm=stockMap(),b=balances();
   const tday=periodOf('today'),mon=periodOf('month'),qtr=periodOf('quarter');
   const pt=pnl(tday),pm=pnl(mon),vq=vatSummary(qtr),ivT=investor(tday),ivM=investor(mon);
   const low=db.items.filter(i=>!i.inactive&&sm[i.id]<=(+i.reorder||0));
   const pay=payables();const owed=pay.reduce((a,r)=>a+r.owed,0);const overdue=pay.filter(r=>r.overdue>0);const soon=pay.filter(r=>r.dueSoon>0);
+  const rec=receivables();const custOwed=rec.reduce((a,r)=>a+r.owed,0);const overLimit=rec.filter(r=>r.c.limit&&r.owed>r.c.limit);
   const stockVal=db.items.reduce((a,i)=>a+Math.max(0,sm[i.id])*(+i.cost||0),0);
+  // daily sales (excl. VAT) for last 30 days
+  const daily={};for(const t of db.tx)if(t.type==='sale')daily[t.date]=(daily[t.date]||0)+saleTotals(t).net;
+  const days=[];for(let k=29;k>=0;k--){const d=addDays(td,-k);days.push({d,v:daily[d]||0})}
+  const todaySales=daily[td]||0;
+  const dom=+td.slice(8,10);const monthDays=days.filter(x=>x.d>=mon.from);const tradingDays=Math.max(1,monthDays.filter(x=>x.v>0).length||dom);
+  const avgDay=pm.sales/tradingDays;const bePct=Math.min(100,todaySales/BREAKEVEN_DAY*100);
+  // monthly sales vs expenses (last 6 months)
+  const months=[];for(let k=5;k>=0;k--){const x=new Date(td+'T12:00:00');x.setDate(1);x.setMonth(x.getMonth()-k);const from=ymd(x);const e=new Date(x);e.setMonth(e.getMonth()+1);e.setDate(0);const p={from,to:ymd(e)};const pl=pnl(p);
+    months.push({label:x.toLocaleString('en',{month:'short'}),values:[r2(pl.sales),r2(pl.cogs+pl.expTotal-pl.adj)]})}
+  // payment mix this month (incl. VAT)
+  const mixKeys=[['cash','Cash'],['card','Card'],['app','Delivery app'],['credit','Credit']];const mix={cash:0,card:0,app:0,credit:0};
+  for(const t of db.tx)if(t.type==='sale'&&inRange(t.date,mon))mix[t.pay]=(mix[t.pay]||0)+saleTotals(t).gross;
+  const mixTot=Object.values(mix).reduce((a,v)=>a+v,0);
+  // top items and categories this month
+  const byItem={};for(const t of db.tx)if(t.type==='sale'&&inRange(t.date,mon))for(const l of t.lines){const g=l.qty*l.price;const n=g-g*l.vatRate/(100+l.vatRate);const k=l.name;byItem[k]=byItem[k]||{v:0,q:0};byItem[k].v+=n;byItem[k].q+=l.qty}
+  const top=Object.entries(byItem).sort((a,b)=>b[1].v-a[1].v).slice(0,6).map(([k,x])=>({label:k,value:x.v,sub:qfmt(x.q)+' sold'}));
+  const cats=Object.entries(pm.byCat).sort((a,b)=>b[1].sales-a[1].sales).map(([k,x])=>({label:k,value:x.sales,sub:'margin '+(x.sales?((x.sales-x.cogs)/x.sales*100).toFixed(0):0)+'%'}));
+  // next stock count: 3 months after the last full count
+  const lastFull=db.counts.filter(c=>c.status==='closed'&&!c.scope).map(c=>c.date).sort().pop();
+  const nextCount=lastFull?addDays(lastFull,91):null;
+  // alerts
   const alerts=[];
-  if(!db.items.length)alerts.push(`Start by adding your items on the <a href="#items">Items</a> page, or try the app with demo data from <a href="#set">Settings &amp; backup</a>.`);
-  if(low.length)alerts.push(`<b>${low.length} item(s) at or below reorder level.</b> See the list below.`);
-  if(overdue.length)alerts.push(`<b>Overdue supplier bills:</b> ${overdue.map(r=>esc(r.s.name)+' '+AED(r.overdue)).join(', ')}.`);
-  if(soon.length)alerts.push(`Due in the next 3 days: ${soon.map(r=>esc(r.s.name)+' '+AED(r.dueSoon)).join(', ')}.`);
-  const lb=db.settings.lastBackup;if(db.tx.length&&(!lb||lb<addDays(td,-7)))alerts.push(`Last backup: ${lb?lb.slice(0,10):'never'}. <a href="#set">Download a backup</a> now. Your data lives only in this browser.`);
-  const openCount=db.counts.find(c=>c.status==='open');if(openCount)alerts.push(`A stock count started on ${openCount.date} is still open. <a href="#count">Finish it</a>.`);
+  if(!db.items.length)alerts.push(['info',`Start by adding your items on the <a href="#items">Items</a> page, or try the app with demo data from <a href="#set">Settings &amp; backup</a>.`]);
+  if(low.length)alerts.push(['warn',`<b>${low.length} item(s) low on stock:</b> ${low.slice(0,6).map(i=>esc(i.name)+' ('+qfmt(sm[i.id])+')').join(', ')}${low.length>6?'…':''} <a href="#items">See items</a>`]);
+  if(overdue.length)alerts.push(['bad',`<b>Overdue supplier bills:</b> ${overdue.map(r=>esc(r.s.name)+' '+AED(r.overdue)).join(', ')}. <a href="#pay">Pay suppliers</a>`]);
+  if(soon.length)alerts.push(['warn',`Supplier bills due in the next 3 days: ${soon.map(r=>esc(r.s.name)+' '+AED(r.dueSoon)).join(', ')}.`]);
+  if(overLimit.length)alerts.push(['warn',`<b>Customers over their credit limit:</b> ${overLimit.map(r=>esc(r.c.name)+' '+AED(r.owed)).join(', ')}. <a href="#cust">Customers</a>`]);
+  const openCount=db.counts.find(c=>c.status==='open');if(openCount)alerts.push(['warn',`A stock count started on ${openCount.date} is still open. <a href="#count">Finish it</a>.`]);
+  else if(db.items.length&&(!nextCount||nextCount<=addDays(td,7)))alerts.push(['warn',nextCount?`Quarterly stock count due ${nextCount<td?'(overdue since '+nextCount+')':'on '+nextCount}. <a href="#count">Start count</a>`:`No full stock count yet. Do one each quarter. <a href="#count">Start count</a>`]);
+  const lb=db.settings.lastBackup;if(db.tx.length&&(!lb||lb<addDays(td,-7)))alerts.push(['warn',`Last backup: ${lb?lb.slice(0,10):'never'}. <a href="#set">Download a backup</a> now. Your data lives only in this browser.`]);
+  const ok=!alerts.length;
+  const kpi=(k,v,sub,cls='')=>`<div class="kpi"><div class="k">${k}</div><div class="v ${cls}">${v}</div>${sub?`<div class="s">${sub}</div>`:''}</div>`;
+  const delta=(a,b)=>b?((a-b)/b*100):0;
+  const yest=daily[addDays(td,-1)]||0;const dTo=delta(todaySales,yest);
   $('#app').innerHTML=`
-  ${alerts.map(a=>`<div class="alert">${a}</div>`).join('')||'<div class="alert ok">All good: no low stock, nothing overdue.</div>'}
-  <div class="grid" style="margin-bottom:14px">
-    <div class="stat"><div class="k">Sales today (incl. VAT)</div><div class="v">${AED(db.tx.filter(t=>t.type==='sale'&&t.date===td).reduce((a,t)=>a+saleTotals(t).gross,0))}</div></div>
-    <div class="stat"><div class="k">Sales this month (excl. VAT)</div><div class="v">${AED(pm.sales)}</div></div>
-    <div class="stat"><div class="k">Profit this month</div><div class="v ${pm.net<0?'bad':'good'}">${AED(pm.net)}</div></div>
-    <div class="stat"><div class="k">Cash in hand</div><div class="v">${AED(b.cash)}</div></div>
-    <div class="stat"><div class="k">Bank</div><div class="v">${AED(b.bank)}</div></div>
-    <div class="stat"><div class="k">Margin today</div><div class="v">${AED(ivT.period)}</div></div>
-    <div class="stat"><div class="k">Margin this month</div><div class="v">${AED(ivM.period)}</div></div>
-    <div class="stat"><div class="k">Margin still to pay</div><div class="v">${AED(ivM.owed)}</div></div>
-    <div class="stat"><div class="k">Owed to suppliers</div><div class="v">${AED(owed)}</div></div>
-    <div class="stat"><div class="k">Owed by customers (credit)</div><div class="v">${AED(receivables().reduce((a,r)=>a+r.owed,0))}</div></div>
-    <div class="stat"><div class="k">Stock value (at cost)</div><div class="v">${AED(stockVal)}</div></div>
-    <div class="stat"><div class="k">${vq.net<0?'VAT refund due this quarter':'VAT to pay this quarter'}</div><div class="v">${AED(Math.abs(vq.net))}</div></div>
+  <div class="dash">
+  <div class="hero card">
+    <div class="heroL">
+      <div class="k">Sales today (excl. VAT)</div>
+      <div class="hv">${AED(todaySales)}</div>
+      <div class="s">${yest?`<span class="${dTo>=0?'good':'bad'}">${dTo>=0?'▲':'▼'} ${Math.abs(dTo).toFixed(0)}%</span> vs yesterday (${AED(yest)})`:'No sales yesterday'} · ${db.tx.filter(t=>t.type==='sale'&&t.date===td).length} bills</div>
+      <div class="meter" data-tip="Break-even from the business plan: about AED 3,500 of sales a day"><div class="mf ${bePct>=100?'ok':''}" style="width:${bePct}%"></div></div>
+      <div class="s">${bePct>=100?'<b class="good">Above break-even today</b>':`${bePct.toFixed(0)}% of the AED 3,500 daily break-even · ${AED(BREAKEVEN_DAY-todaySales)} to go`}</div>
+    </div>
+    <div class="heroR">
+      ${kpi('Gross profit today',AED(pt.gp),pt.sales?(pt.gp/pt.sales*100).toFixed(1)+'% margin':'')}
+      ${kpi(`Margin today (${ivT.pct}%)`,AED(ivT.period),'Still to pay '+AED(ivM.owed))}
+    </div>
   </div>
-  <div class="card"><h2>Low stock</h2>${low.length?`<div class="tw"><table><tr><th>Item</th><th>Category</th><th class="n">In stock</th><th class="n">Reorder at</th><th>Supplier</th></tr>${low.map(i=>`<tr><td>${esc(i.name)}</td><td>${esc(i.category)}</td><td class="n ${sm[i.id]<=0?'bad':''}">${qfmt(sm[i.id])}</td><td class="n">${qfmt(+i.reorder||0)}</td><td>${esc((supplier(i.supplierId)||{}).name||'')}</td></tr>`).join('')}</table></div>`:'<p class="muted">Nothing low.</p>'}</div>
-  <div class="card"><h2>Today</h2><p>Sales ${AED(pt.sales)} excl. VAT, gross profit ${AED(pt.gp)}. Break-even target from the plan is about AED 3,500 of sales a day.</p></div>`;
+  ${ok?'<div class="alert ok">All good: no low stock, nothing overdue, backup is recent.</div>':alerts.map(([c,a])=>`<div class="alert ${c}">${a}</div>`).join('')}
+  <h3 class="sec">This month</h3>
+  <div class="kgrid">
+    ${kpi('Sales',AED(pm.sales),'Avg '+AED(avgDay)+' / day',avgDay>=BREAKEVEN_DAY?'good':'')}
+    ${kpi('Gross profit',AED(pm.gp),pm.sales?(pm.gp/pm.sales*100).toFixed(1)+'% of sales':'')}
+    ${kpi('Expenses',AED(pm.expTotal),Object.keys(pm.exp).length+' types')}
+    ${kpi('Net profit',AED(pm.net),'before owner pay',pm.net<0?'bad':'good')}
+    ${kpi(`Margin (${ivM.pct}%)`,AED(ivM.period),'of sales excl. VAT')}
+    ${kpi('VAT this quarter',AED(Math.abs(vq.net)),vq.net<0?'refund due':'to pay FTA')}
+  </div>
+  <h3 class="sec">Money and stock</h3>
+  <div class="kgrid">
+    ${kpi('Cash in hand',AED(b.cash),'<a href="#money">Cash-up check</a>')}
+    ${kpi('Bank',AED(b.bank),'')}
+    ${kpi('Owed by customers',AED(custOwed),(n=>n+(n===1?' customer':' customers'))(rec.filter(r=>r.owed>0).length))}
+    ${kpi('Owed to suppliers',AED(owed),overdue.length?`<span class="bad">${AED(overdue.reduce((a,r)=>a+r.overdue,0))} overdue</span>`:'nothing overdue')}
+    ${kpi('Stock value (cost)',AED(stockVal),db.items.length+' items')}
+    ${kpi('Low stock',low.length,low.length?'<a href="#items">reorder now</a>':'all fine',low.length?'bad':'good')}
+  </div>
+  <div class="cgrid">
+    <div class="card wide"><h2>Daily sales, last 30 days <span class="muted" style="font-weight:400">· AED excl. VAT</span></h2>
+      <div class="cbox" id="ch_daily"></div></div>
+    <div class="card"><h2>Sales vs costs by month</h2>
+      <div class="legend"><span><i style="background:${SER[0]}"></i>Sales</span><span><i style="background:${SER[1]}"></i>Costs (goods + expenses)</span></div>
+      <div class="cbox" id="ch_month"></div></div>
+    <div class="card"><h2>How customers paid this month</h2>
+      ${mixTot?`<div class="stack">${mixKeys.map(([k],j)=>mix[k]?`<div style="width:${mix[k]/mixTot*100}%;background:${SER[j]}" data-tip="${PAY[k]||k}: AED ${aed(mix[k])} (${(mix[k]/mixTot*100).toFixed(0)}%)"></div>`:'').join('')}</div>
+      <div class="mixl">${mixKeys.map(([k,l],j)=>`<div><i style="background:${SER[j]}"></i>${l}<b>${(mix[k]/mixTot*100).toFixed(0)}%</b><span class="muted">AED ${aed(mix[k])}</span></div>`).join('')}</div>`:'<p class="muted">No sales yet this month.</p>'}</div>
+    <div class="card"><h2>Top items this month</h2>${hbars(top)}</div>
+    <div class="card"><h2>Sales by category this month</h2>${hbars(cats,SER[0])}</div>
+  </div>
+  </div>`;
+  const drawCharts=()=>{const bd=$('#ch_daily'),bm=$('#ch_month');if(!bd)return;
+    const Wd=Math.max(300,bd.clientWidth),Wm=Math.max(260,bm.clientWidth);
+    bd.innerHTML=barChart(days.map(x=>({label:x.d.slice(8,10)==='01'||x===days[0]?x.d.slice(8,10)+' '+new Date(x.d+'T12:00:00').toLocaleString('en',{month:'short'}):x.d.slice(8,10),value:x.v,tip:`<b>${x.d}</b><br>Sales AED ${aed(x.v)}<br>${x.v>=BREAKEVEN_DAY?'Above':'Below'} break-even`})),{W:Wd,h:220,refLine:BREAKEVEN_DAY,refLabel:'Break-even AED 3,500 / day',everyN:Wd<600?7:3});
+    bm.innerHTML=groupChart(months,['Sales','Costs'],{W:Wm,h:200});tipBind($('#app'))};
+  drawCharts();window.onresize=()=>{if(page==='home'){clearTimeout(drawCharts.t);drawCharts.t=setTimeout(drawCharts,150)}};
 };
 
 /* ---- Sell ---- */
@@ -702,7 +827,7 @@ function demoData(){
   const sup=(name,days)=>{const s={id:uid(),name,phone:'',trn:'',creditDays:days,openingBalance:0};d.suppliers.push(s);return s.id};
   const _db=db;db=d; // uid uses db.seq
   const dairy=sup('Dairy and bakery van',14),drinks=sup('Drinks and snacks distributor',30),cc=sup('Cash and carry wholesaler',0);
-  const it=(name,barcode,cat,cost,price,qty,re,s)=>{const i={id:uid(),name,barcode,sku:'',category:cat,cost,price,vatRate:5,unit:'pc',reorder:re,openingQty:qty+30,supplierId:s};d.items.push(i);return i};
+  const it=(name,barcode,cat,cost,price,qty,re,s)=>{const i={id:uid(),name,barcode,sku:'',category:cat,cost,price,vatRate:5,unit:'pc',reorder:re,openingQty:qty*40+1500,supplierId:s};d.items.push(i);return i};
   const C=SALES_CATS;
   const a=[it('Water 1.5L','6291001000011',C[0],0.9,1.5,120,24,drinks),it('Cola can 330ml','6291001000028',C[0],1.3,2.25,96,24,drinks),it('Orange juice 1L','6291001000035',C[0],4.2,6.5,20,6,dairy),
   it('Fresh milk 1L','6291001000042',C[1],4.6,6.25,30,10,dairy),it('Arabic bread pack','6291001000059',C[1],2.1,3,25,10,dairy),it('Eggs 30 tray','6291001000066',C[1],14.5,19,8,4,cc),
@@ -710,9 +835,9 @@ function demoData(){
   it('Cigarettes pack','6291001000103',C[3],22,24,40,10,cc),it('Basmati rice 5kg','6291001000110',C[4],24,30,10,3,cc),it('Sunflower oil 1.8L','6291001000127',C[4],13,16.5,12,4,cc),
   it('Dish soap 750ml','6291001000134',C[5],5.2,8,10,3,cc),it('Tissue box','6291001000141',C[5],3,5,15,5,cc),it('Toothpaste','6291001000158',C[6],5.5,9,10,3,cc),it('Diapers pack','6291001000165',C[6],28,39,5,2,cc),
   it('Mobile recharge AED 25','',C[7],23.75,25,0,0,'')];
-  a[16].vatRate=0;a[16].openingQty=50;
+  a[16].vatRate=0;a[16].openingQty=5000;
   const td=today();
-  for(let k=6;k>=0;k--){const date=addDays(td,-k);for(let n=0;n<12;n++){const lines=[];const m=1+(n%3);for(let j=0;j<m;j++){const i=a[(n*7+j*5+k*3)%a.length];lines.push({itemId:i.id,name:i.name,qty:1+((n+j)%2),price:i.price,cost:i.cost,vatRate:i.vatRate})}
+  for(let k=44;k>=0;k--){const date=addDays(td,-k);const bills=55+((k*37)%45)+Math.round((44-k)*0.6);for(let n=0;n<bills;n++){const lines=[];const m=1+(n%3);for(let j=0;j<m;j++){const i=a[(n*7+j*5+k*3)%a.length];lines.push({itemId:i.id,name:i.name,qty:1+((n+j)%2),price:i.price,cost:i.cost,vatRate:i.vatRate})}
     d.tx.push({id:uid(),type:'sale',date,pay:['cash','cash','card','app'][n%4],lines})}}
   d.tx.push({id:uid(),type:'purchase',date:addDays(td,-5),supplierId:drinks,invoice:'DR-1042',pay:'credit',lines:[{itemId:a[0].id,qty:48,cost:0.9},{itemId:a[1].id,qty:48,cost:1.3},{itemId:a[6].id,qty:30,cost:1.1}],vat:r2((48*0.9+48*1.3+30*1.1)*0.05)});
   d.tx.push({id:uid(),type:'purchase',date:addDays(td,-20),supplierId:dairy,invoice:'DB-7781',pay:'credit',lines:[{itemId:a[3].id,qty:24,cost:4.6},{itemId:a[4].id,qty:20,cost:2.1}],vat:r2((24*4.6+20*2.1)*0.05)});

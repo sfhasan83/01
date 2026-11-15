@@ -14,9 +14,17 @@ body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-ap
 header{background:var(--accent);color:var(--accent-ink);padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 header h1{font-size:18px;margin:0;flex:1}
 header small{opacity:.85}
-nav{display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+nav{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:6px 12px 8px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
 nav button{background:none;border:1px solid transparent;padding:7px 11px;border-radius:8px;font:inherit;cursor:pointer;color:var(--ink)}
 nav button.on{background:var(--soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.ng{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;padding:2px 4px 4px;background:#fafbfa}
+.ng.solo{border-color:transparent;background:none;padding:0}
+.ng.cur{border-color:#b9d8c6;background:var(--soft)}
+.ngl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:2px 8px 0}
+.ng.cur .ngl{color:var(--accent)}
+.ngb{display:flex;gap:2px;flex-wrap:wrap}
+nav .ng button{padding:5px 10px}
+nav .ng button.on{background:#fff}
 main{max-width:1100px;margin:0 auto;padding:16px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
 .card h2{font-size:16px;margin:0 0 10px}
@@ -76,7 +84,7 @@ tr.sub td{font-weight:600;background:#fafbfa}
 .ov .card{max-width:640px;width:100%;margin:0;max-height:90vh;overflow:auto}
 .ov video{width:100%;border-radius:8px;background:#000;max-height:60vh}
 .cam{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}
-@media (max-width:600px){main{padding:10px}.row>div{min-width:100%}.row>div.narrow{flex:1 1 45%;min-width:0}}
+@media (max-width:600px){nav{position:static}main{padding:10px}.row>div{min-width:100%}.row>div.narrow{flex:1 1 45%;min-width:0}}
 @media print{
   body{background:#fff}
   header,nav,main,.toast{display:none!important}
@@ -218,13 +226,14 @@ function bindPeriod(rerender){
   $('#pf').onchange=e=>{period.from=e.target.value;rerender()};$('#pt').onchange=e=>{period.to=e.target.value;rerender()}}
 
 /* ============ Navigation ============ */
-const PAGES=[['home','Home'],['sell','Sell'],['cust','Customers'],['buy','Buy stock'],['pay','Pay suppliers'],['exp','Expenses'],['money','Cash & bank'],['items','Items'],['count','Stock count'],['sup','Suppliers'],['rep','Reports'],['set','Settings & backup']];
+const NAV=[['',[['home','Home']]],['Sales',[['sell','Sell'],['cust','Customers']]],['Purchases',[['sup','Suppliers'],['buy','Buy stock'],['pay','Pay suppliers'],['exp','Expenses']]],['Stock',[['items','Items'],['count','Stock count']]],['Money',[['money','Cash & bank'],['rep','Reports']]],['',[['set','Settings & backup']]]];
+const PAGES=NAV.flatMap(g=>g[1]);
 let page='home';
 function go(p){page=p;location.hash=p;render()}
 function render(){
   $('#shopTitle').textContent=db.settings.shopName||'Shop Books';
   const b=balances();const iv=investor(periodOf('today'));$('#hdrInfo').textContent='Cash '+AED(b.cash)+' · Bank '+AED(b.bank)+' · Margin '+AED(iv.period);
-  $('#nav').innerHTML=PAGES.map(([k,l])=>`<button data-p="${k}" class="${k===page?'on':''}">${l}</button>`).join('');
+  $('#nav').innerHTML=NAV.map(([g,ps])=>`<div class="ng${g?'':' solo'}${ps.some(([k])=>k===page)?' cur':''}">${g?`<span class="ngl">${g}</span>`:''}<div class="ngb">${ps.map(([k,l])=>`<button data-p="${k}" class="${k===page?'on':''}">${l}</button>`).join('')}</div></div>`).join('');
   $('#nav').querySelectorAll('button').forEach(x=>x.onclick=()=>go(x.dataset.p));
   (VIEWS[page]||VIEWS.home)();window.scrollTo(0,0)}
 window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(h&&h!==page&&VIEWS[h]){page=h;render()}});

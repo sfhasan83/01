@@ -24,6 +24,8 @@ A small offline app for running the books and stock of a ~300 sq ft grocery (baq
 
 ## Daily use
 
+The menu groups related pages: **Sales** (Sell, Customers), **Purchases** (Suppliers, Buy stock, Pay suppliers, Expenses), **Stock** (Items, Stock count) and **Money** (Cash & bank, Reports).
+
 | Page | What to do |
 |---|---|
 | **Sell** | Scan items, or type the name and press Enter. Choose cash, card or delivery app, then click **Save sale**. Stock goes down. Use "Item not in the list" for loose vegetables and similar. |

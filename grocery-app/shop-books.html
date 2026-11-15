@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shop Books</title>
+<style>
+:root{
+  --bg:#f5f6f4;--card:#fff;--ink:#1d2421;--muted:#66706b;--line:#dde2de;
+  --accent:#1f7a4d;--accent-ink:#fff;--warn:#b45309;--bad:#b42318;--good:#1f7a4d;--soft:#eef5f0;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+header{background:var(--accent);color:var(--accent-ink);padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header h1{font-size:18px;margin:0;flex:1}
+header small{opacity:.85}
+nav{display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+nav button{background:none;border:1px solid transparent;padding:7px 11px;border-radius:8px;font:inherit;cursor:pointer;color:var(--ink)}
+nav button.on{background:var(--soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.card h2{font-size:16px;margin:0 0 10px}
+.card h3{font-size:14px;margin:14px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.stat .k{color:var(--muted);font-size:13px}.stat .v{font-size:20px;font-weight:650;margin-top:2px}
+label{display:block;font-size:13px;color:var(--muted);margin-bottom:3px}
+input,select,textarea{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);width:100%}
+input[type=checkbox]{width:auto}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.row>div{flex:1;min-width:130px}
+.row>div.narrow{flex:0 0 110px;min-width:90px}
+button.b{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer;font-weight:600}
+button.s{font:inherit;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+button.x{font:inherit;padding:3px 8px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--bad);cursor:pointer;font-size:13px}
+button:disabled{opacity:.5;cursor:default}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;font-weight:600}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.tot td{font-weight:700;border-top:2px solid var(--ink)}
+tr.sub td{font-weight:600;background:#fafbfa}
+.tw{overflow-x:auto}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;background:var(--soft);color:var(--accent)}
+.pill.warn{background:#fdf1e3;color:var(--warn)}.pill.bad{background:#fdeceb;color:var(--bad)}
+.alert{padding:9px 12px;border-radius:8px;margin-bottom:8px;background:#fdf1e3;color:#7a3a05;border:1px solid #f3d3ae}
+.alert.ok{background:var(--soft);color:#135234;border-color:#cfe6d8}
+.muted{color:var(--muted)}.bad{color:var(--bad)}.good{color:var(--good)}
+.big{font-size:22px;font-weight:700}
+.hint{font-size:13px;color:var(--muted);margin:6px 0 0}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1d2421;color:#fff;padding:9px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
+.toast.on{opacity:1}
+#print{display:none}
+@media (max-width:600px){main{padding:10px}.row>div{min-width:100%}.row>div.narrow{flex:1 1 45%;min-width:0}}
+@media print{
+  body{background:#fff}
+  header,nav,main,.toast{display:none!important}
+  #print{display:block;font-size:12px}
+  #print table{font-size:12px}#print td,#print th{padding:4px 6px;border-bottom:1px solid #999}
+  #print .box{display:inline-block;width:70px;border-bottom:1px solid #000;height:16px}
+}
+</style>
+</head>
+<body>
+<header><h1 id="shopTitle">Shop Books</h1><small id="hdrInfo"></small></header>
+<nav id="nav"></nav>
+<main id="app"></main>
+<div id="print"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ============ Data ============ */
+const KEY = 'shop-books-v1';
+const SALES_CATS = ['Drinks, water, juice','Dairy, eggs, bread','Snacks, biscuits, confectionery, ice cream','Cigarettes and tobacco','Rice, flour, oil, sugar, tea, vegetables','Household and cleaning','Personal care and baby','Phone recharge and services'];
+const EXP_CATS = [
+  ['Rent',true],['Salaries',false],['Staff housing and medical',false],['Visas and labour fees',false],
+  ['Utilities (SEWA power and water)',true],['Card fees',true],['Delivery app commissions',true],['Delivery fuel and upkeep',true],
+  ['Marketing',true],['Licence renewal and AMAN',false],['Accounting and POS software',true],['Insurance',true],
+  ['Pest control and repairs',true],['Phone and internet',true],['Bank charges',true],['Other',true]];
+const PAY = {cash:'Cash',card:'Card (to bank)',app:'Delivery app (to bank)',bank:'Bank',credit:'On credit (pay later)'};
+const SPAY={cash:'Cash',card:'Card (to bank)',app:'Delivery app (to bank)',credit:'Credit (customer pays later)'};
+
+function today(){return ymd(new Date())}
+function blank(){return {settings:{shopName:'My Grocery',trn:'',vatRate:5,openingCash:0,openingBank:0,startDate:today(),defaultMargin:20,investorPct:18,lastBackup:null},items:[],suppliers:[],customers:[],tx:[],counts:[],seq:1}}
+function load(){try{const s=localStorage.getItem(KEY);if(s){const d=JSON.parse(s);const b=blank();d.settings=Object.assign(b.settings,d.settings||{});return Object.assign(b,d)}}catch(e){}return blank()}
+let db = load();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){alert('Could not save: '+e.message+'\nPlease export a backup now.')}}
+function uid(){return 'x'+(db.seq++).toString(36)+Math.random().toString(36).slice(2,6)}
+
+/* ============ Helpers ============ */
+const $ = s=>document.querySelector(s);
+const esc = s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const r2 = n=>Math.round((+n||0)*100)/100;
+const num = v=>{const n=parseFloat(String(v).replace(/,/g,''));return isFinite(n)?n:0};
+const aed = n=>(n<0?'-':'')+Math.abs(r2(n)).toLocaleString('en-AE',{minimumFractionDigits:2,maximumFractionDigits:2});
+const AED = n=>'AED '+aed(n);
+const qfmt = n=>(Math.round(n*1000)/1000).toLocaleString('en-AE');
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),1800)}
+const item = id=>db.items.find(i=>i.id===id);
+const supplier = id=>db.suppliers.find(s=>s.id===id);
+const customer = id=>db.customers.find(c=>c.id===id);
+const opts = (arr,sel)=>arr.map(([v,l])=>`<option value="${esc(v)}"${v===sel?' selected':''}>${esc(l)}</option>`).join('');
+function ymd(x){return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')}
+function addDays(d,n){const x=new Date(d+'T12:00:00');x.setDate(x.getDate()+n);return ymd(x)}
+function inRange(d,p){return d>=p.from&&d<=p.to}
+
+/* ============ Calculations ============ */
+function saleTotals(t){let gross=0,vat=0,cogs=0;for(const l of t.lines){const g=l.qty*l.price;gross+=g;vat+=g*l.vatRate/(100+l.vatRate);cogs+=l.qty*l.cost}return{gross:r2(gross),vat:r2(vat),net:r2(gross-vat),cogs:r2(cogs)}}
+function purchTotals(t){const net=r2(t.lines.reduce((a,l)=>a+l.qty*l.cost,0));return{net,vat:r2(t.vat),total:r2(net+t.vat)}}
+function stockMap(upTo){
+  const m={};for(const i of db.items)m[i.id]=+i.openingQty||0;
+  for(const t of db.tx){if(upTo&&t.date>upTo)continue;
+    if(t.type==='sale')for(const l of t.lines){if(l.itemId&&m[l.itemId]!=null)m[l.itemId]-=l.qty}
+    if(t.type==='purchase')for(const l of t.lines){if(m[l.itemId]!=null)m[l.itemId]+=l.qty}
+    if(t.type==='adjust')for(const l of t.lines){if(m[l.itemId]!=null)m[l.itemId]+=l.qty}}
+  return m}
+// money flows to cash/bank for a transaction
+function flows(t){
+  const f=[];
+  if(t.type==='sale'&&t.pay!=='credit'){const g=saleTotals(t).gross;f.push([t.pay==='cash'?'cash':'bank',g,'Sales receipts'])}
+  if(t.type==='receipt')f.push([t.pay,t.amount,'Customer credit payments received'])
+  if(t.type==='purchase'&&t.pay!=='credit')f.push([t.pay,-purchTotals(t).total,'Stock purchases paid'])
+  if(t.type==='payment')f.push([t.pay,-t.amount,'Payments to suppliers'])
+  if(t.type==='expense')f.push([t.pay,-(t.amount+t.vat),'Expense: '+t.category])
+  if(t.type==='money'){
+    if(t.kind==='deposit'){f.push(['cash',-t.amount,'Cash deposited to bank']);f.push(['bank',t.amount,'Cash deposited to bank'])}
+    if(t.kind==='withdraw'){f.push(['bank',-t.amount,'Cash withdrawn from bank']);f.push(['cash',t.amount,'Cash withdrawn from bank'])}
+    if(t.kind==='capital')f.push([t.acct,t.amount,'Owner money put in'])
+    if(t.kind==='drawings')f.push([t.acct,-t.amount,'Owner money taken out'])
+    if(t.kind==='vat')f.push([t.acct,-t.amount,'VAT paid to FTA'])
+    if(t.kind==='investor')f.push([t.acct,-t.amount,'Margin paid'])}
+  return f}
+function balances(upTo){const b={cash:+db.settings.openingCash||0,bank:+db.settings.openingBank||0};for(const t of db.tx){if(upTo&&t.date>upTo)continue;for(const[a,v]of flows(t))b[a]+=v}return{cash:r2(b.cash),bank:r2(b.bank)}}
+// Margin: a % of sales excl. VAT, owed to the investor
+function salesNet(p){let n=0;for(const t of db.tx)if(t.type==='sale'&&inRange(t.date,p))n+=saleTotals(t).net;return n}
+function investor(p){const pct=+db.settings.investorPct||0;const all={from:'1900-01-01',to:'2999-12-31'};
+  const paid=(q)=>db.tx.filter(t=>t.type==='money'&&t.kind==='investor'&&inRange(t.date,q)).reduce((a,t)=>a+t.amount,0);
+  return{pct,period:r2(salesNet(p)*pct/100),paidPeriod:r2(paid(p)),owed:r2(salesNet(all)*pct/100-paid(all))}}
+function receivables(){
+  return db.customers.map(c=>{let owed=+c.openingBalance||0,last='';for(const t of db.tx){if(t.customerId!==c.id)continue;if(t.type==='sale'&&t.pay==='credit'){owed+=saleTotals(t).gross;if(t.date>last)last=t.date}if(t.type==='receipt')owed-=t.amount}return{c,owed:r2(owed),last}})}
+function payables(){
+  const res=db.suppliers.map(s=>({s,owed:+s.openingBalance||0,overdue:0,dueSoon:0}));const by={};res.forEach(r=>by[r.s.id]=r);
+  const td=today();
+  // FIFO: payments clear oldest invoices first
+  const inv={},paid={};
+  for(const t of db.tx){if(t.type==='purchase'&&t.pay==='credit'&&by[t.supplierId]){(inv[t.supplierId]=inv[t.supplierId]||[]).push(t)}if(t.type==='payment'&&by[t.supplierId])paid[t.supplierId]=(paid[t.supplierId]||0)+t.amount}
+  for(const r of res){const id=r.s.id;let p=paid[id]||0;
+    const open=+r.s.openingBalance||0;const usedOpen=Math.min(p,open);p-=usedOpen;
+    const list=(inv[id]||[]).sort((a,b)=>a.date<b.date?-1:1);r.invoices=[];
+    for(const t of list){const tot=purchTotals(t).total;const pay=Math.min(p,tot);p-=pay;const left=r2(tot-pay);r.owed+=tot;
+      if(left>0){const due=addDays(t.date,+r.s.creditDays||0);r.invoices.push({t,left,due});if(due<td)r.overdue+=left;else if(due<=addDays(td,3))r.dueSoon+=left}}
+    r.owed=r2(r.owed-(paid[id]||0));}
+  return res}
+function pnl(p){
+  const o={sales:0,vat:0,cogs:0,byCat:{},exp:{},adj:0};
+  for(const t of db.tx){if(!inRange(t.date,p))continue;
+    if(t.type==='sale'){for(const l of t.lines){const g=l.qty*l.price;const net=g-g*l.vatRate/(100+l.vatRate);o.sales+=net;o.cogs+=l.qty*l.cost;const c=(l.itemId&&item(l.itemId)?item(l.itemId).category:'Unlisted items');o.byCat[c]=o.byCat[c]||{sales:0,cogs:0};o.byCat[c].sales+=net;o.byCat[c].cogs+=l.qty*l.cost}}
+    if(t.type==='expense')o.exp[t.category]=(o.exp[t.category]||0)+t.amount;
+    if(t.type==='adjust')for(const l of t.lines)o.adj+=l.qty*l.cost}
+  o.gp=o.sales-o.cogs+o.adj;o.expTotal=Object.values(o.exp).reduce((a,b)=>a+b,0);o.net=o.gp-o.expTotal;return o}
+function vatSummary(p){
+  const v={outNet:0,outVat:0,inNet:0,inVat:0,zero:0};
+  for(const t of db.tx){if(!inRange(t.date,p))continue;
+    if(t.type==='sale')for(const l of t.lines){const g=l.qty*l.price;const vv=g*l.vatRate/(100+l.vatRate);if(l.vatRate>0){v.outNet+=g-vv;v.outVat+=vv}else v.zero+=g}
+    if(t.type==='purchase'){const x=purchTotals(t);v.inNet+=x.net;v.inVat+=x.vat}
+    if(t.type==='expense'&&t.vat>0){v.inNet+=t.amount;v.inVat+=t.vat}}
+  v.net=v.outVat-v.inVat;return v}
+
+/* ============ Periods ============ */
+function periodOf(key,from,to){
+  const d=new Date();const y=d.getFullYear(),m=d.getMonth();const f=(yy,mm,dd)=>ymd(new Date(yy,mm,dd));
+  const q=Math.floor(m/3);
+  switch(key){
+    case 'today':return{from:today(),to:today(),label:'Today'};
+    case 'month':return{from:f(y,m,1),to:f(y,m+1,0),label:'This month'};
+    case 'lastmonth':return{from:f(y,m-1,1),to:f(y,m,0),label:'Last month'};
+    case 'quarter':return{from:f(y,q*3,1),to:f(y,q*3+3,0),label:'This quarter'};
+    case 'lastquarter':return{from:f(y,q*3-3,1),to:f(y,q*3,0),label:'Last quarter'};
+    case 'year':return{from:f(y,0,1),to:f(y,11,31),label:'This year'};
+    case 'all':return{from:'1900-01-01',to:'2999-12-31',label:'All time'};
+    default:return{from:from||today(),to:to||today(),label:(from||'')+' to '+(to||'')}}}
+let period={key:'month'};
+function periodPicker(onchange){
+  const p=periodOf(period.key,period.from,period.to);
+  return `<div class="row"><div><label>Period</label><select id="pk">${opts([['today','Today'],['month','This month'],['lastmonth','Last month'],['quarter','This quarter'],['lastquarter','Last quarter'],['year','This year'],['all','All time'],['custom','Custom dates']],period.key)}</select></div>
+  <div><label>From</label><input type="date" id="pf" value="${p.from==='1900-01-01'?'':p.from}" ${period.key!=='custom'?'disabled':''}></div>
+  <div><label>To</label><input type="date" id="pt" value="${p.to==='2999-12-31'?'':p.to}" ${period.key!=='custom'?'disabled':''}></div></div>`}
+function bindPeriod(rerender){
+  $('#pk').onchange=e=>{period.key=e.target.value;if(period.key==='custom'){const p=periodOf('month');period.from=p.from;period.to=p.to}rerender()};
+  $('#pf').onchange=e=>{period.from=e.target.value;rerender()};$('#pt').onchange=e=>{period.to=e.target.value;rerender()}}
+
+/* ============ Navigation ============ */
+const PAGES=[['home','Home'],['sell','Sell'],['cust','Customers'],['buy','Buy stock'],['pay','Pay suppliers'],['exp','Expenses'],['money','Cash & bank'],['items','Items'],['count','Stock count'],['sup','Suppliers'],['rep','Reports'],['set','Settings & backup']];
+let page='home';
+function go(p){page=p;location.hash=p;render()}
+function render(){
+  $('#shopTitle').textContent=db.settings.shopName||'Shop Books';
+  const b=balances();const iv=investor(periodOf('today'));$('#hdrInfo').textContent='Cash '+AED(b.cash)+' · Bank '+AED(b.bank)+' · Margin '+AED(iv.period);
+  $('#nav').innerHTML=PAGES.map(([k,l])=>`<button data-p="${k}" class="${k===page?'on':''}">${l}</button>`).join('');
+  $('#nav').querySelectorAll('button').forEach(x=>x.onclick=()=>go(x.dataset.p));
+  (VIEWS[page]||VIEWS.home)();window.scrollTo(0,0)}
+window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(h&&h!==page&&VIEWS[h]){page=h;render()}});
+
+function delTx(id){if(!confirm('Delete this entry? Stock and balances will be recalculated.'))return;db.tx=db.tx.filter(t=>t.id!==id);save();toast('Deleted');render()}
+function txTable(rows,cols){
+  if(!rows.length)return '<p class="muted">Nothing recorded yet.</p>';
+  return `<div class="tw"><table><tr>${cols.map(c=>`<th class="${c.n?'n':''}">${c.h}</th>`).join('')}<th></th></tr>${rows.map(r=>`<tr>${cols.map(c=>`<td class="${c.n?'n':''}">${c.f(r)}</td>`).join('')}<td><button class="x" data-del="${r.id}">Delete</button></td></tr>`).join('')}</table></div>`}
+function bindDel(){document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>delTx(b.dataset.del))}
+const recent=(type,n=30)=>db.tx.filter(t=>t.type===type).sort((a,b)=>(b.date+b.id)>(a.date+a.id)?1:-1).slice(0,n);
+function itemDatalist(){return `<datalist id="itemlist">${db.items.map(i=>`<option value="${esc(i.name)}">${esc([i.barcode,i.sku].filter(Boolean).join(' · '))}</option>`).join('')}</datalist>`}
+function findItem(q){q=String(q).trim();if(!q)return null;const l=q.toLowerCase();return db.items.find(i=>i.barcode===q||(i.sku&&i.sku.toLowerCase()===l))||db.items.find(i=>i.name.toLowerCase()===l)||null}
+
+/* ============ Views ============ */
+const VIEWS={};
+
+VIEWS.home=()=>{
+  const td=today(),sm=stockMap(),b=balances();
+  const tday=periodOf('today'),mon=periodOf('month'),qtr=periodOf('quarter');
+  const pt=pnl(tday),pm=pnl(mon),vq=vatSummary(qtr),ivT=investor(tday),ivM=investor(mon);
+  const low=db.items.filter(i=>!i.inactive&&sm[i.id]<=(+i.reorder||0));
+  const pay=payables();const owed=pay.reduce((a,r)=>a+r.owed,0);const overdue=pay.filter(r=>r.overdue>0);const soon=pay.filter(r=>r.dueSoon>0);
+  const stockVal=db.items.reduce((a,i)=>a+Math.max(0,sm[i.id])*(+i.cost||0),0);
+  const alerts=[];
+  if(!db.items.length)alerts.push(`Start by adding your items on the <a href="#items">Items</a> page, or try the app with demo data from <a href="#set">Settings &amp; backup</a>.`);
+  if(low.length)alerts.push(`<b>${low.length} item(s) at or below reorder level.</b> See the list below.`);
+  if(overdue.length)alerts.push(`<b>Overdue supplier bills:</b> ${overdue.map(r=>esc(r.s.name)+' '+AED(r.overdue)).join(', ')}.`);
+  if(soon.length)alerts.push(`Due in the next 3 days: ${soon.map(r=>esc(r.s.name)+' '+AED(r.dueSoon)).join(', ')}.`);
+  const lb=db.settings.lastBackup;if(db.tx.length&&(!lb||lb<addDays(td,-7)))alerts.push(`Last backup: ${lb?lb.slice(0,10):'never'}. <a href="#set">Download a backup</a> now. Your data lives only in this browser.`);
+  const openCount=db.counts.find(c=>c.status==='open');if(openCount)alerts.push(`A stock count started on ${openCount.date} is still open. <a href="#count">Finish it</a>.`);
+  $('#app').innerHTML=`
+  ${alerts.map(a=>`<div class="alert">${a}</div>`).join('')||'<div class="alert ok">All good: no low stock, nothing overdue.</div>'}
+  <div class="grid" style="margin-bottom:14px">
+    <div class="stat"><div class="k">Sales today (incl. VAT)</div><div class="v">${AED(db.tx.filter(t=>t.type==='sale'&&t.date===td).reduce((a,t)=>a+saleTotals(t).gross,0))}</div></div>
+    <div class="stat"><div class="k">Sales this month (excl. VAT)</div><div class="v">${AED(pm.sales)}</div></div>
+    <div class="stat"><div class="k">Profit this month</div><div class="v ${pm.net<0?'bad':'good'}">${AED(pm.net)}</div></div>
+    <div class="stat"><div class="k">Cash in hand</div><div class="v">${AED(b.cash)}</div></div>
+    <div class="stat"><div class="k">Bank</div><div class="v">${AED(b.bank)}</div></div>
+    <div class="stat"><div class="k">Margin today</div><div class="v">${AED(ivT.period)}</div></div>
+    <div class="stat"><div class="k">Margin this month</div><div class="v">${AED(ivM.period)}</div></div>
+    <div class="stat"><div class="k">Margin still to pay</div><div class="v">${AED(ivM.owed)}</div></div>
+    <div class="stat"><div class="k">Owed to suppliers</div><div class="v">${AED(owed)}</div></div>
+    <div class="stat"><div class="k">Owed by customers (credit)</div><div class="v">${AED(receivables().reduce((a,r)=>a+r.owed,0))}</div></div>
+    <div class="stat"><div class="k">Stock value (at cost)</div><div class="v">${AED(stockVal)}</div></div>
+    <div class="stat"><div class="k">${vq.net<0?'VAT refund due this quarter':'VAT to pay this quarter'}</div><div class="v">${AED(Math.abs(vq.net))}</div></div>
+  </div>
+  <div class="card"><h2>Low stock</h2>${low.length?`<div class="tw"><table><tr><th>Item</th><th>Category</th><th class="n">In stock</th><th class="n">Reorder at</th><th>Supplier</th></tr>${low.map(i=>`<tr><td>${esc(i.name)}</td><td>${esc(i.category)}</td><td class="n ${sm[i.id]<=0?'bad':''}">${qfmt(sm[i.id])}</td><td class="n">${qfmt(+i.reorder||0)}</td><td>${esc((supplier(i.supplierId)||{}).name||'')}</td></tr>`).join('')}</table></div>`:'<p class="muted">Nothing low.</p>'}</div>
+  <div class="card"><h2>Today</h2><p>Sales ${AED(pt.sales)} excl. VAT, gross profit ${AED(pt.gp)}. Break-even target from the plan is about AED 3,500 of sales a day.</p></div>`;
+};
+
+/* ---- Sell ---- */
+let cart=[],sellState={pay:'cash',cust:''};
+VIEWS.sell=()=>{
+  const sm=stockMap();
+  const tot=saleTotals({lines:cart});
+  $('#app').innerHTML=`<div class="card"><h2>New sale</h2>
+  <div class="row"><div style="flex:3"><label>Scan barcode or type item name, then press Enter</label><input id="scan" list="itemlist" autocomplete="off" placeholder="Barcode, SKU or name">${itemDatalist()}</div>
+  <div class="narrow"><label>Qty</label><input id="sq" type="number" step="any" value="1"></div>
+  <div class="narrow"><button class="b" id="addl">Add</button></div></div>
+  <div class="row" style="margin-top:8px"><div style="flex:3"><label>Item not in the list? Enter a description and price</label><input id="qn" placeholder="e.g. Loose vegetables"></div>
+  <div class="narrow"><label>Price incl. VAT</label><input id="qp" type="number" step="0.01"></div><div class="narrow"><button class="s" id="addq">Add</button></div></div>
+  ${cart.length?`<div class="tw" style="margin-top:12px"><table><tr><th>Item</th><th class="n">Qty</th><th class="n">Price</th><th class="n">Total</th><th></th></tr>
+  ${cart.map((l,i)=>`<tr><td>${esc(l.name)}${l.itemId&&sm[l.itemId]-l.qty<0?' <span class="pill warn">stock shows '+qfmt(sm[l.itemId])+'</span>':''}</td><td class="n"><input data-q="${i}" type="number" step="any" value="${l.qty}" style="width:80px"></td><td class="n"><input data-pr="${i}" type="number" step="0.01" value="${l.price}" style="width:90px"></td><td class="n">${aed(l.qty*l.price)}</td><td><button class="x" data-rm="${i}">✕</button></td></tr>`).join('')}
+  <tr class="tot"><td colspan="3">Total to collect (incl. ${AED(tot.vat)} VAT)</td><td class="n big">${aed(tot.gross)}</td><td></td></tr></table></div>`:'<p class="hint">The cart is empty. A USB barcode scanner works here: it types the code and presses Enter for you.</p>'}
+  <div class="row" style="margin-top:12px"><div><label>Paid by</label><select id="spay">${opts(Object.entries(SPAY),sellState.pay)}</select></div>
+  <div id="scustw" style="display:${sellState.pay==='credit'?'':'none'}"><label>Customer <a href="#" id="snewl">+ New customer</a></label><select id="scust"><option value="">Choose…</option>${opts(db.customers.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>[c.id,c.name]),sellState.cust)}</select><div class="hint" id="scinfo"></div></div>
+  <div><label>Date</label><input type="date" id="sd" value="${today()}"></div>
+  <div class="cashonly"><label>Cash received (optional, for change)</label><input id="recv" type="number" step="0.01"></div>
+  <div class="cashonly"><label>Change</label><div id="chg" class="big">–</div></div></div>
+  <div class="row" id="snew" style="display:none;margin-top:8px"><div style="flex:2"><label>New customer name (e.g. "Flat 1204, Ahmed")</label><input id="snn"></div><div><label>Phone</label><input id="snp"></div><div class="narrow"><label>Credit limit</label><input id="snl" type="number" step="1"></div><div class="narrow"><button class="b" id="snadd">Save customer</button></div></div>
+  <div class="row" style="margin-top:12px"><div><button class="b" id="done" ${cart.length?'':'disabled'}>Save sale</button> <button class="s" id="clr">Clear</button></div></div></div>
+  <div class="card"><h2>Recent sales</h2>${txTable(recent('sale'),[{h:'Date',f:t=>t.date},{h:'Items',f:t=>esc(t.lines.map(l=>qfmt(l.qty)+'× '+l.name).join(', ').slice(0,90))},{h:'Paid by',f:t=>t.pay==='credit'?'Credit: '+esc((customer(t.customerId)||{}).name||'?'):PAY[t.pay]},{h:'Total',n:1,f:t=>aed(saleTotals(t).gross)}])}</div>`;
+  const add=()=>{const it=findItem($('#scan').value);const q=num($('#sq').value)||1;
+    if(!it){toast('Item not found');$('#scan').select();return}
+    const ex=cart.find(l=>l.itemId===it.id&&l.price===+it.price);if(ex)ex.qty+=q;else cart.push({itemId:it.id,name:it.name,qty:q,price:+it.price,cost:+it.cost||0,vatRate:+it.vatRate});
+    VIEWS.sell();$('#scan').focus()};
+  $('#scan').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add()}};$('#addl').onclick=add;
+  $('#addq').onclick=()=>{const n=$('#qn').value.trim(),p=num($('#qp').value);if(!n||!p){toast('Enter a description and price');return}
+    const vr=+db.settings.vatRate;const net=p*100/(100+vr);cart.push({itemId:null,name:n,qty:1,price:p,cost:r2(net*(1-(+db.settings.defaultMargin||0)/100)),vatRate:vr});VIEWS.sell();$('#scan').focus()};
+  document.querySelectorAll('[data-q]').forEach(x=>x.onchange=()=>{cart[x.dataset.q].qty=num(x.value);VIEWS.sell()});
+  document.querySelectorAll('[data-pr]').forEach(x=>x.onchange=()=>{cart[x.dataset.pr].price=num(x.value);VIEWS.sell()});
+  document.querySelectorAll('[data-rm]').forEach(x=>x.onclick=()=>{cart.splice(+x.dataset.rm,1);VIEWS.sell()});
+  $('#recv').oninput=()=>{const r=num($('#recv').value);$('#chg').textContent=r?aed(r-tot.gross):'–'};
+  $('#clr').onclick=()=>{cart=[];VIEWS.sell()};
+  const cinfo=()=>{const r=receivables().find(x=>x.c.id===$('#scust').value);if(!r){$('#scinfo').textContent='';return}const lim=+r.c.limit||0;const after=r.owed+tot.gross;
+    $('#scinfo').innerHTML='Owes '+AED(r.owed)+(lim?' · limit '+AED(lim)+(after>lim?' <span class="pill bad">over limit after this sale</span>':''):'')};
+  const cashOnly=()=>document.querySelectorAll('.cashonly').forEach(e=>e.style.display=sellState.pay==='cash'?'':'none');cashOnly();
+  $('#spay').onchange=()=>{sellState.pay=$('#spay').value;cashOnly();$('#scustw').style.display=sellState.pay==='credit'?'':'none';if(sellState.pay!=='credit')$('#snew').style.display='none'};
+  $('#scust').onchange=()=>{sellState.cust=$('#scust').value;cinfo()};cinfo();
+  $('#snewl').onclick=e=>{e.preventDefault();$('#snew').style.display='';$('#snn').focus()};
+  $('#snadd').onclick=()=>{const n=$('#snn').value.trim();if(!n){toast('Enter a name');return}const c={id:uid(),name:n,phone:$('#snp').value.trim(),limit:num($('#snl').value),openingBalance:0};db.customers.push(c);save();sellState.cust=c.id;sellState.pay='credit';toast('Customer added');VIEWS.sell()};
+  $('#done').onclick=()=>{const ls=cart.filter(l=>l.qty);if(!ls.length)return;const pay=$('#spay').value;const t={id:uid(),type:'sale',date:$('#sd').value||today(),pay,lines:ls};
+    if(pay==='credit'){if(!$('#scust').value){toast('Choose the customer for a credit sale');return}t.customerId=$('#scust').value}
+    db.tx.push(t);save();cart=[];sellState={pay:'cash',cust:''};toast('Sale saved');render()};
+  bindDel();$('#scan').focus();
+};
+
+/* ---- Buy ---- */
+let pcart=[];
+VIEWS.buy=()=>{
+  const vr=+db.settings.vatRate;const net=r2(pcart.reduce((a,l)=>a+l.qty*l.cost,0));
+  $('#app').innerHTML=`<div class="card"><h2>Record a supplier invoice (stock in)</h2>
+  <div class="row"><div><label>Supplier <a href="#" id="pnewl">+ New supplier</a></label><select id="psup">${opts(db.suppliers.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(s=>[s.id,s.name]))}</select></div>
+  <div><label>Invoice number</label><input id="pinv"></div><div><label>Invoice date</label><input type="date" id="pd" value="${today()}"></div>
+  <div><label>Paid by</label><select id="ppay">${opts([['credit',PAY.credit],['cash',PAY.cash],['bank',PAY.bank]],'credit')}</select></div></div>
+  <div class="row" id="pnew" style="display:${db.suppliers.length?'none':''};margin-top:8px"><div style="flex:2"><label>New supplier name</label><input id="pnn"></div><div><label>Phone</label><input id="pnp"></div><div class="narrow"><label>Credit days</label><input id="pnd" type="number" value="0"></div><div class="narrow"><button class="b" id="pnadd">Save supplier</button></div></div>
+  <div class="row" style="margin-top:10px"><div style="flex:3"><label>Scan or type item</label><input id="pscan" list="itemlist" autocomplete="off">${itemDatalist()}</div>
+  <div class="narrow"><label>Qty</label><input id="pq" type="number" step="any" value="1"></div>
+  <div class="narrow"><label>Unit cost excl. VAT</label><input id="pc" type="number" step="0.001"></div>
+  <div class="narrow"><button class="b" id="padd">Add</button></div></div>
+  <p class="hint">Unit cost fills in with the last cost paid. The item's cost price updates to what you enter here.</p>
+  ${pcart.length?`<div class="tw"><table><tr><th>Item</th><th class="n">Qty</th><th class="n">Unit cost</th><th class="n">Line total</th><th></th></tr>
+  ${pcart.map((l,i)=>`<tr><td>${esc(item(l.itemId).name)}</td><td class="n"><input data-q="${i}" type="number" step="any" value="${l.qty}" style="width:80px"></td><td class="n"><input data-c="${i}" type="number" step="0.001" value="${l.cost}" style="width:90px"></td><td class="n">${aed(l.qty*l.cost)}</td><td><button class="x" data-rm="${i}">✕</button></td></tr>`).join('')}
+  <tr><td colspan="3">Net (excl. VAT)</td><td class="n">${aed(net)}</td><td></td></tr>
+  <tr><td colspan="3">VAT on invoice <input id="pvat" type="number" step="0.01" value="${r2(net*vr/100)}" style="width:100px"></td><td class="n" id="pvatv">${aed(net*vr/100)}</td><td></td></tr>
+  <tr class="tot"><td colspan="3">Invoice total</td><td class="n" id="ptot">${aed(net*(1+vr/100))}</td><td></td></tr></table></div>`:''}
+  <div class="row" style="margin-top:12px"><div><button class="b" id="psave" ${pcart.length&&db.suppliers.length?'':'disabled'}>Save invoice</button> <button class="s" id="pclr">Clear</button></div></div></div>
+  <div class="card"><h2>Recent purchases</h2>${txTable(recent('purchase'),[{h:'Date',f:t=>t.date},{h:'Supplier',f:t=>esc((supplier(t.supplierId)||{}).name||'?')},{h:'Invoice',f:t=>esc(t.invoice)},{h:'Paid by',f:t=>PAY[t.pay]},{h:'Total',n:1,f:t=>aed(purchTotals(t).total)}])}</div>`;
+  const keep=()=>{const s={sup:$('#psup').value,inv:$('#pinv').value,d:$('#pd').value,pay:$('#ppay').value};return()=>{$('#psup').value=s.sup;$('#pinv').value=s.inv;$('#pd').value=s.d;$('#ppay').value=s.pay}};
+  const re=()=>{const k=keep();VIEWS.buy();k()};
+  $('#pscan').onchange=()=>{const it=findItem($('#pscan').value);if(it)$('#pc').value=it.cost||''};
+  const add=()=>{const it=findItem($('#pscan').value);if(!it){toast('Item not found. Add it on the Items page first.');return}
+    const c=num($('#pc').value)||(+it.cost||0);pcart.push({itemId:it.id,qty:num($('#pq').value)||1,cost:c});const k=keep();VIEWS.buy();k();$('#pscan').focus()};
+  $('#pscan').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const it=findItem($('#pscan').value);if(it&&!$('#pc').value)$('#pc').value=it.cost||'';$('#pq').focus();$('#pq').select()}};
+  $('#pq').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add()}};$('#pc').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add()}};
+  $('#padd').onclick=add;
+  $('#pnewl').onclick=e=>{e.preventDefault();$('#pnew').style.display='';$('#pnn').focus()};
+  $('#pnadd').onclick=()=>{const n=$('#pnn').value.trim();if(!n){toast('Enter a supplier name');return}const sp={id:uid(),name:n,phone:$('#pnp').value.trim(),trn:'',creditDays:num($('#pnd').value),openingBalance:0};db.suppliers.push(sp);save();
+    const k=keep();VIEWS.buy();k();$('#psup').value=sp.id;toast('Supplier added')};
+  if($('#pvat'))$('#pvat').oninput=()=>{const v=num($('#pvat').value);$('#pvatv').textContent=aed(v);$('#ptot').textContent=aed(net+v)};
+  document.querySelectorAll('[data-q]').forEach(x=>x.onchange=()=>{pcart[x.dataset.q].qty=num(x.value);re()});
+  document.querySelectorAll('[data-c]').forEach(x=>x.onchange=()=>{pcart[x.dataset.c].cost=num(x.value);re()});
+  document.querySelectorAll('[data-rm]').forEach(x=>x.onclick=()=>{pcart.splice(+x.dataset.rm,1);re()});
+  $('#pclr').onclick=()=>{pcart=[];VIEWS.buy()};
+  $('#psave').onclick=()=>{const t={id:uid(),type:'purchase',date:$('#pd').value||today(),supplierId:$('#psup').value,invoice:$('#pinv').value.trim(),pay:$('#ppay').value,lines:pcart.filter(l=>l.qty),vat:num($('#pvat').value)};
+    for(const l of t.lines){const it=item(l.itemId);it.cost=l.cost}db.tx.push(t);save();pcart=[];toast('Invoice saved, stock updated');render()};
+  bindDel();
+};
+
+/* ---- Customers (credit sales) ---- */
+let editCust=null,stmtCust=null;
+VIEWS.cust=()=>{
+  const c=editCust?customer(editCust)||{}:{};const rec=receivables().sort((a,b)=>b.owed-a.owed);const total=rec.reduce((a,r)=>a+r.owed,0);
+  $('#app').innerHTML=`<div class="card"><h2>Customers who buy on credit · owed to you ${AED(total)}</h2>
+  ${rec.length?`<div class="tw"><table><tr><th>Customer</th><th>Phone</th><th class="n">Credit limit</th><th>Last credit sale</th><th class="n">Owes</th><th></th></tr>
+  ${rec.map(r=>`<tr><td>${esc(r.c.name)}</td><td>${esc(r.c.phone)}</td><td class="n">${r.c.limit?aed(r.c.limit):'–'}</td><td>${r.last||''}</td><td class="n ${r.c.limit&&r.owed>r.c.limit?'bad':''}"><b>${aed(r.owed)}</b></td><td><button class="s" data-st="${r.c.id}">Statement</button> <button class="s" data-ec="${r.c.id}">Edit</button></td></tr>`).join('')}
+  <tr class="tot"><td colspan="4">Total</td><td class="n">${aed(total)}</td><td></td></tr></table></div>`:'<p class="muted">No customers yet. Add one below, or from the Sell page when you choose "Credit".</p>'}</div>
+  <div id="stmt"></div>
+  <div class="card"><h2>Record a payment from a customer</h2>
+  <div class="row"><div><label>Customer</label><select id="rcust">${opts(rec.map(r=>[r.c.id,r.c.name+' (owes '+aed(r.owed)+')']))}</select></div>
+  <div><label>Amount (AED)</label><input id="ramt" type="number" step="0.01"></div><div><label>Received in</label><select id="rpay">${opts([['cash','Cash'],['bank','Bank']],'cash')}</select></div>
+  <div><label>Date</label><input type="date" id="rd" value="${today()}"></div><div><label>Note</label><input id="rnote"></div></div>
+  <div class="row" style="margin-top:10px"><div><button class="b" id="rsave" ${rec.length?'':'disabled'}>Save payment</button></div></div></div>
+  <div class="card"><h2>${editCust?'Edit customer':'Add a customer'}</h2>
+  <div class="row"><div style="flex:2"><label>Name (e.g. "Flat 1204, Ahmed")</label><input id="cn" value="${esc(c.name)}"></div><div><label>Phone / WhatsApp</label><input id="cp" value="${esc(c.phone)}"></div>
+  <div><label>Credit limit (AED, optional)</label><input id="cl" type="number" step="1" value="${c.limit||''}"></div><div><label>Balance owed at start</label><input id="cob" type="number" step="0.01" value="${c.openingBalance??0}"></div></div>
+  <div class="row" style="margin-top:10px"><div><button class="b" id="csave">${editCust?'Save changes':'Add customer'}</button> ${editCust?'<button class="s" id="ccancel">Cancel</button>':''}</div></div></div>
+  <div class="card"><h2>Recent customer payments</h2>${txTable(recent('receipt'),[{h:'Date',f:t=>t.date},{h:'Customer',f:t=>esc((customer(t.customerId)||{}).name||'?')},{h:'Into',f:t=>PAY[t.pay]},{h:'Note',f:t=>esc(t.note)},{h:'Amount',n:1,f:t=>aed(t.amount)}])}</div>`;
+  $('#rsave').onclick=()=>{const a=num($('#ramt').value);if(a<=0){toast('Enter an amount');return}db.tx.push({id:uid(),type:'receipt',date:$('#rd').value||today(),customerId:$('#rcust').value,amount:r2(a),pay:$('#rpay').value,note:$('#rnote').value.trim()});save();toast('Payment saved');render()};
+  $('#csave').onclick=()=>{const name=$('#cn').value.trim();if(!name){toast('Enter a name');return}const o={name,phone:$('#cp').value.trim(),limit:num($('#cl').value),openingBalance:num($('#cob').value)};
+    if(editCust)Object.assign(customer(editCust),o);else db.customers.push(Object.assign({id:uid()},o));editCust=null;save();toast('Saved');VIEWS.cust()};
+  if(editCust)$('#ccancel').onclick=()=>{editCust=null;VIEWS.cust()};
+  document.querySelectorAll('[data-ec]').forEach(b=>b.onclick=()=>{editCust=b.dataset.ec;VIEWS.cust()});
+  document.querySelectorAll('[data-st]').forEach(b=>b.onclick=()=>showStmt(b.dataset.st));
+  bindDel();
+};
+function showStmt(id){
+  const c=customer(id);let bal=+c.openingBalance||0;const rows=[['','Balance at start','','',bal]];
+  for(const t of db.tx.filter(t=>t.customerId===id).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0)){
+    if(t.type==='sale'&&t.pay==='credit'){const g=saleTotals(t).gross;bal+=g;rows.push([t.date,t.lines.map(l=>qfmt(l.qty)+'× '+l.name).join(', '),g,'',bal])}
+    if(t.type==='receipt'){bal-=t.amount;rows.push([t.date,'Payment received'+(t.note?' ('+t.note+')':''),'',t.amount,bal])}}
+  const html=`<h2>Statement: ${esc(c.name)}</h2><div class="tw"><table><tr><th>Date</th><th>Details</th><th class="n">Bought</th><th class="n">Paid</th><th class="n">Balance</th></tr>${rows.map(r=>`<tr><td>${r[0]}</td><td>${esc(r[1])}</td><td class="n">${r[2]===''?'':aed(r[2])}</td><td class="n">${r[3]===''?'':aed(r[3])}</td><td class="n">${aed(r[4])}</td></tr>`).join('')}<tr class="tot"><td colspan="4">Amount due</td><td class="n">${aed(bal)}</td></tr></table></div>`;
+  $('#stmt').innerHTML=`<div class="card">${html}<div class="row" style="margin-top:10px"><div><button class="s" id="stp">Print statement</button></div></div></div>`;
+  $('#stp').onclick=()=>{$('#print').innerHTML=printHead('Customer statement · '+today())+html;window.print()};$('#stmt').scrollIntoView()}
+
+/* ---- Pay suppliers ---- */
+VIEWS.pay=()=>{
+  const pay=payables();
+  $('#app').innerHTML=`<div class="card"><h2>What you owe suppliers</h2>
+  ${pay.length?`<div class="tw"><table><tr><th>Supplier</th><th class="n">Credit days</th><th class="n">Overdue</th><th class="n">Due in 3 days</th><th class="n">Total owed</th></tr>
+  ${pay.map(r=>`<tr><td>${esc(r.s.name)}</td><td class="n">${r.s.creditDays||0}</td><td class="n ${r.overdue>0?'bad':''}">${aed(r.overdue)}</td><td class="n">${aed(r.dueSoon)}</td><td class="n"><b>${aed(r.owed)}</b></td></tr>`).join('')}
+  <tr class="tot"><td colspan="4">Total</td><td class="n">${aed(pay.reduce((a,r)=>a+r.owed,0))}</td></tr></table></div>`:'<p class="muted">No suppliers yet.</p>'}
+  ${pay.some(r=>r.invoices.length)?`<h3>Unpaid invoices</h3><div class="tw"><table><tr><th>Supplier</th><th>Invoice</th><th>Date</th><th>Due</th><th class="n">Left to pay</th></tr>${pay.flatMap(r=>r.invoices.map(i=>`<tr><td>${esc(r.s.name)}</td><td>${esc(i.t.invoice)}</td><td>${i.t.date}</td><td>${i.due}${i.due<today()?' <span class="pill bad">overdue</span>':''}</td><td class="n">${aed(i.left)}</td></tr>`)).join('')}</table></div>`:''}
+  </div>
+  <div class="card"><h2>Record a payment to a supplier</h2>
+  <div class="row"><div><label>Supplier</label><select id="ysup">${opts(db.suppliers.map(s=>[s.id,s.name]))}</select></div>
+  <div><label>Amount (AED)</label><input id="yamt" type="number" step="0.01"></div><div><label>Paid from</label><select id="ypay">${opts([['cash','Cash'],['bank','Bank']],'bank')}</select></div>
+  <div><label>Date</label><input type="date" id="yd" value="${today()}"></div><div><label>Note / cheque no.</label><input id="ynote"></div></div>
+  <div class="row" style="margin-top:10px"><div><button class="b" id="ysave" ${db.suppliers.length?'':'disabled'}>Save payment</button></div></div></div>
+  <div class="card"><h2>Recent payments</h2>${txTable(recent('payment'),[{h:'Date',f:t=>t.date},{h:'Supplier',f:t=>esc((supplier(t.supplierId)||{}).name||'?')},{h:'From',f:t=>PAY[t.pay]},{h:'Note',f:t=>esc(t.note)},{h:'Amount',n:1,f:t=>aed(t.amount)}])}</div>`;
+  $('#ysup').onchange=()=>{const r=pay.find(x=>x.s.id===$('#ysup').value);if(r&&!$('#yamt').value)$('#yamt').placeholder='Owed '+aed(r.owed)};$('#ysup').onchange();
+  $('#ysave').onclick=()=>{const a=num($('#yamt').value);if(a<=0){toast('Enter an amount');return}db.tx.push({id:uid(),type:'payment',date:$('#yd').value||today(),supplierId:$('#ysup').value,amount:r2(a),pay:$('#ypay').value,note:$('#ynote').value.trim()});save();toast('Payment saved');render()};
+  bindDel();
+};
+
+/* ---- Expenses ---- */
+VIEWS.exp=()=>{
+  const vr=+db.settings.vatRate;
+  $('#app').innerHTML=`<div class="card"><h2>Record an expense</h2>
+  <div class="row"><div><label>Type</label><select id="ec">${opts(EXP_CATS.map(([c])=>[c,c]))}</select></div>
+  <div><label>Amount excl. VAT (AED)</label><input id="ea" type="number" step="0.01"></div>
+  <div><label>VAT on the bill</label><input id="ev" type="number" step="0.01" value="0"></div>
+  <div><label>Paid from</label><select id="ep">${opts([['cash','Cash'],['bank','Bank']],'bank')}</select></div>
+  <div><label>Date</label><input type="date" id="ed" value="${today()}"></div></div>
+  <div class="row" style="margin-top:8px"><div style="flex:3"><label>Note (e.g. "Q1 rent cheque 000123", "Nov salaries")</label><input id="en"></div>
+  <div><button class="b" id="esave">Save expense</button></div></div>
+  <p class="hint">VAT fills in at ${vr}% for bills that usually carry VAT (rent, SEWA, phone). Salaries, visas and government fees have none. Change it to match the actual bill: only VAT shown on a tax invoice can be claimed back.</p>
+  <p class="hint">Plan monthly budget: rent AED 5,000 (paid AED 15,000 per quarterly cheque), staff AED 7,200 all-in, SEWA AED 2,500, other running costs AED 2,200, delivery fuel AED 600, marketing AED 1,000.</p></div>
+  <div class="card"><h2>Recent expenses</h2>${txTable(recent('expense',50),[{h:'Date',f:t=>t.date},{h:'Type',f:t=>esc(t.category)},{h:'Note',f:t=>esc(t.note)},{h:'From',f:t=>PAY[t.pay]},{h:'Amount',n:1,f:t=>aed(t.amount)},{h:'VAT',n:1,f:t=>aed(t.vat)}])}</div>`;
+  const fill=()=>{const v=(EXP_CATS.find(c=>c[0]===$('#ec').value)||[])[1];$('#ev').value=v?r2(num($('#ea').value)*vr/100):0};
+  $('#ec').onchange=fill;$('#ea').oninput=fill;
+  $('#esave').onclick=()=>{const a=num($('#ea').value);if(a<=0){toast('Enter an amount');return}db.tx.push({id:uid(),type:'expense',date:$('#ed').value||today(),category:$('#ec').value,amount:r2(a),vat:r2(num($('#ev').value)),pay:$('#ep').value,note:$('#en').value.trim()});save();toast('Expense saved');render()};
+  bindDel();
+};
+
+/* ---- Cash & bank ---- */
+VIEWS.money=()=>{
+  const b=balances();
+  const KINDS=[['deposit','Deposit cash into bank'],['withdraw','Withdraw cash from bank'],['capital','Owner puts money in'],['drawings','Owner takes money out'],['vat','Pay VAT to FTA'],['investor','Pay margin']];
+  $('#app').innerHTML=`<div class="grid" style="margin-bottom:14px"><div class="stat"><div class="k">Cash in hand (should match the drawer)</div><div class="v">${AED(b.cash)}</div></div><div class="stat"><div class="k">Bank (should match the statement)</div><div class="v">${AED(b.bank)}</div></div></div>
+  <div class="card"><h2>Move money</h2>
+  <div class="row"><div><label>What happened</label><select id="mk">${opts(KINDS)}</select></div>
+  <div id="macct"><label>Cash or bank</label><select id="ma">${opts([['bank','Bank'],['cash','Cash']])}</select></div>
+  <div><label>Amount (AED)</label><input id="mamt" type="number" step="0.01"></div><div><label>Date</label><input type="date" id="md" value="${today()}"></div>
+  <div><label>Note</label><input id="mn"></div></div>
+  <div class="row" style="margin-top:10px"><div><button class="b" id="msave">Save</button></div></div>
+  <p class="hint">Card and delivery-app sales go straight to the bank balance. Deposit cash at least twice a week, as the plan suggests.</p></div>
+  <div class="card"><h2>Cash-up check</h2><div class="row"><div><label>Count the cash drawer and enter the total</label><input id="cc" type="number" step="0.01"></div><div><label>Difference</label><div id="ccd" class="big">–</div></div></div>
+  <p class="hint">If the difference is real (shortage or extra), record it as an expense of type "Other" or as owner money in/out so the book matches the drawer.</p></div>
+  <div class="card"><h2>Recent entries</h2>${txTable(recent('money',50),[{h:'Date',f:t=>t.date},{h:'What',f:t=>esc((KINDS.find(k=>k[0]===t.kind)||[])[1])},{h:'Account',f:t=>t.kind==='deposit'||t.kind==='withdraw'?'Cash ↔ Bank':PAY[t.acct]},{h:'Note',f:t=>esc(t.note)},{h:'Amount',n:1,f:t=>aed(t.amount)}])}</div>`;
+  const sh=()=>{$('#macct').style.display=['capital','drawings','vat','investor'].includes($('#mk').value)?'':'none'};$('#mk').onchange=sh;sh();
+  $('#cc').oninput=()=>{const d=num($('#cc').value)-b.cash;$('#ccd').innerHTML=$('#cc').value?`<span class="${Math.abs(d)<0.01?'good':'bad'}">${aed(d)}</span>`:'–'};
+  $('#msave').onclick=()=>{const a=num($('#mamt').value);if(a<=0){toast('Enter an amount');return}db.tx.push({id:uid(),type:'money',kind:$('#mk').value,acct:$('#ma').value,amount:r2(a),date:$('#md').value||today(),note:$('#mn').value.trim()});save();toast('Saved');render()};
+  bindDel();
+};
+
+/* ---- Items ---- */
+let itemFilter={q:'',cat:'',low:false},editItem=null;
+VIEWS.items=()=>{
+  const sm=stockMap();const e=editItem?item(editItem)||{}:{};
+  let list=db.items.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const q=itemFilter.q.toLowerCase();
+  if(q)list=list.filter(i=>(i.name+' '+i.barcode+' '+i.sku).toLowerCase().includes(q));
+  if(itemFilter.cat)list=list.filter(i=>i.category===itemFilter.cat);
+  if(itemFilter.low)list=list.filter(i=>sm[i.id]<=(+i.reorder||0));
+  const val=list.reduce((a,i)=>a+Math.max(0,sm[i.id])*(+i.cost||0),0);
+  $('#app').innerHTML=`<div class="card"><h2>${editItem?'Edit item':'Add an item'}</h2>
+  <div class="row"><div style="flex:2"><label>Name</label><input id="iname" value="${esc(e.name)}"></div>
+  <div><label>Barcode</label><input id="ibar" value="${esc(e.barcode)}" placeholder="Scan here"></div><div><label>SKU / short code</label><input id="isku" value="${esc(e.sku)}"></div>
+  <div><label>Category</label><select id="icat">${opts(SALES_CATS.map(c=>[c,c]),e.category)}</select></div></div>
+  <div class="row" style="margin-top:8px"><div><label>Cost excl. VAT</label><input id="icost" type="number" step="0.001" value="${e.cost??''}"></div>
+  <div><label>Selling price incl. VAT</label><input id="iprice" type="number" step="0.01" value="${e.price??''}"></div>
+  <div><label>VAT rate %</label><input id="ivat" type="number" step="any" value="${e.vatRate??db.settings.vatRate}"></div>
+  <div><label>Margin</label><div id="imarg" class="big">–</div></div></div>
+  <div class="row" style="margin-top:8px"><div><label>Unit (pc, pack, kg)</label><input id="iunit" value="${esc(e.unit||'pc')}"></div>
+  <div><label>Reorder when stock is at or below</label><input id="ire" type="number" step="any" value="${e.reorder??''}"></div>
+  <div><label>${editItem?'Opening stock (at start)':'Stock you have now'}</label><input id="iopen" type="number" step="any" value="${e.openingQty??''}"></div>
+  <div><label>Main supplier</label><select id="isup"><option value="">–</option>${opts(db.suppliers.map(s=>[s.id,s.name]),e.supplierId)}</select></div></div>
+  <div class="row" style="margin-top:10px"><div><button class="b" id="isave">${editItem?'Save changes':'Add item'}</button> ${editItem?'<button class="s" id="icancel">Cancel</button> <button class="x" id="idel">Delete item</button>':''}</div></div>
+  <p class="hint">Change stock levels through purchases, sales and stock counts, not by editing the opening stock.</p></div>
+  <div class="card"><h2>Items (${list.length}) · stock value ${AED(val)}</h2>
+  <div class="row"><div style="flex:2"><input id="ifq" placeholder="Search name, barcode, SKU" value="${esc(itemFilter.q)}"></div>
+  <div><select id="ifc"><option value="">All categories</option>${opts(SALES_CATS.map(c=>[c,c]),itemFilter.cat)}</select></div>
+  <div><label style="display:inline"><input type="checkbox" id="ifl" ${itemFilter.low?'checked':''}> Low stock only</label></div>
+  <div><button class="s" id="icsv">Export CSV</button></div></div>
+  <div class="tw" style="margin-top:8px"><table><tr><th>Item</th><th>Barcode / SKU</th><th>Category</th><th class="n">Cost</th><th class="n">Price</th><th class="n">Margin</th><th class="n">Stock</th><th class="n">Value</th><th></th></tr>
+  ${list.map(i=>{const net=(+i.price||0)*100/(100+(+i.vatRate||0));const m=net?(net-(+i.cost||0))/net*100:0;const s=sm[i.id];
+    return `<tr><td>${esc(i.name)}</td><td class="muted">${esc([i.barcode,i.sku].filter(Boolean).join(' · '))}</td><td>${esc(i.category)}</td><td class="n">${aed(+i.cost||0)}</td><td class="n">${aed(+i.price||0)}</td><td class="n">${m.toFixed(0)}%</td><td class="n">${qfmt(s)} ${s<=(+i.reorder||0)?'<span class="pill '+(s<=0?'bad':'warn')+'">low</span>':''}</td><td class="n">${aed(Math.max(0,s)*(+i.cost||0))}</td><td><button class="s" data-ed="${i.id}">Edit</button> <button class="s" data-hist="${i.id}">History</button></td></tr>`}).join('')}</table></div></div>
+  <div id="hist"></div>`;
+  const mg=()=>{const p=num($('#iprice').value),c=num($('#icost').value),v=num($('#ivat').value);const net=p*100/(100+v);$('#imarg').textContent=net?((net-c)/net*100).toFixed(1)+'%':'–'};
+  ['#iprice','#icost','#ivat'].forEach(s=>$(s).oninput=mg);mg();
+  $('#isave').onclick=()=>{const name=$('#iname').value.trim();if(!name){toast('Enter a name');return}
+    const bc=$('#ibar').value.trim();if(bc&&db.items.some(i=>i.barcode===bc&&i.id!==editItem)){toast('That barcode is already used');return}
+    const o={name,barcode:bc,sku:$('#isku').value.trim(),category:$('#icat').value,cost:num($('#icost').value),price:num($('#iprice').value),vatRate:num($('#ivat').value),unit:$('#iunit').value.trim(),reorder:num($('#ire').value),openingQty:num($('#iopen').value),supplierId:$('#isup').value};
+    if(editItem)Object.assign(item(editItem),o);else db.items.push(Object.assign({id:uid()},o));save();toast(editItem?'Item updated':'Item added');editItem=null;VIEWS.items();$('#iname').focus()};
+  if(editItem){$('#icancel').onclick=()=>{editItem=null;VIEWS.items()};
+    $('#idel').onclick=()=>{const used=db.tx.some(t=>(t.lines||[]).some(l=>l.itemId===editItem));if(used){alert('This item has sales or purchases recorded, so it cannot be deleted. Set its reorder level to 0 if you no longer stock it.');return}
+      if(confirm('Delete this item?')){db.items=db.items.filter(i=>i.id!==editItem);editItem=null;save();VIEWS.items()}}}
+  $('#ifq').oninput=e=>{itemFilter.q=e.target.value;const p=e.target.selectionStart;VIEWS.items();$('#ifq').focus();$('#ifq').setSelectionRange(p,p)};
+  $('#ifc').onchange=e=>{itemFilter.cat=e.target.value;VIEWS.items()};$('#ifl').onchange=e=>{itemFilter.low=e.target.checked;VIEWS.items()};
+  $('#icsv').onclick=()=>csv('items.csv',[['Name','Barcode','SKU','Category','Unit','Cost excl VAT','Price incl VAT','VAT %','Reorder at','Stock','Stock value']].concat(list.map(i=>[i.name,i.barcode,i.sku,i.category,i.unit,i.cost,i.price,i.vatRate,i.reorder,sm[i.id],r2(Math.max(0,sm[i.id])*(+i.cost||0))])));
+  document.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>{editItem=b.dataset.ed;VIEWS.items()});
+  document.querySelectorAll('[data-hist]').forEach(b=>b.onclick=()=>showHist(b.dataset.hist));
+};
+function showHist(id){
+  const it=item(id);let bal=+it.openingQty||0;const rows=[['','Opening stock','',bal]];
+  for(const t of db.tx.slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0)){for(const l of (t.lines||[])){if(l.itemId!==id)continue;
+    const q=t.type==='sale'?-l.qty:l.qty;bal+=q;rows.push([t.date,t.type==='sale'?'Sale':t.type==='purchase'?'Purchase '+((supplier(t.supplierId)||{}).name||''):'Adjustment: '+(t.reason||''),q,bal])}}
+  $('#hist').innerHTML=`<div class="card"><h2>Stock history: ${esc(it.name)}</h2><div class="tw"><table><tr><th>Date</th><th>What</th><th class="n">In / out</th><th class="n">Balance</th></tr>${rows.map(r=>`<tr><td>${r[0]}</td><td>${esc(r[1])}</td><td class="n">${r[2]===''?'':(r[2]>0?'+':'')+qfmt(r[2])}</td><td class="n">${qfmt(r[3])}</td></tr>`).join('')}</table></div></div>`;
+  $('#hist').scrollIntoView()}
+
+/* ---- Stock count ---- */
+let openCountId=null;
+VIEWS.count=()=>{
+  const sm=stockMap();
+  const c=openCountId?db.counts.find(x=>x.id===openCountId):null;
+  if(!c){
+    $('#app').innerHTML=`<div class="card"><h2>Physical stock count</h2>
+    <p>Do a full count every quarter and a weekly count of cigarettes and other high-value lines. Count after closing, when no sales are happening.</p>
+    <ol class="muted" style="margin:6px 0 12px 18px;padding:0"><li>Start a count (all items or one category).</li><li>Print the count sheet; staff write what they find on the shelves.</li><li>Enter the counted quantities here (you can scan barcodes to jump to an item).</li><li>Check the variance report, then apply the adjustments so the system matches the shelves.</li></ol>
+    <div class="row"><div><label>What to count</label><select id="cc">${opts([['','All items (quarterly full count)']].concat(SALES_CATS.map(x=>[x,x])))}</select></div>
+    <div><label>Count date</label><input type="date" id="cd" value="${today()}"></div><div><label>Counted by</label><input id="cb"></div>
+    <div><button class="b" id="cstart" ${db.items.length?'':'disabled'}>Start count</button></div></div></div>
+    <div class="card"><h2>Counts</h2>${db.counts.length?`<div class="tw"><table><tr><th>Date</th><th>Scope</th><th>Status</th><th class="n">Items</th><th class="n">Variance value</th><th></th></tr>${db.counts.slice().reverse().map(x=>`<tr><td>${x.date}</td><td>${esc(x.scope||'All items')}</td><td>${x.status==='open'?'<span class="pill warn">open</span>':'<span class="pill">applied</span>'}</td><td class="n">${x.lines.length}</td><td class="n">${x.status==='closed'?aed(x.varianceValue):''}</td><td><button class="s" data-open="${x.id}">Open</button></td></tr>`).join('')}</table></div>`:'<p class="muted">No counts yet.</p>'}</div>`;
+    $('#cstart').onclick=()=>{const scope=$('#cc').value;const its=db.items.filter(i=>!scope||i.category===scope).sort((a,b)=>a.category.localeCompare(b.category)||a.name.localeCompare(b.name));
+      const x={id:uid(),date:$('#cd').value||today(),scope,by:$('#cb').value.trim(),status:'open',lines:its.map(i=>({itemId:i.id,expected:sm[i.id],counted:null}))};db.counts.push(x);save();openCountId=x.id;VIEWS.count()};
+    document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{openCountId=b.dataset.open;VIEWS.count()});return}
+  const closed=c.status==='closed';
+  // expected = current system qty for open counts; frozen for closed
+  const rows=c.lines.map(l=>{const it=item(l.itemId)||{name:'(deleted item)',cost:0};const exp=closed?l.expected:sm[l.itemId];const v=l.counted==null?null:l.counted-exp;const cost=closed?l.cost:(+it.cost||0);return{l,it,exp,v,val:v==null?0:v*cost}});
+  const counted=rows.filter(r=>r.l.counted!=null).length;const vv=rows.reduce((a,r)=>a+r.val,0);
+  const vs=rows.filter(r=>r.v);
+  $('#app').innerHTML=`<div class="card"><h2>Stock count ${c.date} · ${esc(c.scope||'All items')} ${closed?'<span class="pill">applied</span>':'<span class="pill warn">open</span>'}</h2>
+  <div class="row"><div><button class="s" id="cback">← All counts</button> <button class="s" id="cprint">Print count sheet</button> <label style="display:inline;margin-left:6px"><input type="checkbox" id="cshow"> show expected qty on sheet</label> <button class="s" id="cvprint">Print variance report</button></div></div>
+  ${closed?'':`<div class="row" style="margin-top:10px"><div style="flex:2"><label>Scan a barcode to jump to its row</label><input id="cscan" autocomplete="off"></div></div>`}
+  <p class="hint"><span id="ccnt">${counted}</span> of ${rows.length} items counted. Items left blank are not adjusted. ${closed?'':'Expected quantities are the live system figures, so do not sell while counting.'}</p>
+  <div class="tw"><table><tr><th>Item</th><th>Barcode</th><th class="n">Expected</th><th class="n">Counted</th><th class="n">Variance</th><th class="n">Value</th></tr>
+  ${rows.map((r,i)=>`<tr><td>${esc(r.it.name)}</td><td class="muted">${esc(r.it.barcode||'')}</td><td class="n">${qfmt(r.exp)}</td><td class="n">${closed?(r.l.counted==null?'–':qfmt(r.l.counted)):`<input data-cn="${i}" type="number" step="any" value="${r.l.counted??''}" style="width:90px">`}</td><td class="n ${r.v<0?'bad':r.v>0?'good':''}" id="cv${i}">${r.v==null?'':(r.v>0?'+':'')+qfmt(r.v)}</td><td class="n ${r.val<0?'bad':''}" id="cw${i}">${r.v?aed(r.val):''}</td></tr>`).join('')}
+  <tr class="tot"><td colspan="5" id="ctl">Net variance at cost (${vs.length} items differ)</td><td class="n ${vv<0?'bad':''}" id="ctv">${aed(vv)}</td></tr></table></div>
+  ${closed?`<p class="hint">Applied on ${c.appliedOn||c.date}. The stock adjustment is in the P&amp;L as "Stock count variance".</p>`:`<div class="row" style="margin-top:12px"><div><button class="b" id="capply" ${counted?'':'disabled'}>Apply adjustments and close count</button> <button class="x" id="cdel">Discard count</button></div></div>`}</div>`;
+  $('#cback').onclick=()=>{openCountId=null;VIEWS.count()};
+  $('#cprint').onclick=()=>printSheet(c,rows,$('#cshow').checked);$('#cvprint').onclick=()=>printVariance(c,rows,rows.reduce((a,r)=>a+r.val,0));
+  if(closed)return;
+  const upd=i=>{const r=rows[i];r.v=r.l.counted==null?null:r.l.counted-r.exp;r.val=r.v==null?0:r.v*(+r.it.cost||0);
+    const a=$('#cv'+i),b=$('#cw'+i);a.textContent=r.v==null?'':(r.v>0?'+':'')+qfmt(r.v);a.className='n '+(r.v<0?'bad':r.v>0?'good':'');b.textContent=r.v?aed(r.val):'';b.className='n '+(r.val<0?'bad':'');
+    const tv=rows.reduce((s,x)=>s+x.val,0),n=rows.filter(x=>x.v).length,cn=rows.filter(x=>x.l.counted!=null).length;$('#ctl').textContent='Net variance at cost ('+n+' items differ)';$('#ctv').textContent=aed(tv);$('#ccnt').textContent=cn;$('#capply').disabled=!cn};
+  document.querySelectorAll('[data-cn]').forEach(x=>{x.onchange=()=>{const i=+x.dataset.cn;rows[i].l.counted=x.value===''?null:num(x.value);save();upd(i)};
+    x.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const n2=document.querySelector(`[data-cn="${+x.dataset.cn+1}"]`);if(n2){n2.focus();n2.select()}else x.blur()}}});
+  $('#cscan').onkeydown=e=>{if(e.key!=='Enter')return;e.preventDefault();const it=findItem($('#cscan').value);const i=it?c.lines.findIndex(l=>l.itemId===it.id):-1;
+    if(i<0){toast('Not in this count');return}const inp=document.querySelector(`[data-cn="${i}"]`);inp.scrollIntoView({block:'center'});inp.focus();inp.select()};
+  $('#cdel').onclick=()=>{if(confirm('Discard this count? Nothing will be adjusted.')){db.counts=db.counts.filter(x=>x.id!==c.id);openCountId=null;save();VIEWS.count()}};
+  $('#capply').onclick=()=>{const vs=rows.filter(r=>r.v),vv=rows.reduce((a,r)=>a+r.val,0);if(!confirm(`Adjust stock for ${vs.length} item(s), net ${AED(vv)} at cost?`))return;
+    for(const r of rows){r.l.expected=r.exp;r.l.cost=+r.it.cost||0}
+    const lines=rows.filter(r=>r.v).map(r=>({itemId:r.l.itemId,qty:r.v,cost:+r.it.cost||0}));
+    if(lines.length)db.tx.push({id:uid(),type:'adjust',date:c.date,reason:'Stock count '+c.date,countId:c.id,lines});
+    c.status='closed';c.varianceValue=r2(vv);c.appliedOn=today();save();toast('Stock adjusted');render()};
+};
+function printHead(title){return `<h2 style="margin:0">${esc(db.settings.shopName)}</h2><h3 style="margin:2px 0 8px">${title}</h3>`}
+function printSheet(c,rows,show){
+  let cat='';
+  $('#print').innerHTML=printHead('Stock count sheet · '+c.date+' · '+esc(c.scope||'All items'))+`<p>Counted by: ____________________ &nbsp; Checked by: ____________________</p>
+  <table><tr><th>#</th><th>Item</th><th>Barcode / SKU</th><th>Unit</th>${show?'<th>Expected</th>':''}<th>Counted</th><th>Note</th></tr>
+  ${rows.map((r,i)=>{let h='';if(r.it.category!==cat){cat=r.it.category;h=`<tr><td colspan="${show?7:6}"><b>${esc(cat)}</b></td></tr>`}return h+`<tr><td>${i+1}</td><td>${esc(r.it.name)}</td><td>${esc([r.it.barcode,r.it.sku].filter(Boolean).join(' · '))}</td><td>${esc(r.it.unit||'')}</td>${show?`<td>${qfmt(r.exp)}</td>`:''}<td><span class="box"></span></td><td></td></tr>`}).join('')}</table>`;
+  window.print()}
+function printVariance(c,rows,vv){
+  const vs=rows.filter(r=>r.v);
+  $('#print').innerHTML=printHead('Stock count variance report · '+c.date+' · '+esc(c.scope||'All items'))+`<p>${rows.filter(r=>r.l.counted!=null).length} of ${rows.length} items counted; ${vs.length} differ.</p>
+  <table><tr><th>Item</th><th>Category</th><th style="text-align:right">Expected</th><th style="text-align:right">Counted</th><th style="text-align:right">Variance</th><th style="text-align:right">Value AED</th></tr>
+  ${vs.sort((a,b)=>a.val-b.val).map(r=>`<tr><td>${esc(r.it.name)}</td><td>${esc(r.it.category)}</td><td style="text-align:right">${qfmt(r.exp)}</td><td style="text-align:right">${qfmt(r.l.counted)}</td><td style="text-align:right">${(r.v>0?'+':'')+qfmt(r.v)}</td><td style="text-align:right">${aed(r.val)}</td></tr>`).join('')}
+  <tr><td colspan="5"><b>Net variance at cost</b></td><td style="text-align:right"><b>${aed(vv)}</b></td></tr></table>`;
+  window.print()}
+
+/* ---- Suppliers ---- */
+let editSup=null;
+VIEWS.sup=()=>{
+  const s=editSup?supplier(editSup)||{}:{};const pay=payables();
+  $('#app').innerHTML=`<div class="card"><h2>${editSup?'Edit supplier':'Add a supplier'}</h2>
+  <div class="row"><div style="flex:2"><label>Name</label><input id="sn" value="${esc(s.name)}"></div><div><label>Phone</label><input id="sp" value="${esc(s.phone)}"></div>
+  <div><label>Supplier TRN</label><input id="st" value="${esc(s.trn)}"></div><div class="narrow"><label>Credit days</label><input id="scd" type="number" value="${s.creditDays??0}"></div>
+  <div><label>Balance owed at start</label><input id="sob" type="number" step="0.01" value="${s.openingBalance??0}"></div></div>
+  <div class="row" style="margin-top:10px"><div><button class="b" id="ssave">${editSup?'Save changes':'Add supplier'}</button> ${editSup?'<button class="s" id="scancel">Cancel</button>':''}</div></div></div>
+  <div class="card"><h2>Suppliers</h2>${db.suppliers.length?`<div class="tw"><table><tr><th>Name</th><th>Phone</th><th>TRN</th><th class="n">Credit days</th><th class="n">Owed</th><th></th></tr>${db.suppliers.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.phone)}</td><td>${esc(x.trn)}</td><td class="n">${x.creditDays||0}</td><td class="n">${aed((pay.find(r=>r.s.id===x.id)||{}).owed||0)}</td><td><button class="s" data-es="${x.id}">Edit</button></td></tr>`).join('')}</table></div>`:'<p class="muted">None yet. Typical suppliers: dairy and bakery vans, drinks and snacks distributors, cash-and-carry wholesalers, the vegetable market.</p>'}</div>`;
+  $('#ssave').onclick=()=>{const name=$('#sn').value.trim();if(!name){toast('Enter a name');return}
+    const o={name,phone:$('#sp').value.trim(),trn:$('#st').value.trim(),creditDays:num($('#scd').value),openingBalance:num($('#sob').value)};
+    if(editSup)Object.assign(supplier(editSup),o);else db.suppliers.push(Object.assign({id:uid()},o));editSup=null;save();toast('Saved');VIEWS.sup()};
+  if(editSup)$('#scancel').onclick=()=>{editSup=null;VIEWS.sup()};
+  document.querySelectorAll('[data-es]').forEach(b=>b.onclick=()=>{editSup=b.dataset.es;VIEWS.sup()});
+};
+
+/* ---- Reports ---- */
+VIEWS.rep=()=>{
+  const p=periodOf(period.key,period.from,period.to);const pl=pnl(p),v=vatSummary(p),iv=investor(p);const ivd={};for(const t of db.tx)if(t.type==='sale'&&inRange(t.date,p))ivd[t.date]=(ivd[t.date]||0)+saleTotals(t).net;const ivDays=Object.entries(ivd).sort((a,b)=>a[0]<b[0]?1:-1);
+  const dayBefore=addDays(p.from,-1);const ob=p.from==='1900-01-01'?{cash:+db.settings.openingCash||0,bank:+db.settings.openingBank||0}:balances(dayBefore);const cb=balances(p.to);
+  const cf={};for(const t of db.tx){if(!inRange(t.date,p))continue;for(const[a,amt,l]of flows(t)){const k=l.startsWith('Expense')?'Expenses paid':l;cf[k]=cf[k]||{cash:0,bank:0};cf[k][a]+=amt}}
+  const cfr=Object.entries(cf).sort((a,b)=>(b[1].cash+b[1].bank)-(a[1].cash+a[1].bank));
+  const first=db.tx.reduce((m,t)=>t.type==='sale'&&t.date<m?t.date:m,today());const dFrom=p.from>first?p.from:first;const dTo=p.to<today()?p.to:today();const days=Math.max(1,Math.round((new Date(dTo+'T12:00:00')-new Date(dFrom+'T12:00:00'))/864e5)+1);
+  const pct=x=>pl.sales?(x/pl.sales*100).toFixed(1)+'%':'';
+  $('#app').innerHTML=`<div class="card">${periodPicker()}<div class="row" style="margin-top:10px"><div><button class="s" id="rprint">Print reports</button> <button class="s" id="rcsv">Export all entries (CSV)</button></div></div></div>
+  <div id="reports">
+  <div class="card"><h2>Profit and loss · ${p.label==='All time'?'All time':p.from+' to '+p.to}</h2><div class="tw"><table>
+  <tr><td>Sales (excl. VAT)</td><td class="n">${aed(pl.sales)}</td><td class="n muted"></td></tr>
+  <tr><td>Cost of goods sold</td><td class="n">${aed(-pl.cogs)}</td><td class="n muted"></td></tr>
+  ${pl.adj?`<tr><td>Stock count variance, damage and expiry</td><td class="n">${aed(pl.adj)}</td><td class="n muted">${pct(pl.adj)}</td></tr>`:''}
+  <tr class="sub"><td>Gross profit</td><td class="n">${aed(pl.gp)}</td><td class="n">${pct(pl.gp)}</td></tr>
+  ${Object.entries(pl.exp).sort((a,b)=>b[1]-a[1]).map(([k,x])=>`<tr><td>${esc(k)}</td><td class="n">${aed(-x)}</td><td class="n muted">${pct(x)}</td></tr>`).join('')}
+  <tr class="sub"><td>Total expenses</td><td class="n">${aed(-pl.expTotal)}</td><td class="n">${pct(pl.expTotal)}</td></tr>
+  <tr class="tot"><td>Net profit (before owner pay)</td><td class="n ${pl.net<0?'bad':''}">${aed(pl.net)}</td><td class="n">${pct(pl.net)}</td></tr>
+  <tr><td>Margin (${iv.pct}% of sales excl. VAT)</td><td class="n">${aed(-iv.period)}</td><td class="n muted">${pct(iv.period)}</td></tr>
+  <tr class="tot"><td>Left for the owner after margin</td><td class="n ${pl.net-iv.period<0?'bad':''}">${aed(pl.net-iv.period)}</td><td class="n">${pct(pl.net-iv.period)}</td></tr></table></div>
+  <h3>Margin by day</h3><div class="tw"><table><tr><th>Date</th><th class="n">Sales excl. VAT</th><th class="n">Margin</th></tr>${ivDays.map(([d,n])=>`<tr><td>${d}</td><td class="n">${aed(n)}</td><td class="n">${aed(n*iv.pct/100)}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">No sales in this period.</td></tr>'}
+  <tr class="tot"><td>Total (paid in this period ${aed(iv.paidPeriod)}; still to pay overall ${aed(iv.owed)})</td><td class="n">${aed(pl.sales)}</td><td class="n">${aed(iv.period)}</td></tr></table></div>
+  <p class="hint">Average sales ${AED(pl.sales/days)} a day over ${days} day(s); the plan's cash break-even is about AED 3,500 a day. Expenses count when paid, so a quarterly rent cheque lands in one month: look at the quarter for a fair picture.</p>
+  <h3>Sales by category</h3><div class="tw"><table><tr><th>Category</th><th class="n">Sales</th><th class="n">Share</th><th class="n">Gross profit</th><th class="n">Margin</th></tr>
+  ${Object.entries(pl.byCat).sort((a,b)=>b[1].sales-a[1].sales).map(([k,x])=>`<tr><td>${esc(k)}</td><td class="n">${aed(x.sales)}</td><td class="n">${pct(x.sales)}</td><td class="n">${aed(x.sales-x.cogs)}</td><td class="n">${x.sales?((x.sales-x.cogs)/x.sales*100).toFixed(1)+'%':''}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">No sales in this period.</td></tr>'}</table></div></div>
+  <div class="card"><h2>Cash flow</h2><div class="tw"><table><tr><th></th><th class="n">Cash</th><th class="n">Bank</th><th class="n">Total</th></tr>
+  <tr class="sub"><td>Opening balance</td><td class="n">${aed(ob.cash)}</td><td class="n">${aed(ob.bank)}</td><td class="n">${aed(ob.cash+ob.bank)}</td></tr>
+  ${cfr.map(([k,x])=>`<tr><td>${esc(k)}</td><td class="n">${aed(x.cash)}</td><td class="n">${aed(x.bank)}</td><td class="n">${aed(x.cash+x.bank)}</td></tr>`).join('')}
+  <tr class="tot"><td>Closing balance</td><td class="n">${aed(cb.cash)}</td><td class="n">${aed(cb.bank)}</td><td class="n">${aed(cb.cash+cb.bank)}</td></tr></table></div>
+  <p class="hint">Net cash movement in the period: ${AED(cb.cash+cb.bank-ob.cash-ob.bank)}.</p></div>
+  <div class="card"><h2>VAT summary</h2><div class="tw"><table>
+  <tr><td>Standard-rated sales (excl. VAT)</td><td class="n">${aed(v.outNet)}</td></tr><tr><td>Output VAT on sales</td><td class="n">${aed(v.outVat)}</td></tr>
+  ${v.zero?`<tr><td>Zero-rated or exempt sales</td><td class="n">${aed(v.zero)}</td></tr>`:''}
+  <tr><td>Purchases and expenses with VAT (excl. VAT)</td><td class="n">${aed(v.inNet)}</td></tr><tr><td>Input VAT you can claim</td><td class="n">${aed(-v.inVat)}</td></tr>
+  <tr class="tot"><td>${v.net>=0?'VAT to pay to FTA':'VAT refund due'}</td><td class="n">${aed(Math.abs(v.net))}</td></tr></table></div>
+  <p class="hint">Use "This quarter" or "Last quarter" (or custom dates matching your FTA tax period) and give this to your accountant for the VAT return. Record the payment on Cash &amp; bank → "Pay VAT to FTA".</p></div>
+  </div>`;
+  bindPeriod(VIEWS.rep);
+  $('#rprint').onclick=()=>{$('#print').innerHTML=printHead('Reports · '+p.from+' to '+p.to)+$('#reports').innerHTML;window.print()};
+  $('#rcsv').onclick=()=>exportTx(p);
+};
+function csv(name,rows){const s=rows.map(r=>r.map(c=>{c=c==null?'':String(c);return /[",\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(',')).join('\r\n');download(name,'﻿'+s,'text/csv')}
+function download(name,data,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+function exportTx(p){
+  const rows=[['Date','Type','Party / category','Reference','Paid by','Net AED','VAT AED','Total AED','Details']];
+  for(const t of db.tx.filter(t=>inRange(t.date,p)).sort((a,b)=>a.date<b.date?-1:1)){
+    if(t.type==='sale'){const x=saleTotals(t);rows.push([t.date,'Sale',t.customerId?(customer(t.customerId)||{}).name:'','',PAY[t.pay],x.net,x.vat,x.gross,t.lines.map(l=>l.qty+'x '+l.name).join('; ')])}
+    if(t.type==='purchase'){const x=purchTotals(t);rows.push([t.date,'Purchase',(supplier(t.supplierId)||{}).name,t.invoice,PAY[t.pay],x.net,x.vat,x.total,t.lines.map(l=>l.qty+'x '+((item(l.itemId)||{}).name||'')).join('; ')])}
+    if(t.type==='receipt')rows.push([t.date,'Customer payment',(customer(t.customerId)||{}).name,t.note,PAY[t.pay],t.amount,0,t.amount,''])
+    if(t.type==='payment')rows.push([t.date,'Supplier payment',(supplier(t.supplierId)||{}).name,t.note,PAY[t.pay],t.amount,0,t.amount,''])
+    if(t.type==='expense')rows.push([t.date,'Expense',t.category,t.note,PAY[t.pay],t.amount,t.vat,r2(t.amount+t.vat),''])
+    if(t.type==='money')rows.push([t.date,'Money: '+t.kind,'',t.note,t.acct||'',t.amount,0,t.amount,''])
+    if(t.type==='adjust')rows.push([t.date,'Stock adjustment',t.reason,'','',r2(t.lines.reduce((a,l)=>a+l.qty*l.cost,0)),0,'',t.lines.map(l=>(l.qty>0?'+':'')+l.qty+' '+((item(l.itemId)||{}).name||'')).join('; ')])}
+  csv('entries-'+p.from+'-to-'+p.to+'.csv',rows)}
+
+/* ---- Settings & backup ---- */
+VIEWS.set=()=>{
+  const s=db.settings;
+  $('#app').innerHTML=`<div class="card"><h2>Backup</h2>
+  <p>All data is saved <b>only in this browser on this computer</b>. Download a backup at least once a week (daily is better) and keep a copy on a USB stick or in your email or cloud drive. To move to a new computer, restore the backup file there.</p>
+  <p class="muted">Last backup: ${s.lastBackup?s.lastBackup.replace('T',' ').slice(0,16):'never'}</p>
+  <div class="row"><div><button class="b" id="bk">Download backup file</button> <label class="s" style="display:inline-block;padding:7px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer;color:var(--ink);font-size:15px">Restore from backup<input type="file" id="rs" accept=".json,application/json" style="display:none"></label></div></div></div>
+  <div class="card"><h2>Shop settings</h2>
+  <div class="row"><div><label>Shop name</label><input id="s1" value="${esc(s.shopName)}"></div><div><label>VAT TRN</label><input id="s2" value="${esc(s.trn)}"></div>
+  <div class="narrow"><label>VAT rate %</label><input id="s3" type="number" step="any" value="${s.vatRate}"></div></div>
+  <div class="row" style="margin-top:8px"><div><label>Cash in hand when you started</label><input id="s4" type="number" step="0.01" value="${s.openingCash}"></div>
+  <div><label>Bank balance when you started</label><input id="s5" type="number" step="0.01" value="${s.openingBank}"></div>
+  <div><label>Assumed margin % for items not in the list</label><input id="s6" type="number" step="any" value="${s.defaultMargin}"></div>
+  <div><label>Margin % of daily sales (excl. VAT)</label><input id="s7" type="number" step="any" value="${s.investorPct}"></div></div>
+  <div class="row" style="margin-top:10px"><div><button class="b" id="ss">Save settings</button></div></div></div>
+  <div class="card"><h2>Try it out</h2><p>Load a small set of demo items, suppliers and a few days of entries to see how everything works. This replaces current data, so download a backup first if you have real entries.</p>
+  <div class="row"><div><button class="s" id="demo">Load demo data</button> <button class="x" id="wipe">Erase all data</button></div></div></div>`;
+  $('#bk').onclick=()=>{db.settings.lastBackup=new Date().toISOString();save();download('shop-books-backup-'+today()+'.json',JSON.stringify(db,null,1),'application/json');toast('Backup downloaded')};
+  $('#rs').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.items||!d.tx)throw new Error('Not a Shop Books backup');
+    if(!confirm('Replace everything in this browser with the backup from '+(d.settings&&d.settings.lastBackup||'the file')+'?'))return;db=Object.assign(blank(),d);save();toast('Restored');render()}catch(err){alert('Could not restore: '+err.message)}};r.readAsText(f)};
+  $('#ss').onclick=()=>{Object.assign(db.settings,{shopName:$('#s1').value.trim()||'My Grocery',trn:$('#s2').value.trim(),vatRate:num($('#s3').value),openingCash:num($('#s4').value),openingBank:num($('#s5').value),defaultMargin:num($('#s6').value),investorPct:num($('#s7').value)});save();toast('Settings saved');render()};
+  $('#demo').onclick=()=>{if(db.tx.length&&!confirm('Replace your current data with demo data?'))return;db=demoData();save();toast('Demo data loaded');go('home')};
+  $('#wipe').onclick=()=>{if(confirm('Erase ALL data in this browser? This cannot be undone unless you have a backup.')&&confirm('Are you sure?')){db=blank();save();render()}};
+};
+
+function demoData(){
+  const d=blank();d.settings.shopName='Demo Grocery';d.settings.openingCash=3000;d.settings.openingBank=40000;
+  const sup=(name,days)=>{const s={id:uid(),name,phone:'',trn:'',creditDays:days,openingBalance:0};d.suppliers.push(s);return s.id};
+  const _db=db;db=d; // uid uses db.seq
+  const dairy=sup('Dairy and bakery van',14),drinks=sup('Drinks and snacks distributor',30),cc=sup('Cash and carry wholesaler',0);
+  const it=(name,barcode,cat,cost,price,qty,re,s)=>{const i={id:uid(),name,barcode,sku:'',category:cat,cost,price,vatRate:5,unit:'pc',reorder:re,openingQty:qty+30,supplierId:s};d.items.push(i);return i};
+  const C=SALES_CATS;
+  const a=[it('Water 1.5L','6291001000011',C[0],0.9,1.5,120,24,drinks),it('Cola can 330ml','6291001000028',C[0],1.3,2.25,96,24,drinks),it('Orange juice 1L','6291001000035',C[0],4.2,6.5,20,6,dairy),
+  it('Fresh milk 1L','6291001000042',C[1],4.6,6.25,30,10,dairy),it('Arabic bread pack','6291001000059',C[1],2.1,3,25,10,dairy),it('Eggs 30 tray','6291001000066',C[1],14.5,19,8,4,cc),
+  it('Potato chips 45g','6291001000073',C[2],1.1,2,60,15,drinks),it('Chocolate bar','6291001000080',C[2],1.6,2.75,48,12,drinks),it('Ice cream cone','6291001000097',C[2],2.5,4.5,24,8,drinks),
+  it('Cigarettes pack','6291001000103',C[3],22,24,40,10,cc),it('Basmati rice 5kg','6291001000110',C[4],24,30,10,3,cc),it('Sunflower oil 1.8L','6291001000127',C[4],13,16.5,12,4,cc),
+  it('Dish soap 750ml','6291001000134',C[5],5.2,8,10,3,cc),it('Tissue box','6291001000141',C[5],3,5,15,5,cc),it('Toothpaste','6291001000158',C[6],5.5,9,10,3,cc),it('Diapers pack','6291001000165',C[6],28,39,5,2,cc),
+  it('Mobile recharge AED 25','',C[7],23.75,25,0,0,'')];
+  a[16].vatRate=0;a[16].openingQty=50;
+  const td=today();
+  for(let k=6;k>=0;k--){const date=addDays(td,-k);for(let n=0;n<12;n++){const lines=[];const m=1+(n%3);for(let j=0;j<m;j++){const i=a[(n*7+j*5+k*3)%a.length];lines.push({itemId:i.id,name:i.name,qty:1+((n+j)%2),price:i.price,cost:i.cost,vatRate:i.vatRate})}
+    d.tx.push({id:uid(),type:'sale',date,pay:['cash','cash','card','app'][n%4],lines})}}
+  d.tx.push({id:uid(),type:'purchase',date:addDays(td,-5),supplierId:drinks,invoice:'DR-1042',pay:'credit',lines:[{itemId:a[0].id,qty:48,cost:0.9},{itemId:a[1].id,qty:48,cost:1.3},{itemId:a[6].id,qty:30,cost:1.1}],vat:r2((48*0.9+48*1.3+30*1.1)*0.05)});
+  d.tx.push({id:uid(),type:'purchase',date:addDays(td,-20),supplierId:dairy,invoice:'DB-7781',pay:'credit',lines:[{itemId:a[3].id,qty:24,cost:4.6},{itemId:a[4].id,qty:20,cost:2.1}],vat:r2((24*4.6+20*2.1)*0.05)});
+  d.tx.push({id:uid(),type:'purchase',date:addDays(td,-3),supplierId:cc,invoice:'CC-55',pay:'cash',lines:[{itemId:a[10].id,qty:5,cost:24},{itemId:a[9].id,qty:20,cost:22}],vat:r2((5*24+20*22)*0.05)});
+  d.tx.push({id:uid(),type:'expense',date:addDays(td,-6),category:'Rent',amount:15000,vat:750,pay:'bank',note:'Quarterly rent cheque'});
+  d.tx.push({id:uid(),type:'expense',date:addDays(td,-2),category:'Utilities (SEWA power and water)',amount:2380,vat:119,pay:'bank',note:'SEWA bill'});
+  d.tx.push({id:uid(),type:'expense',date:addDays(td,-1),category:'Delivery fuel and upkeep',amount:120,vat:6,pay:'cash',note:'Petrol'});
+  d.tx.push({id:uid(),type:'money',kind:'deposit',acct:'cash',amount:1500,date:addDays(td,-2),note:'Bank deposit'});
+  const cu={id:uid(),name:'Flat 1204, Ahmed',phone:'',limit:500,openingBalance:0};d.customers.push(cu);
+  d.tx.push({id:uid(),type:'sale',date:addDays(td,-4),pay:'credit',customerId:cu.id,lines:[{itemId:a[3].id,name:a[3].name,qty:2,price:a[3].price,cost:a[3].cost,vatRate:5},{itemId:a[5].id,name:a[5].name,qty:1,price:a[5].price,cost:a[5].cost,vatRate:5}]});
+  d.tx.push({id:uid(),type:'sale',date:addDays(td,-1),pay:'credit',customerId:cu.id,lines:[{itemId:a[10].id,name:a[10].name,qty:1,price:a[10].price,cost:a[10].cost,vatRate:5}]});
+  d.tx.push({id:uid(),type:'receipt',date:td,customerId:cu.id,amount:20,pay:'cash',note:'Part payment'});
+  db=_db;return d}
+
+/* ============ Start ============ */
+(()=>{const h=location.hash.slice(1);if(VIEWS[h])page=h;render()})();
+</script>
+</body>
+</html>

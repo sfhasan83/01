@@ -39,6 +39,12 @@ The menu groups related pages: **Sales** (Sell, Customers), **Purchases** (Suppl
 
 Card and delivery-app sales go straight to the **bank** balance. Cash sales go to **cash** until you record a deposit.
 
+## Advance payments
+
+- **From a customer:** go to **Customers → Record money received**, choose **Advance (deposit for future purchases)**, and pick cash or bank. The customer's balance shows "Advance AED x" in green. On **Sell**, choose **From customer advance** and the sale comes off that advance. If the advance is short, the rest is owed.
+- **To a supplier:** go to **Pay suppliers**, choose **Advance (before goods arrive)**, and pick cash or bank. When the goods arrive, record the invoice on **Buy stock** with **From advance paid to supplier**. The app also tells you when a supplier holds an advance.
+- Customer statements, the supplier list and the Home page show advances held and advances paid. Check with your accountant on VAT for customer advances, because VAT can be due when an advance is received.
+
 ## Reports
 
 **Reports** has a period picker (month, quarter, year, custom dates) and shows:

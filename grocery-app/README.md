@@ -15,20 +15,35 @@ A small offline app for running the books and stock of a ~300 sq ft grocery (baq
 2. **Suppliers**: add each supplier with its credit days, for example the dairy van at 14 days, the drinks distributor at 30 days and cash-and-carry at 0.
 3. **Items**: add each product with its barcode (click the box and scan), category, cost excl. VAT, shelf price incl. VAT, reorder level and how many you have now. The margin shows as you type.
 
+## Barcode scanning
+
+- **USB or Bluetooth scanner (recommended, about AED 60 to 150):** plug it in and scan. It works on **Sell**, **Buy stock**, **Items** and **Stock count**, even when you have not clicked in a box first.
+- **New barcode?** When you scan a barcode the app does not know on Sell or Buy stock, a small **New item** form opens with the barcode already filled in. Enter the name, cost and price and save, and the item goes straight into the sale or invoice.
+- **Items page:** scan at the top. A known item opens for editing, and a new barcode starts a new item.
+- **Camera:** a **📷 Camera** button appears where the browser has a built-in barcode reader (Chrome on Android phones and tablets, Mac and ChromeOS). Chrome on Windows usually does not have one, so use a USB scanner there.
+
 ## Daily use
+
+The menu groups related pages: **Sales** (Sell, Customers), **Purchases** (Suppliers, Buy stock, Pay suppliers, Expenses), **Stock** (Items, Stock count) and **Money** (Cash & bank, Reports).
 
 | Page | What to do |
 |---|---|
 | **Sell** | Scan items, or type the name and press Enter. Choose cash, card or delivery app, then click **Save sale**. Stock goes down. Use "Item not in the list" for loose vegetables and similar. |
-| **Customers** | Customers who buy on credit and pay at month end. On **Sell**, choose **Credit (customer pays later)** and pick the customer, or click **+ New customer**. You can set a credit limit, and the app warns you when a sale would take the customer over it. The Customers page shows who owes what and has a printable **Statement** for each customer. Record payments there when they pay. |
+| **Customers** | Customers who buy on credit and pay at month end. On **Sell**, choose **Credit (customer pays later)** and pick the customer, or click **+ New customer** (name, flat no. and building are separate fields). Each customer gets a code (C001, C002 and so on). You can change it, and typing the code picks the customer on Sell and Customers. You can set a credit limit, and the app warns you when a sale would take the customer over it. The Customers page shows who owes what and has a printable **Statement** for each customer. Record payments there when they pay. |
 | **Buy stock** | Enter each supplier invoice: scan the items, enter qty and cost, and check that the VAT matches the invoice. Choose **On credit** if you will pay later. Click **+ New supplier** to add a supplier without leaving the page. Stock goes up and the item cost updates. |
 | **Pay suppliers** | Shows what you owe, which bills are overdue and which are due soon. Record each payment here. |
 | **Expenses** | Record rent cheques, salaries, SEWA, card fees, app commissions, fuel and so on. VAT fills in for bills that usually carry it. Correct it to match the bill. |
 | **Cash & bank** | Record bank deposits, withdrawals, money the owner puts in or takes out, and VAT payments. Use **Cash-up check** at closing to compare the drawer with the book. |
 | **Margin** | The investor's share is 18% of each day's sales excl. VAT. It shows in the top bar next to Cash and Bank, and on Home as today's figure, this month's figure and the amount still to pay. Record payments on **Cash & bank → Pay margin**. You can change the % in **Settings & backup**. **Reports** shows it by day and deducts it after net profit. |
-| **Home** | Today's and this month's sales and profit, cash and bank, amount owed, stock value, VAT due, low-stock list and alerts. |
+| **Home (dashboard)** | Today's sales against the plan's AED 3,500 daily break-even, gross profit and the 18% margin. It also shows this month's sales, profit, expenses and VAT, plus cash, bank, money owed both ways, stock value and low stock. Charts show daily sales for the last 30 days, sales against costs by month, how customers paid, top items and sales by category. Hover over any bar to see its numbers. Alerts cover low stock, overdue bills, customers over their limit, the quarterly stock count and backups. |
 
 Card and delivery-app sales go straight to the **bank** balance. Cash sales go to **cash** until you record a deposit.
+
+## Advance payments
+
+- **From a customer:** go to **Customers → Record money received**, choose **Advance (deposit for future purchases)**, and pick cash or bank. The customer's balance shows "Advance AED x" in green. On **Sell**, choose **From customer advance** and the sale comes off that advance. If the advance is short, the rest is owed.
+- **To a supplier:** go to **Pay suppliers**, choose **Advance (before goods arrive)**, and pick cash or bank. When the goods arrive, record the invoice on **Buy stock** with **From advance paid to supplier**. The app also tells you when a supplier holds an advance.
+- Customer statements, the supplier list and the Home page show advances held and advances paid. Check with your accountant on VAT for customer advances, because VAT can be due when an advance is received.
 
 ## Reports
 

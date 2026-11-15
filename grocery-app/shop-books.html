@@ -126,10 +126,10 @@ function flows(t){
     if(t.kind==='capital')f.push([t.acct,t.amount,'Owner money put in'])
     if(t.kind==='drawings')f.push([t.acct,-t.amount,'Owner money taken out'])
     if(t.kind==='vat')f.push([t.acct,-t.amount,'VAT paid to FTA'])
-    if(t.kind==='investor')f.push([t.acct,-t.amount,'Investor margin paid'])}
+    if(t.kind==='investor')f.push([t.acct,-t.amount,'Margin paid'])}
   return f}
 function balances(upTo){const b={cash:+db.settings.openingCash||0,bank:+db.settings.openingBank||0};for(const t of db.tx){if(upTo&&t.date>upTo)continue;for(const[a,v]of flows(t))b[a]+=v}return{cash:r2(b.cash),bank:r2(b.bank)}}
-// Investor margin: a % of sales excl. VAT, owed to the investor
+// Margin: a % of sales excl. VAT, owed to the investor
 function salesNet(p){let n=0;for(const t of db.tx)if(t.type==='sale'&&inRange(t.date,p))n+=saleTotals(t).net;return n}
 function investor(p){const pct=+db.settings.investorPct||0;const all={from:'1900-01-01',to:'2999-12-31'};
   const paid=(q)=>db.tx.filter(t=>t.type==='money'&&t.kind==='investor'&&inRange(t.date,q)).reduce((a,t)=>a+t.amount,0);
@@ -191,7 +191,7 @@ let page='home';
 function go(p){page=p;location.hash=p;render()}
 function render(){
   $('#shopTitle').textContent=db.settings.shopName||'Shop Books';
-  const b=balances();const iv=investor(periodOf('today'));$('#hdrInfo').textContent='Cash '+AED(b.cash)+' · Bank '+AED(b.bank)+' · Investor margin today ('+iv.pct+'%) '+AED(iv.period);
+  const b=balances();const iv=investor(periodOf('today'));$('#hdrInfo').textContent='Cash '+AED(b.cash)+' · Bank '+AED(b.bank)+' · Margin '+AED(iv.period);
   $('#nav').innerHTML=PAGES.map(([k,l])=>`<button data-p="${k}" class="${k===page?'on':''}">${l}</button>`).join('');
   $('#nav').querySelectorAll('button').forEach(x=>x.onclick=()=>go(x.dataset.p));
   (VIEWS[page]||VIEWS.home)();window.scrollTo(0,0)}
@@ -231,9 +231,9 @@ VIEWS.home=()=>{
     <div class="stat"><div class="k">Profit this month</div><div class="v ${pm.net<0?'bad':'good'}">${AED(pm.net)}</div></div>
     <div class="stat"><div class="k">Cash in hand</div><div class="v">${AED(b.cash)}</div></div>
     <div class="stat"><div class="k">Bank</div><div class="v">${AED(b.bank)}</div></div>
-    <div class="stat"><div class="k">Investor margin today (${ivT.pct}% of sales excl. VAT)</div><div class="v">${AED(ivT.period)}</div></div>
-    <div class="stat"><div class="k">Investor margin this month</div><div class="v">${AED(ivM.period)}</div></div>
-    <div class="stat"><div class="k">Investor margin still to pay</div><div class="v">${AED(ivM.owed)}</div></div>
+    <div class="stat"><div class="k">Margin today</div><div class="v">${AED(ivT.period)}</div></div>
+    <div class="stat"><div class="k">Margin this month</div><div class="v">${AED(ivM.period)}</div></div>
+    <div class="stat"><div class="k">Margin still to pay</div><div class="v">${AED(ivM.owed)}</div></div>
     <div class="stat"><div class="k">Owed to suppliers</div><div class="v">${AED(owed)}</div></div>
     <div class="stat"><div class="k">Stock value (at cost)</div><div class="v">${AED(stockVal)}</div></div>
     <div class="stat"><div class="k">${vq.net<0?'VAT refund due this quarter':'VAT to pay this quarter'}</div><div class="v">${AED(Math.abs(vq.net))}</div></div>
@@ -360,7 +360,7 @@ VIEWS.exp=()=>{
 /* ---- Cash & bank ---- */
 VIEWS.money=()=>{
   const b=balances();
-  const KINDS=[['deposit','Deposit cash into bank'],['withdraw','Withdraw cash from bank'],['capital','Owner puts money in'],['drawings','Owner takes money out'],['vat','Pay VAT to FTA'],['investor','Pay investor margin']];
+  const KINDS=[['deposit','Deposit cash into bank'],['withdraw','Withdraw cash from bank'],['capital','Owner puts money in'],['drawings','Owner takes money out'],['vat','Pay VAT to FTA'],['investor','Pay margin']];
   $('#app').innerHTML=`<div class="grid" style="margin-bottom:14px"><div class="stat"><div class="k">Cash in hand (should match the drawer)</div><div class="v">${AED(b.cash)}</div></div><div class="stat"><div class="k">Bank (should match the statement)</div><div class="v">${AED(b.bank)}</div></div></div>
   <div class="card"><h2>Move money</h2>
   <div class="row"><div><label>What happened</label><select id="mk">${opts(KINDS)}</select></div>
@@ -529,9 +529,9 @@ VIEWS.rep=()=>{
   ${Object.entries(pl.exp).sort((a,b)=>b[1]-a[1]).map(([k,x])=>`<tr><td>${esc(k)}</td><td class="n">${aed(-x)}</td><td class="n muted">${pct(x)}</td></tr>`).join('')}
   <tr class="sub"><td>Total expenses</td><td class="n">${aed(-pl.expTotal)}</td><td class="n">${pct(pl.expTotal)}</td></tr>
   <tr class="tot"><td>Net profit (before owner pay)</td><td class="n ${pl.net<0?'bad':''}">${aed(pl.net)}</td><td class="n">${pct(pl.net)}</td></tr>
-  <tr><td>Investor margin (${iv.pct}% of sales excl. VAT)</td><td class="n">${aed(-iv.period)}</td><td class="n muted">${pct(iv.period)}</td></tr>
-  <tr class="tot"><td>Left for the owner after investor margin</td><td class="n ${pl.net-iv.period<0?'bad':''}">${aed(pl.net-iv.period)}</td><td class="n">${pct(pl.net-iv.period)}</td></tr></table></div>
-  <h3>Investor margin by day</h3><div class="tw"><table><tr><th>Date</th><th class="n">Sales excl. VAT</th><th class="n">Investor margin</th></tr>${ivDays.map(([d,n])=>`<tr><td>${d}</td><td class="n">${aed(n)}</td><td class="n">${aed(n*iv.pct/100)}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">No sales in this period.</td></tr>'}
+  <tr><td>Margin (${iv.pct}% of sales excl. VAT)</td><td class="n">${aed(-iv.period)}</td><td class="n muted">${pct(iv.period)}</td></tr>
+  <tr class="tot"><td>Left for the owner after margin</td><td class="n ${pl.net-iv.period<0?'bad':''}">${aed(pl.net-iv.period)}</td><td class="n">${pct(pl.net-iv.period)}</td></tr></table></div>
+  <h3>Margin by day</h3><div class="tw"><table><tr><th>Date</th><th class="n">Sales excl. VAT</th><th class="n">Margin</th></tr>${ivDays.map(([d,n])=>`<tr><td>${d}</td><td class="n">${aed(n)}</td><td class="n">${aed(n*iv.pct/100)}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">No sales in this period.</td></tr>'}
   <tr class="tot"><td>Total (paid in this period ${aed(iv.paidPeriod)}; still to pay overall ${aed(iv.owed)})</td><td class="n">${aed(pl.sales)}</td><td class="n">${aed(iv.period)}</td></tr></table></div>
   <p class="hint">Average sales ${AED(pl.sales/days)} a day over ${days} day(s); the plan's cash break-even is about AED 3,500 a day. Expenses count when paid, so a quarterly rent cheque lands in one month: look at the quarter for a fair picture.</p>
   <h3>Sales by category</h3><div class="tw"><table><tr><th>Category</th><th class="n">Sales</th><th class="n">Share</th><th class="n">Gross profit</th><th class="n">Margin</th></tr>
@@ -578,7 +578,7 @@ VIEWS.set=()=>{
   <div class="row" style="margin-top:8px"><div><label>Cash in hand when you started</label><input id="s4" type="number" step="0.01" value="${s.openingCash}"></div>
   <div><label>Bank balance when you started</label><input id="s5" type="number" step="0.01" value="${s.openingBank}"></div>
   <div><label>Assumed margin % for items not in the list</label><input id="s6" type="number" step="any" value="${s.defaultMargin}"></div>
-  <div><label>Investor margin % of daily sales (excl. VAT)</label><input id="s7" type="number" step="any" value="${s.investorPct}"></div></div>
+  <div><label>Margin % of daily sales (excl. VAT)</label><input id="s7" type="number" step="any" value="${s.investorPct}"></div></div>
   <div class="row" style="margin-top:10px"><div><button class="b" id="ss">Save settings</button></div></div></div>
   <div class="card"><h2>Try it out</h2><p>Load a small set of demo items, suppliers and a few days of entries to see how everything works. This replaces current data, so download a backup first if you have real entries.</p>
   <div class="row"><div><button class="s" id="demo">Load demo data</button> <button class="x" id="wipe">Erase all data</button></div></div></div>`;

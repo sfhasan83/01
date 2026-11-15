@@ -11,3 +11,7 @@ Everything needed to launch and grow an Amazon store on Amazon.com (US), Amazon.
 | [daily-reports/HOW-TO-RUN.md](daily-reports/HOW-TO-RUN.md) | How each report is researched and scored |
 
 Latest report: [daily-reports/2026-11-14.md](daily-reports/2026-11-14.md)
+
+## Grocery shop software
+
+[grocery-app/](grocery-app/) holds **Shop Books**, an offline accounting and stock app for the Sharjah grocery shop. Open `grocery-app/shop-books.html` in a browser. Instructions are in [grocery-app/README.md](grocery-app/README.md).

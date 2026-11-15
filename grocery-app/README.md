@@ -20,7 +20,8 @@ A small offline app for running the books and stock of a ~300 sq ft grocery (baq
 | Page | What to do |
 |---|---|
 | **Sell** | Scan items, or type the name and press Enter. Choose cash, card or delivery app, then click **Save sale**. Stock goes down. Use "Item not in the list" for loose vegetables and similar. |
-| **Buy stock** | Enter each supplier invoice: scan the items, enter qty and cost, and check that the VAT matches the invoice. Choose **On credit** if you will pay later. Stock goes up and the item cost updates. |
+| **Customers** | Customers who buy on credit and pay at month end. On **Sell**, choose **Credit (customer pays later)** and pick the customer, or click **+ New customer**. You can set a credit limit, and the app warns you when a sale would take the customer over it. The Customers page shows who owes what and has a printable **Statement** for each customer. Record payments there when they pay. |
+| **Buy stock** | Enter each supplier invoice: scan the items, enter qty and cost, and check that the VAT matches the invoice. Choose **On credit** if you will pay later. Click **+ New supplier** to add a supplier without leaving the page. Stock goes up and the item cost updates. |
 | **Pay suppliers** | Shows what you owe, which bills are overdue and which are due soon. Record each payment here. |
 | **Expenses** | Record rent cheques, salaries, SEWA, card fees, app commissions, fuel and so on. VAT fills in for bills that usually carry it. Correct it to match the bill. |
 | **Cash & bank** | Record bank deposits, withdrawals, money the owner puts in or takes out, and VAT payments. Use **Cash-up check** at closing to compare the drawer with the book. |

@@ -79,9 +79,10 @@ const EXP_CATS = [
   ['Marketing',true],['Licence renewal and AMAN',false],['Accounting and POS software',true],['Insurance',true],
   ['Pest control and repairs',true],['Phone and internet',true],['Bank charges',true],['Other',true]];
 const PAY = {cash:'Cash',card:'Card (to bank)',app:'Delivery app (to bank)',bank:'Bank',credit:'On credit (pay later)'};
+const SPAY={cash:'Cash',card:'Card (to bank)',app:'Delivery app (to bank)',credit:'Credit (customer pays later)'};
 
 function today(){return ymd(new Date())}
-function blank(){return {settings:{shopName:'My Grocery',trn:'',vatRate:5,openingCash:0,openingBank:0,startDate:today(),defaultMargin:20,investorPct:18,lastBackup:null},items:[],suppliers:[],tx:[],counts:[],seq:1}}
+function blank(){return {settings:{shopName:'My Grocery',trn:'',vatRate:5,openingCash:0,openingBank:0,startDate:today(),defaultMargin:20,investorPct:18,lastBackup:null},items:[],suppliers:[],customers:[],tx:[],counts:[],seq:1}}
 function load(){try{const s=localStorage.getItem(KEY);if(s){const d=JSON.parse(s);const b=blank();d.settings=Object.assign(b.settings,d.settings||{});return Object.assign(b,d)}}catch(e){}return blank()}
 let db = load();
 function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){alert('Could not save: '+e.message+'\nPlease export a backup now.')}}
@@ -98,6 +99,7 @@ const qfmt = n=>(Math.round(n*1000)/1000).toLocaleString('en-AE');
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),1800)}
 const item = id=>db.items.find(i=>i.id===id);
 const supplier = id=>db.suppliers.find(s=>s.id===id);
+const customer = id=>db.customers.find(c=>c.id===id);
 const opts = (arr,sel)=>arr.map(([v,l])=>`<option value="${esc(v)}"${v===sel?' selected':''}>${esc(l)}</option>`).join('');
 function ymd(x){return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')}
 function addDays(d,n){const x=new Date(d+'T12:00:00');x.setDate(x.getDate()+n);return ymd(x)}
@@ -116,7 +118,8 @@ function stockMap(upTo){
 // money flows to cash/bank for a transaction
 function flows(t){
   const f=[];
-  if(t.type==='sale'){const g=saleTotals(t).gross;f.push([t.pay==='cash'?'cash':'bank',g,'Sales receipts'])}
+  if(t.type==='sale'&&t.pay!=='credit'){const g=saleTotals(t).gross;f.push([t.pay==='cash'?'cash':'bank',g,'Sales receipts'])}
+  if(t.type==='receipt')f.push([t.pay,t.amount,'Customer credit payments received'])
   if(t.type==='purchase'&&t.pay!=='credit')f.push([t.pay,-purchTotals(t).total,'Stock purchases paid'])
   if(t.type==='payment')f.push([t.pay,-t.amount,'Payments to suppliers'])
   if(t.type==='expense')f.push([t.pay,-(t.amount+t.vat),'Expense: '+t.category])
@@ -134,6 +137,8 @@ function salesNet(p){let n=0;for(const t of db.tx)if(t.type==='sale'&&inRange(t.
 function investor(p){const pct=+db.settings.investorPct||0;const all={from:'1900-01-01',to:'2999-12-31'};
   const paid=(q)=>db.tx.filter(t=>t.type==='money'&&t.kind==='investor'&&inRange(t.date,q)).reduce((a,t)=>a+t.amount,0);
   return{pct,period:r2(salesNet(p)*pct/100),paidPeriod:r2(paid(p)),owed:r2(salesNet(all)*pct/100-paid(all))}}
+function receivables(){
+  return db.customers.map(c=>{let owed=+c.openingBalance||0,last='';for(const t of db.tx){if(t.customerId!==c.id)continue;if(t.type==='sale'&&t.pay==='credit'){owed+=saleTotals(t).gross;if(t.date>last)last=t.date}if(t.type==='receipt')owed-=t.amount}return{c,owed:r2(owed),last}})}
 function payables(){
   const res=db.suppliers.map(s=>({s,owed:+s.openingBalance||0,overdue:0,dueSoon:0}));const by={};res.forEach(r=>by[r.s.id]=r);
   const td=today();
@@ -186,7 +191,7 @@ function bindPeriod(rerender){
   $('#pf').onchange=e=>{period.from=e.target.value;rerender()};$('#pt').onchange=e=>{period.to=e.target.value;rerender()}}
 
 /* ============ Navigation ============ */
-const PAGES=[['home','Home'],['sell','Sell'],['buy','Buy stock'],['pay','Pay suppliers'],['exp','Expenses'],['money','Cash & bank'],['items','Items'],['count','Stock count'],['sup','Suppliers'],['rep','Reports'],['set','Settings & backup']];
+const PAGES=[['home','Home'],['sell','Sell'],['cust','Customers'],['buy','Buy stock'],['pay','Pay suppliers'],['exp','Expenses'],['money','Cash & bank'],['items','Items'],['count','Stock count'],['sup','Suppliers'],['rep','Reports'],['set','Settings & backup']];
 let page='home';
 function go(p){page=p;location.hash=p;render()}
 function render(){
@@ -235,6 +240,7 @@ VIEWS.home=()=>{
     <div class="stat"><div class="k">Margin this month</div><div class="v">${AED(ivM.period)}</div></div>
     <div class="stat"><div class="k">Margin still to pay</div><div class="v">${AED(ivM.owed)}</div></div>
     <div class="stat"><div class="k">Owed to suppliers</div><div class="v">${AED(owed)}</div></div>
+    <div class="stat"><div class="k">Owed by customers (credit)</div><div class="v">${AED(receivables().reduce((a,r)=>a+r.owed,0))}</div></div>
     <div class="stat"><div class="k">Stock value (at cost)</div><div class="v">${AED(stockVal)}</div></div>
     <div class="stat"><div class="k">${vq.net<0?'VAT refund due this quarter':'VAT to pay this quarter'}</div><div class="v">${AED(Math.abs(vq.net))}</div></div>
   </div>
@@ -243,7 +249,7 @@ VIEWS.home=()=>{
 };
 
 /* ---- Sell ---- */
-let cart=[];
+let cart=[],sellState={pay:'cash',cust:''};
 VIEWS.sell=()=>{
   const sm=stockMap();
   const tot=saleTotals({lines:cart});
@@ -256,12 +262,14 @@ VIEWS.sell=()=>{
   ${cart.length?`<div class="tw" style="margin-top:12px"><table><tr><th>Item</th><th class="n">Qty</th><th class="n">Price</th><th class="n">Total</th><th></th></tr>
   ${cart.map((l,i)=>`<tr><td>${esc(l.name)}${l.itemId&&sm[l.itemId]-l.qty<0?' <span class="pill warn">stock shows '+qfmt(sm[l.itemId])+'</span>':''}</td><td class="n"><input data-q="${i}" type="number" step="any" value="${l.qty}" style="width:80px"></td><td class="n"><input data-pr="${i}" type="number" step="0.01" value="${l.price}" style="width:90px"></td><td class="n">${aed(l.qty*l.price)}</td><td><button class="x" data-rm="${i}">✕</button></td></tr>`).join('')}
   <tr class="tot"><td colspan="3">Total to collect (incl. ${AED(tot.vat)} VAT)</td><td class="n big">${aed(tot.gross)}</td><td></td></tr></table></div>`:'<p class="hint">The cart is empty. A USB barcode scanner works here: it types the code and presses Enter for you.</p>'}
-  <div class="row" style="margin-top:12px"><div><label>Paid by</label><select id="spay">${opts([['cash',PAY.cash],['card',PAY.card],['app',PAY.app]],'cash')}</select></div>
+  <div class="row" style="margin-top:12px"><div><label>Paid by</label><select id="spay">${opts(Object.entries(SPAY),sellState.pay)}</select></div>
+  <div id="scustw" style="display:${sellState.pay==='credit'?'':'none'}"><label>Customer <a href="#" id="snewl">+ New customer</a></label><select id="scust"><option value="">Choose…</option>${opts(db.customers.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>[c.id,c.name]),sellState.cust)}</select><div class="hint" id="scinfo"></div></div>
   <div><label>Date</label><input type="date" id="sd" value="${today()}"></div>
-  <div><label>Cash received (optional, for change)</label><input id="recv" type="number" step="0.01"></div>
-  <div><label>Change</label><div id="chg" class="big">–</div></div></div>
+  <div class="cashonly"><label>Cash received (optional, for change)</label><input id="recv" type="number" step="0.01"></div>
+  <div class="cashonly"><label>Change</label><div id="chg" class="big">–</div></div></div>
+  <div class="row" id="snew" style="display:none;margin-top:8px"><div style="flex:2"><label>New customer name (e.g. "Flat 1204, Ahmed")</label><input id="snn"></div><div><label>Phone</label><input id="snp"></div><div class="narrow"><label>Credit limit</label><input id="snl" type="number" step="1"></div><div class="narrow"><button class="b" id="snadd">Save customer</button></div></div>
   <div class="row" style="margin-top:12px"><div><button class="b" id="done" ${cart.length?'':'disabled'}>Save sale</button> <button class="s" id="clr">Clear</button></div></div></div>
-  <div class="card"><h2>Recent sales</h2>${txTable(recent('sale'),[{h:'Date',f:t=>t.date},{h:'Items',f:t=>esc(t.lines.map(l=>qfmt(l.qty)+'× '+l.name).join(', ').slice(0,90))},{h:'Paid by',f:t=>PAY[t.pay]},{h:'Total',n:1,f:t=>aed(saleTotals(t).gross)}])}</div>`;
+  <div class="card"><h2>Recent sales</h2>${txTable(recent('sale'),[{h:'Date',f:t=>t.date},{h:'Items',f:t=>esc(t.lines.map(l=>qfmt(l.qty)+'× '+l.name).join(', ').slice(0,90))},{h:'Paid by',f:t=>t.pay==='credit'?'Credit: '+esc((customer(t.customerId)||{}).name||'?'):PAY[t.pay]},{h:'Total',n:1,f:t=>aed(saleTotals(t).gross)}])}</div>`;
   const add=()=>{const it=findItem($('#scan').value);const q=num($('#sq').value)||1;
     if(!it){toast('Item not found');$('#scan').select();return}
     const ex=cart.find(l=>l.itemId===it.id&&l.price===+it.price);if(ex)ex.qty+=q;else cart.push({itemId:it.id,name:it.name,qty:q,price:+it.price,cost:+it.cost||0,vatRate:+it.vatRate});
@@ -274,7 +282,16 @@ VIEWS.sell=()=>{
   document.querySelectorAll('[data-rm]').forEach(x=>x.onclick=()=>{cart.splice(+x.dataset.rm,1);VIEWS.sell()});
   $('#recv').oninput=()=>{const r=num($('#recv').value);$('#chg').textContent=r?aed(r-tot.gross):'–'};
   $('#clr').onclick=()=>{cart=[];VIEWS.sell()};
-  $('#done').onclick=()=>{const ls=cart.filter(l=>l.qty);if(!ls.length)return;db.tx.push({id:uid(),type:'sale',date:$('#sd').value||today(),pay:$('#spay').value,lines:ls});save();cart=[];toast('Sale saved');render()};
+  const cinfo=()=>{const r=receivables().find(x=>x.c.id===$('#scust').value);if(!r){$('#scinfo').textContent='';return}const lim=+r.c.limit||0;const after=r.owed+tot.gross;
+    $('#scinfo').innerHTML='Owes '+AED(r.owed)+(lim?' · limit '+AED(lim)+(after>lim?' <span class="pill bad">over limit after this sale</span>':''):'')};
+  const cashOnly=()=>document.querySelectorAll('.cashonly').forEach(e=>e.style.display=sellState.pay==='cash'?'':'none');cashOnly();
+  $('#spay').onchange=()=>{sellState.pay=$('#spay').value;cashOnly();$('#scustw').style.display=sellState.pay==='credit'?'':'none';if(sellState.pay!=='credit')$('#snew').style.display='none'};
+  $('#scust').onchange=()=>{sellState.cust=$('#scust').value;cinfo()};cinfo();
+  $('#snewl').onclick=e=>{e.preventDefault();$('#snew').style.display='';$('#snn').focus()};
+  $('#snadd').onclick=()=>{const n=$('#snn').value.trim();if(!n){toast('Enter a name');return}const c={id:uid(),name:n,phone:$('#snp').value.trim(),limit:num($('#snl').value),openingBalance:0};db.customers.push(c);save();sellState.cust=c.id;sellState.pay='credit';toast('Customer added');VIEWS.sell()};
+  $('#done').onclick=()=>{const ls=cart.filter(l=>l.qty);if(!ls.length)return;const pay=$('#spay').value;const t={id:uid(),type:'sale',date:$('#sd').value||today(),pay,lines:ls};
+    if(pay==='credit'){if(!$('#scust').value){toast('Choose the customer for a credit sale');return}t.customerId=$('#scust').value}
+    db.tx.push(t);save();cart=[];sellState={pay:'cash',cust:''};toast('Sale saved');render()};
   bindDel();$('#scan').focus();
 };
 
@@ -283,10 +300,10 @@ let pcart=[];
 VIEWS.buy=()=>{
   const vr=+db.settings.vatRate;const net=r2(pcart.reduce((a,l)=>a+l.qty*l.cost,0));
   $('#app').innerHTML=`<div class="card"><h2>Record a supplier invoice (stock in)</h2>
-  ${db.suppliers.length?'':'<div class="alert">Add your suppliers first on the <a href="#sup">Suppliers</a> page.</div>'}
-  <div class="row"><div><label>Supplier</label><select id="psup">${opts(db.suppliers.map(s=>[s.id,s.name]))}</select></div>
+  <div class="row"><div><label>Supplier <a href="#" id="pnewl">+ New supplier</a></label><select id="psup">${opts(db.suppliers.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(s=>[s.id,s.name]))}</select></div>
   <div><label>Invoice number</label><input id="pinv"></div><div><label>Invoice date</label><input type="date" id="pd" value="${today()}"></div>
   <div><label>Paid by</label><select id="ppay">${opts([['credit',PAY.credit],['cash',PAY.cash],['bank',PAY.bank]],'credit')}</select></div></div>
+  <div class="row" id="pnew" style="display:${db.suppliers.length?'none':''};margin-top:8px"><div style="flex:2"><label>New supplier name</label><input id="pnn"></div><div><label>Phone</label><input id="pnp"></div><div class="narrow"><label>Credit days</label><input id="pnd" type="number" value="0"></div><div class="narrow"><button class="b" id="pnadd">Save supplier</button></div></div>
   <div class="row" style="margin-top:10px"><div style="flex:3"><label>Scan or type item</label><input id="pscan" list="itemlist" autocomplete="off">${itemDatalist()}</div>
   <div class="narrow"><label>Qty</label><input id="pq" type="number" step="any" value="1"></div>
   <div class="narrow"><label>Unit cost excl. VAT</label><input id="pc" type="number" step="0.001"></div>
@@ -307,6 +324,9 @@ VIEWS.buy=()=>{
   $('#pscan').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const it=findItem($('#pscan').value);if(it&&!$('#pc').value)$('#pc').value=it.cost||'';$('#pq').focus();$('#pq').select()}};
   $('#pq').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add()}};$('#pc').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add()}};
   $('#padd').onclick=add;
+  $('#pnewl').onclick=e=>{e.preventDefault();$('#pnew').style.display='';$('#pnn').focus()};
+  $('#pnadd').onclick=()=>{const n=$('#pnn').value.trim();if(!n){toast('Enter a supplier name');return}const sp={id:uid(),name:n,phone:$('#pnp').value.trim(),trn:'',creditDays:num($('#pnd').value),openingBalance:0};db.suppliers.push(sp);save();
+    const k=keep();VIEWS.buy();k();$('#psup').value=sp.id;toast('Supplier added')};
   if($('#pvat'))$('#pvat').oninput=()=>{const v=num($('#pvat').value);$('#pvatv').textContent=aed(v);$('#ptot').textContent=aed(net+v)};
   document.querySelectorAll('[data-q]').forEach(x=>x.onchange=()=>{pcart[x.dataset.q].qty=num(x.value);re()});
   document.querySelectorAll('[data-c]').forEach(x=>x.onchange=()=>{pcart[x.dataset.c].cost=num(x.value);re()});
@@ -316,6 +336,42 @@ VIEWS.buy=()=>{
     for(const l of t.lines){const it=item(l.itemId);it.cost=l.cost}db.tx.push(t);save();pcart=[];toast('Invoice saved, stock updated');render()};
   bindDel();
 };
+
+/* ---- Customers (credit sales) ---- */
+let editCust=null,stmtCust=null;
+VIEWS.cust=()=>{
+  const c=editCust?customer(editCust)||{}:{};const rec=receivables().sort((a,b)=>b.owed-a.owed);const total=rec.reduce((a,r)=>a+r.owed,0);
+  $('#app').innerHTML=`<div class="card"><h2>Customers who buy on credit · owed to you ${AED(total)}</h2>
+  ${rec.length?`<div class="tw"><table><tr><th>Customer</th><th>Phone</th><th class="n">Credit limit</th><th>Last credit sale</th><th class="n">Owes</th><th></th></tr>
+  ${rec.map(r=>`<tr><td>${esc(r.c.name)}</td><td>${esc(r.c.phone)}</td><td class="n">${r.c.limit?aed(r.c.limit):'–'}</td><td>${r.last||''}</td><td class="n ${r.c.limit&&r.owed>r.c.limit?'bad':''}"><b>${aed(r.owed)}</b></td><td><button class="s" data-st="${r.c.id}">Statement</button> <button class="s" data-ec="${r.c.id}">Edit</button></td></tr>`).join('')}
+  <tr class="tot"><td colspan="4">Total</td><td class="n">${aed(total)}</td><td></td></tr></table></div>`:'<p class="muted">No customers yet. Add one below, or from the Sell page when you choose "Credit".</p>'}</div>
+  <div id="stmt"></div>
+  <div class="card"><h2>Record a payment from a customer</h2>
+  <div class="row"><div><label>Customer</label><select id="rcust">${opts(rec.map(r=>[r.c.id,r.c.name+' (owes '+aed(r.owed)+')']))}</select></div>
+  <div><label>Amount (AED)</label><input id="ramt" type="number" step="0.01"></div><div><label>Received in</label><select id="rpay">${opts([['cash','Cash'],['bank','Bank']],'cash')}</select></div>
+  <div><label>Date</label><input type="date" id="rd" value="${today()}"></div><div><label>Note</label><input id="rnote"></div></div>
+  <div class="row" style="margin-top:10px"><div><button class="b" id="rsave" ${rec.length?'':'disabled'}>Save payment</button></div></div></div>
+  <div class="card"><h2>${editCust?'Edit customer':'Add a customer'}</h2>
+  <div class="row"><div style="flex:2"><label>Name (e.g. "Flat 1204, Ahmed")</label><input id="cn" value="${esc(c.name)}"></div><div><label>Phone / WhatsApp</label><input id="cp" value="${esc(c.phone)}"></div>
+  <div><label>Credit limit (AED, optional)</label><input id="cl" type="number" step="1" value="${c.limit||''}"></div><div><label>Balance owed at start</label><input id="cob" type="number" step="0.01" value="${c.openingBalance??0}"></div></div>
+  <div class="row" style="margin-top:10px"><div><button class="b" id="csave">${editCust?'Save changes':'Add customer'}</button> ${editCust?'<button class="s" id="ccancel">Cancel</button>':''}</div></div></div>
+  <div class="card"><h2>Recent customer payments</h2>${txTable(recent('receipt'),[{h:'Date',f:t=>t.date},{h:'Customer',f:t=>esc((customer(t.customerId)||{}).name||'?')},{h:'Into',f:t=>PAY[t.pay]},{h:'Note',f:t=>esc(t.note)},{h:'Amount',n:1,f:t=>aed(t.amount)}])}</div>`;
+  $('#rsave').onclick=()=>{const a=num($('#ramt').value);if(a<=0){toast('Enter an amount');return}db.tx.push({id:uid(),type:'receipt',date:$('#rd').value||today(),customerId:$('#rcust').value,amount:r2(a),pay:$('#rpay').value,note:$('#rnote').value.trim()});save();toast('Payment saved');render()};
+  $('#csave').onclick=()=>{const name=$('#cn').value.trim();if(!name){toast('Enter a name');return}const o={name,phone:$('#cp').value.trim(),limit:num($('#cl').value),openingBalance:num($('#cob').value)};
+    if(editCust)Object.assign(customer(editCust),o);else db.customers.push(Object.assign({id:uid()},o));editCust=null;save();toast('Saved');VIEWS.cust()};
+  if(editCust)$('#ccancel').onclick=()=>{editCust=null;VIEWS.cust()};
+  document.querySelectorAll('[data-ec]').forEach(b=>b.onclick=()=>{editCust=b.dataset.ec;VIEWS.cust()});
+  document.querySelectorAll('[data-st]').forEach(b=>b.onclick=()=>showStmt(b.dataset.st));
+  bindDel();
+};
+function showStmt(id){
+  const c=customer(id);let bal=+c.openingBalance||0;const rows=[['','Balance at start','','',bal]];
+  for(const t of db.tx.filter(t=>t.customerId===id).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0)){
+    if(t.type==='sale'&&t.pay==='credit'){const g=saleTotals(t).gross;bal+=g;rows.push([t.date,t.lines.map(l=>qfmt(l.qty)+'× '+l.name).join(', '),g,'',bal])}
+    if(t.type==='receipt'){bal-=t.amount;rows.push([t.date,'Payment received'+(t.note?' ('+t.note+')':''),'',t.amount,bal])}}
+  const html=`<h2>Statement: ${esc(c.name)}</h2><div class="tw"><table><tr><th>Date</th><th>Details</th><th class="n">Bought</th><th class="n">Paid</th><th class="n">Balance</th></tr>${rows.map(r=>`<tr><td>${r[0]}</td><td>${esc(r[1])}</td><td class="n">${r[2]===''?'':aed(r[2])}</td><td class="n">${r[3]===''?'':aed(r[3])}</td><td class="n">${aed(r[4])}</td></tr>`).join('')}<tr class="tot"><td colspan="4">Amount due</td><td class="n">${aed(bal)}</td></tr></table></div>`;
+  $('#stmt').innerHTML=`<div class="card">${html}<div class="row" style="margin-top:10px"><div><button class="s" id="stp">Print statement</button></div></div></div>`;
+  $('#stp').onclick=()=>{$('#print').innerHTML=printHead('Customer statement · '+today())+html;window.print()};$('#stmt').scrollIntoView()}
 
 /* ---- Pay suppliers ---- */
 VIEWS.pay=()=>{
@@ -557,8 +613,9 @@ function download(name,data,type){const a=document.createElement('a');a.href=URL
 function exportTx(p){
   const rows=[['Date','Type','Party / category','Reference','Paid by','Net AED','VAT AED','Total AED','Details']];
   for(const t of db.tx.filter(t=>inRange(t.date,p)).sort((a,b)=>a.date<b.date?-1:1)){
-    if(t.type==='sale'){const x=saleTotals(t);rows.push([t.date,'Sale','','',PAY[t.pay],x.net,x.vat,x.gross,t.lines.map(l=>l.qty+'x '+l.name).join('; ')])}
+    if(t.type==='sale'){const x=saleTotals(t);rows.push([t.date,'Sale',t.customerId?(customer(t.customerId)||{}).name:'','',PAY[t.pay],x.net,x.vat,x.gross,t.lines.map(l=>l.qty+'x '+l.name).join('; ')])}
     if(t.type==='purchase'){const x=purchTotals(t);rows.push([t.date,'Purchase',(supplier(t.supplierId)||{}).name,t.invoice,PAY[t.pay],x.net,x.vat,x.total,t.lines.map(l=>l.qty+'x '+((item(l.itemId)||{}).name||'')).join('; ')])}
+    if(t.type==='receipt')rows.push([t.date,'Customer payment',(customer(t.customerId)||{}).name,t.note,PAY[t.pay],t.amount,0,t.amount,''])
     if(t.type==='payment')rows.push([t.date,'Supplier payment',(supplier(t.supplierId)||{}).name,t.note,PAY[t.pay],t.amount,0,t.amount,''])
     if(t.type==='expense')rows.push([t.date,'Expense',t.category,t.note,PAY[t.pay],t.amount,t.vat,r2(t.amount+t.vat),''])
     if(t.type==='money')rows.push([t.date,'Money: '+t.kind,'',t.note,t.acct||'',t.amount,0,t.amount,''])
@@ -614,6 +671,10 @@ function demoData(){
   d.tx.push({id:uid(),type:'expense',date:addDays(td,-2),category:'Utilities (SEWA power and water)',amount:2380,vat:119,pay:'bank',note:'SEWA bill'});
   d.tx.push({id:uid(),type:'expense',date:addDays(td,-1),category:'Delivery fuel and upkeep',amount:120,vat:6,pay:'cash',note:'Petrol'});
   d.tx.push({id:uid(),type:'money',kind:'deposit',acct:'cash',amount:1500,date:addDays(td,-2),note:'Bank deposit'});
+  const cu={id:uid(),name:'Flat 1204, Ahmed',phone:'',limit:500,openingBalance:0};d.customers.push(cu);
+  d.tx.push({id:uid(),type:'sale',date:addDays(td,-4),pay:'credit',customerId:cu.id,lines:[{itemId:a[3].id,name:a[3].name,qty:2,price:a[3].price,cost:a[3].cost,vatRate:5},{itemId:a[5].id,name:a[5].name,qty:1,price:a[5].price,cost:a[5].cost,vatRate:5}]});
+  d.tx.push({id:uid(),type:'sale',date:addDays(td,-1),pay:'credit',customerId:cu.id,lines:[{itemId:a[10].id,name:a[10].name,qty:1,price:a[10].price,cost:a[10].cost,vatRate:5}]});
+  d.tx.push({id:uid(),type:'receipt',date:td,customerId:cu.id,amount:20,pay:'cash',note:'Part payment'});
   db=_db;return d}
 
 /* ============ Start ============ */

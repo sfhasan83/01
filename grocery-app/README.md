@@ -24,6 +24,7 @@ A small offline app for running the books and stock of a ~300 sq ft grocery (baq
 | **Pay suppliers** | Shows what you owe, which bills are overdue and which are due soon. Record each payment here. |
 | **Expenses** | Record rent cheques, salaries, SEWA, card fees, app commissions, fuel and so on. VAT fills in for bills that usually carry it. Correct it to match the bill. |
 | **Cash & bank** | Record bank deposits, withdrawals, money the owner puts in or takes out, and VAT payments. Use **Cash-up check** at closing to compare the drawer with the book. |
+| **Investor margin** | The investor's share is 18% of each day's sales excl. VAT. It shows in the top bar next to Cash and Bank, and on Home as today's figure, this month's figure and the amount still to pay. Record payments on **Cash & bank → Pay investor margin**. You can change the % in **Settings & backup**. **Reports** shows it by day and deducts it after net profit. |
 | **Home** | Today's and this month's sales and profit, cash and bank, amount owed, stock value, VAT due, low-stock list and alerts. |
 
 Card and delivery-app sales go straight to the **bank** balance. Cash sales go to **cash** until you record a deposit.

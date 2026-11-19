@@ -445,3 +445,34 @@ def test_history_cache_only_fetches_new_candles(monkeypatch, tmp_path):
     assert len(first) > 800 and (tmp_path / "BTCUSDT_1h.csv").exists()
     second = swings.load_history("BTCUSDT", years=0.1)
     assert calls[1] > calls[0] and len(second) == len(first)
+
+
+def test_levels_on_noise_are_honest_and_well_formed():
+    from btc_bot import levels
+    reb = brk = 0
+    for seed in range(8):
+        df = rows_to_frame(synthetic_rows(3000, seed=seed))
+        sup, res = levels.find_levels(df)
+        price = df["close"].iloc[-1]
+        assert sup and res
+        assert all(lv.price < price and lv.kind == "support" for lv in sup)
+        assert all(lv.price > price and lv.kind == "resistance" for lv in res)
+        assert [lv.price for lv in sup] == sorted((lv.price for lv in sup), reverse=True)  # nearest first
+        reb += sum(lv.rebounds for lv in sup + res)
+        brk += sum(lv.breaks for lv in sup + res)
+    # random prices must not look like they respect levels
+    assert 0.4 < reb / (reb + brk) < 0.62
+
+
+def test_level_rebound_counting():
+    from btc_bot import levels
+    # price comes down to 100 three times and bounces each time, then once breaks through
+    closes = ([110, 106, 102, 100.5, 104, 108, 112] * 3) + [110, 106, 102, 100.5, 97, 93, 90]
+    idx = pd.date_range("2026-01-01", periods=len(closes), freq="1h", tz="UTC")
+    c = np.array(closes, float)
+    df = pd.DataFrame({"open": c, "close": c, "high": c + 0.5, "low": c - 0.5, "volume": 1.0}, index=idx)
+    atr_s = pd.Series(3.0, index=idx)
+    tests, reb, brk = levels.rebound_stats(df, 100.0, 1.5, idx[0], atr_s)
+    assert (reb, brk) == (3, 1) and tests == 4
+    lv = levels.Level(100.0, "support", 3, tests, reb, brk, -1.0)
+    assert lv.rebound_rate == 0.75 and levels.level_text(lv) == "$100.00 · 3/4"

@@ -8,7 +8,8 @@ from tkinter import scrolledtext, ttk
 
 from . import TIMEFRAMES
 from .config import PROJECT_DIR, Settings, coin_name
-from .report import TV_NAMES, cmc_line, hit_rate_text, local_hhmm, money, prediction_label, price_lines, signal_badge, tpsl_badge, tpsl_text
+from .levels import level_text
+from .report import TV_NAMES, cmc_line, hit_rate_text, local_hhmm, money, levels_report, prediction_label, price_lines, signal_badge, tpsl_badge, tpsl_text
 
 COLOURS = {"UP": "#1a7f37", "DOWN": "#cf222e", "NEUTRAL": "#6e7781"}
 SIDE_COLOURS = {"LONG": "#1a7f37", "SHORT": "#cf222e"}
@@ -17,6 +18,7 @@ MUTED = "#6e7781"
 GRID = "#d0d7de"
 HEAD_BG = "#eaeef2"
 ROW_BG = ("#ffffff", "#f6f8fa")
+LEVEL_COLOURS = {"strong": "#0550ae", "medium": "#1f2328", "weak": "#6e7781"}  # blue = strong level
 
 
 class App:
@@ -24,6 +26,7 @@ class App:
         self.root, self.settings = root, settings
         self.results: queue.Queue = queue.Queue()
         self.busy = False
+        self.last_snapshot = None
 
         root.title("Crypto Movement Bot: " + ", ".join(coin_name(x) for x in settings.symbols) + " (signals only)")
         root.geometry("1600x820")
@@ -46,9 +49,10 @@ class App:
 
         # The table is a grid of labels (not a Treeview) so each cell can have its own colour,
         # and it always grows to fit every coin and timeframe.
-        heads = ("Coin", "Timeframe", "Prediction", "Bot says", "Confidence", "P(up)", "TradingView", "Agree?",
-                 "Candle closes", "Entry price", "Take profit", "Stop loss", "TP/SL result", "Last result", "Hit rate")
-        widths = (5, 8, 10, 9, 9, 6, 11, 6, 11, 11, 11, 11, 11, 18, 27)
+        heads = ("Coin", "Timeframe", "Prediction", "Bot says", "Confidence", "TradingView", "Candle closes",
+                 "Entry price", "Take profit", "Stop loss", "TP/SL result", "Last result",
+                 "Support (bounce up)", "Resistance (bounce down)")
+        widths = (5, 8, 10, 9, 9, 11, 11, 11, 11, 11, 11, 18, 20, 21)
         table = tk.Frame(root, bg=GRID, bd=1, relief="solid")
         table.pack(fill="x", padx=10)
         for c, (h, w) in enumerate(zip(heads, widths)):
@@ -96,6 +100,7 @@ class App:
         ttk.Button(bar, text="Run backtest", command=self.backtest).pack(side="left", padx=6)
         ttk.Button(bar, text="Live track record", command=self.score).pack(side="left")
         ttk.Button(bar, text="Swing times", command=self.swings).pack(side="left", padx=6)
+        ttk.Button(bar, text="Rebound levels", command=self.show_levels).pack(side="left")
         self.status = tk.StringVar(value="")
         ttk.Label(bar, textvariable=self.status).pack(side="right")
 
@@ -146,6 +151,12 @@ class App:
                         parts.append(f"== {name}: failed: {err}")
             return "\n\n".join(parts)
         self._run("text:Backtest", job)
+
+    def show_levels(self):
+        if self.last_snapshot is None:
+            self.status.set("Wait for the first update, then try again.")
+            return
+        self.popup("Rebound levels", levels_report(self.last_snapshot))
 
     def tick_swings(self):
         """Update the 'next swing window' line every 30 seconds; orange when a window is near."""
@@ -212,6 +223,7 @@ class App:
 
     # --- display ---------------------------------------------------------
     def show(self, snap):
+        self.last_snapshot = snap
         self.price_var.set("\n".join(price_lines(snap)))
         self.cmc_var.set(cmc_line(snap))
         tv_errors = {p.tv.error for p in snap.predictions if p.tv.error}
@@ -223,7 +235,7 @@ class App:
             if not row:
                 continue
             if p.error or not p.signal:
-                values = ["-", "error", "", "", "", "", "", "", "", "", "", (p.error or "")[:60], ""]
+                values = ["-", "error", "", "", "", "", "", "", "", "", (p.error or "")[:40], ""]
                 for lbl, v in zip(row[2:], values):
                     lbl.configure(text=v, fg="#9a6700", font=normal)
                 continue
@@ -236,20 +248,21 @@ class App:
             t = p.tpsl_results
             tpsl_colour = MUTED if not t or t.last_outcome in (None, "EXPIRED") else \
                 (COLOURS["UP"] if t.last_outcome == "TP" else COLOURS["DOWN"])
+            sup = p.supports[0] if p.supports else None
+            res = p.resistances[0] if p.resistances else None
             cells = [
                 (prediction_label(s), SIDE_COLOURS[side], bold),
                 (s.direction, COLOURS[s.direction], bold if s.direction != "NEUTRAL" else normal),
                 (f"{s.confidence:.0%}", TEXT, normal),
-                (f"{s.p_up:.2f}", TEXT, normal),
                 (tv, tv_colour if tv != "n/a" else MUTED, normal),
-                ({True: "yes", False: "NO", None: "-"}[p.agrees_with_tv], TEXT, normal),
                 (local_hhmm(p.target_close_time), TEXT, normal),
                 (money(p.last_close), TEXT, normal),
                 (money(p.take_profit), COLOURS["UP"], normal),
                 (money(p.stop_loss), COLOURS["DOWN"], normal),
                 (tpsl_badge(p.tpsl_results), tpsl_colour, bold if tpsl_colour != MUTED else normal),
                 (signal_badge(r), result_colour, bold if r and r.last_hit is not None else normal),
-                (hit_rate_text(r), TEXT if r and r.all_checked else MUTED, normal),
+                (level_text(sup), LEVEL_COLOURS.get(sup.strength if sup else "", MUTED), normal),
+                (level_text(res), LEVEL_COLOURS.get(res.strength if res else "", MUTED), normal),
             ]
             for lbl, (text, fg, font) in zip(row[2:], cells):
                 lbl.configure(text=text, fg=fg, font=font)
@@ -269,7 +282,7 @@ class App:
     def popup(self, title, text):
         win = tk.Toplevel(self.root)
         win.title(title)
-        win.geometry("820x480")
+        win.geometry("1150x560")
         box = scrolledtext.ScrolledText(win, font=("Consolas", 10), wrap="none")
         box.insert("1.0", text)
         box.configure(state="disabled")

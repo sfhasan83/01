@@ -9,6 +9,7 @@ import pandas as pd
 
 from . import TIMEFRAMES
 from .config import LOG_DIR, Settings, coin_name
+from . import levels as levels_mod
 from . import tpsl
 from .model import MovementModel, Signal, to_signal, training_frame
 from .sources import INTERVAL_MS, binance, coinmarketcap, drop_unfinished, mexc, tradingview
@@ -38,6 +39,8 @@ class TimeframePrediction:
     take_profit: float | None = None
     stop_loss: float | None = None
     tpsl_results: tpsl.TPSLResults | None = None
+    supports: list = field(default_factory=list)      # nearest first (levels_mod.Level)
+    resistances: list = field(default_factory=list)
 
     @property
     def side(self) -> str | None:
@@ -191,6 +194,7 @@ def predict_timeframe(settings: Settings, timeframe: str, symbol: str | None = N
         tp, sl = tpsl.levels(entry, side, atr_now, settings.sl_atr_mult, settings.tp_atr_mult)
         group = log[(log["timeframe"] == timeframe) & (log["symbol"] == symbol)] if not log.empty else log
         tpsl_results = tpsl.evaluate(group, candles, settings.tp_sl_candles)
+        supports, resistances = levels_mod.find_levels(candles)
         return TimeframePrediction(
             timeframe=timeframe,
             signal=to_signal(p_up, settings.confidence_threshold),
@@ -198,7 +202,8 @@ def predict_timeframe(settings: Settings, timeframe: str, symbol: str | None = N
             last_close_time=last_open + step,
             target_close_time=last_open + 2 * step,
             source=source, tv=tv, tv_alert=alert, results=results, symbol=symbol,
-            take_profit=tp, stop_loss=sl, tpsl_results=tpsl_results)
+            take_profit=tp, stop_loss=sl, tpsl_results=tpsl_results,
+            supports=supports, resistances=resistances)
     except Exception as err:  # noqa: BLE001
         return TimeframePrediction(timeframe, None, None, None, None, "-", tv, alert, error=str(err), symbol=symbol)
 

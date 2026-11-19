@@ -30,6 +30,7 @@ For each coin and timeframe it shows:
 | Entry price | The last closed price the prediction (and TP/SL) is measured from |
 | Take profit / Stop loss | Suggested exit prices for the LONG or SHORT, see below |
 | TP/SL result | Whether the latest finished suggestion reached **TP ✔** (green) or **SL ✘** (red) first, or **expired** |
+| Support (bounce up) / Resistance (bounce down) | The nearest rebound levels below and above the price, with how many times price rebounded out of the times it tested them (e.g. `$62,810.00 · 5/7`). Blue = strong level, grey = weak or new |
 | Last result | **YES ✔ HIT** if the bot's last prediction was right once its candle closed, **NO ✘ MISSED** if not. A NEUTRAL row is still checked by which way it leaned (P(up) above 0.5 = UP) and is marked **(lean)** |
 | Hit rate | `signals` counts only the confident UP/DOWN calls; `all` counts every prediction by its lean, e.g. `signals 3/5 (60%) · all 11/20 (55%)` |
 
@@ -105,6 +106,22 @@ have made money before fees.
 
 Change the distances in `.env`: `SL_ATR_MULT`, `TP_ATR_MULT` and `TP_SL_CANDLES`. The backtest also tests
 the TP/SL plan on the confident calls, after fees. These are suggestions only, and the bot never places orders.
+
+## Rebound levels (support and resistance)
+
+For every coin and timeframe the bot finds the price levels where price has turned before:
+
+- **Swing points**: candles whose high or low is the highest or lowest of the 5 candles on each side.
+  Swing prices within half an ATR of each other are merged into one level.
+- **Support** is a level below the current price, where price tends to **bounce up**. **Resistance** is a level above it,
+  where price tends to **bounce down**.
+- **Rebound rate**: every later time price came back to a level counts as a test. It's a **rebound** if price then
+  closed 1 ATR back the way it came before closing 1 ATR through the level, and a **break** otherwise. The two
+  distances are equal, so on random prices the rate is about 50%. Only levels clearly above 50%, with several tests,
+  mean much. "Strong" needs at least 6 finished tests and a clearly above-50% rate.
+
+The table shows the nearest support and resistance. **Rebound levels** opens the 3 nearest on each side for every
+coin and timeframe, with their swing count and full rebound record.
 
 ## Daily swing windows (5-year study)
 

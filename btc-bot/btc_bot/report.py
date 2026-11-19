@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from .config import coin_name
+from .levels import describe, level_text
 from .predictor import Snapshot
 
 ARROWS = {"UP": "▲ UP", "DOWN": "▼ DOWN", "NEUTRAL": "• NEUTRAL"}
@@ -120,6 +121,9 @@ def snapshot_text(snap: Snapshot) -> str:
                    f"(entry {money(p.last_close)}, {p.side})")
         out.append(f"{'':<16}Last result: {signal_badge(p.results)}  {result_line(p.results, p.target_close_time)}")
         out.append(f"{'':<16}TP/SL: last {tpsl_badge(p.tpsl_results)}   {tpsl_text(p.tpsl_results)}")
+        sup = p.supports[0] if p.supports else None
+        res = p.resistances[0] if p.resistances else None
+        out.append(f"{'':<16}Rebound levels: support {level_text(sup)}   resistance {level_text(res)}  (rebounds/tests)")
         if p.tv_alert:
             out.append(f"{'':<16}TradingView alert: {p.tv_alert.get('action')} at {p.tv_alert.get('received')}")
     tv_errors = {p.tv.error for p in snap.predictions if p.tv.error}
@@ -127,3 +131,22 @@ def snapshot_text(snap: Snapshot) -> str:
         out += ["", f"TradingView rating unavailable: {sorted(tv_errors)[0][:200]}"]
     out += ["", "Signals only. Short-term crypto moves are close to random; check `backtest` before trusting any call."]
     return "\n".join(out)
+
+
+def levels_report(snap: Snapshot) -> str:
+    """Full list of rebound levels for every coin and timeframe."""
+    lines = ["REBOUND LEVELS  (support = price tends to bounce UP, resistance = bounce DOWN)", "",
+             "Rebound rate = how often price bounced 1 ATR back instead of breaking 1 ATR through, on the history",
+             "the bot has loaded. On random prices this is about 50%, so only levels clearly above 50% with several",
+             "tests mean much. 'strong' needs at least 6 completed tests.", ""]
+    for p in snap.predictions:
+        if not p.signal:
+            continue
+        lines.append(f"== {p.coin} {p.timeframe}   price {money(p.last_close)}")
+        for lv in reversed(p.resistances):
+            lines.append("   " + describe(lv))
+        lines.append(f"   {'--- price':<10} ${p.last_close:>12,.2f}")
+        for lv in p.supports:
+            lines.append("   " + describe(lv))
+        lines.append("")
+    return "\n".join(lines)

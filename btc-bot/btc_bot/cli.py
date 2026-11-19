@@ -7,7 +7,7 @@ import sys
 import time
 
 from . import TIMEFRAMES
-from .config import Settings
+from .config import Settings, coin_name
 
 
 def _console_utf8():
@@ -49,13 +49,15 @@ def cmd_backtest(settings: Settings, args) -> None:
 
     candles_needed = max(settings.history_candles, args.candles)
     print("Running walk-forward backtest. This downloads history and can take a minute...\n")
-    for tf in args.timeframes:
-        try:
-            candles, source = load_candles(settings, tf, total=candles_needed)
-            res = walk_forward(candles, tf, settings.confidence_threshold, settings.fee_rate)
-            print(format_result(res) + f"\n  (data: {source})\n")
-        except Exception as err:  # noqa: BLE001
-            print(f"== {tf}: backtest failed: {err}\n")
+    for sym in settings.symbols:
+        for tf in args.timeframes:
+            name = f"{coin_name(sym)} {tf}"
+            try:
+                candles, source = load_candles(settings, tf, total=candles_needed, symbol=sym)
+                res = walk_forward(candles, name, settings.confidence_threshold, settings.fee_rate)
+                print(format_result(res) + f"\n  (data: {source})\n")
+            except Exception as err:  # noqa: BLE001
+                print(f"== {name}: backtest failed: {err}\n")
     print("Above 50% is not enough: it must beat the simple rules AND survive fees to be useful.")
 
 
@@ -84,7 +86,7 @@ def cmd_gui(settings: Settings, args) -> None:
 
 def main(argv=None) -> None:
     _console_utf8()
-    parser = argparse.ArgumentParser(prog="btc_bot", description="BTC short-term movement predictor (signals only)")
+    parser = argparse.ArgumentParser(prog="btc_bot", description="Crypto short-term movement predictor (signals only)")
     sub = parser.add_subparsers(dest="command")
     tf_help = "Timeframes to use (default: 5m 15m 1h)"
     for name, fn, help_text in [
@@ -101,7 +103,13 @@ def main(argv=None) -> None:
             p.add_argument("--timeframes", nargs="+", choices=TIMEFRAMES, default=list(TIMEFRAMES), help=tf_help)
         if name == "backtest":
             p.add_argument("--candles", type=int, default=5000, help="Candles of history per timeframe (default 5000)")
+    for p in sub.choices.values():
+        p.add_argument("--coins", nargs="+", metavar="SYMBOL",
+                       help="Override SYMBOLS from .env, e.g. --coins BTCUSDT SOLUSDT")
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
         args = parser.parse_args(["gui"])
-    args.func(Settings.load(), args)
+    settings = Settings.load()
+    if args.coins:
+        settings.symbols = [c.upper() for c in args.coins]
+    args.func(settings, args)

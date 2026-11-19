@@ -3,7 +3,7 @@
 In TradingView, create an alert and set its Webhook URL to http://<your-public-address>:8080/tradingview
 and its message to JSON like:
 
-    {"secret": "change-me", "timeframe": "{{interval}}", "action": "buy", "price": {{close}}, "note": "my strategy"}
+    {"secret": "change-me", "symbol": "{{ticker}}", "timeframe": "{{interval}}", "action": "buy", "price": {{close}}, "note": "my strategy"}
 
 TradingView can only reach your PC if it has a public address (port forwarding, or a tunnel such as
 ngrok / Cloudflare Tunnel). The latest alert per timeframe is shown next to the bot's predictions.
@@ -28,14 +28,17 @@ def normalise_timeframe(value: str) -> str:
 
 def store_alert(payload: dict) -> dict:
     tf = normalise_timeframe(payload.get("timeframe", "unknown"))
+    # TradingView's {{ticker}} is e.g. "BTCUSDT" (or "BINANCE:BTCUSDT"); no symbol means BTC
+    symbol = str(payload.get("symbol") or "BTCUSDT").split(":")[-1].upper()
+    key = f"{symbol}|{tf}"
     action = str(payload.get("action", "")).lower()
     record = {"action": action, "price": payload.get("price"), "note": payload.get("note"),
               "received": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     alerts = latest_alerts()
-    alerts[tf] = record
+    alerts[key] = record
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     ALERTS_FILE.write_text(json.dumps(alerts, indent=2), encoding="utf-8")
-    return {tf: record}
+    return {key: record}
 
 
 def make_handler(secret: str):

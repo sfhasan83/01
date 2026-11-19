@@ -1,4 +1,4 @@
-"""Pulls data from every source and produces one prediction per timeframe."""
+"""Pulls data from every source and produces one prediction per coin and timeframe."""
 from __future__ import annotations
 
 import csv
@@ -8,12 +8,17 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from . import TIMEFRAMES
-from .config import LOG_DIR, Settings
+from .config import LOG_DIR, Settings, coin_name
 from .model import MovementModel, Signal, to_signal, training_frame
 from .sources import INTERVAL_MS, binance, coinmarketcap, drop_unfinished, mexc, tradingview
 
 EXCHANGES = {"binance": binance, "mexc": mexc}
 PREDICTION_LOG = LOG_DIR / "predictions.csv"
+
+
+LOG_COLUMNS = ["created_utc", "timeframe", "source", "last_close_time_utc", "target_close_time_utc",
+               "last_close", "p_up", "direction", "confidence", "tv_recommendation", "symbol"]
+LEGACY_SYMBOL = "BTCUSDT"  # logs written before multi-coin support were all BTC
 
 
 @dataclass
@@ -28,6 +33,11 @@ class TimeframePrediction:
     tv_alert: dict | None = None
     error: str | None = None
     results: "SignalResults | None" = None
+    symbol: str = LEGACY_SYMBOL
+
+    @property
+    def coin(self) -> str:
+        return coin_name(self.symbol)
 
     @property
     def agrees_with_tv(self) -> bool | None:
@@ -76,17 +86,22 @@ def _read_log() -> pd.DataFrame:
         return pd.DataFrame()
     if log.empty:
         return log
+    if "symbol" not in log.columns:
+        log["symbol"] = LEGACY_SYMBOL
+    log["symbol"] = log["symbol"].fillna(LEGACY_SYMBOL)
     for col in ("last_close_time_utc", "target_close_time_utc"):
         log[col] = pd.to_datetime(log[col], utc=True)
     # watch mode logs the same candle many times: keep the first call made for each candle
-    return log.sort_values("created_utc").drop_duplicates(["timeframe", "target_close_time_utc"], keep="first")
+    return log.sort_values("created_utc").drop_duplicates(["symbol", "timeframe", "target_close_time_utc"],
+                                                          keep="first")
 
 
-def check_signals(log: pd.DataFrame, timeframe: str, candles: pd.DataFrame) -> pd.DataFrame:
-    """Logged predictions for this timeframe whose candle has closed, with what really happened."""
+def check_signals(log: pd.DataFrame, timeframe: str, candles: pd.DataFrame,
+                  symbol: str = LEGACY_SYMBOL) -> pd.DataFrame:
+    """Logged predictions for this coin and timeframe whose candle has closed, with what really happened."""
     if log.empty:
         return pd.DataFrame()
-    group = log[log["timeframe"] == timeframe]
+    group = log[(log["timeframe"] == timeframe) & (log["symbol"] == symbol)]
     if group.empty:
         return pd.DataFrame()
     close_by_end = candles["close"].copy()
@@ -123,46 +138,52 @@ def signal_results(checked: pd.DataFrame) -> SignalResults:
 class Snapshot:
     created: datetime
     predictions: list[TimeframePrediction]
-    prices: dict[str, float | None] = field(default_factory=dict)
+    prices: dict[str, dict[str, float | None]] = field(default_factory=dict)  # symbol -> exchange -> price
     cmc: coinmarketcap.MarketContext | None = None
 
 
-def load_candles(settings: Settings, timeframe: str, total: int | None = None) -> tuple[pd.DataFrame, str]:
+def load_candles(settings: Settings, timeframe: str, total: int | None = None,
+                 symbol: str | None = None) -> tuple[pd.DataFrame, str]:
     """Closed candles from the primary exchange, falling back to the other one."""
+    symbol = symbol or settings.symbols[0]
     order = [settings.primary_exchange] + [e for e in EXCHANGES if e != settings.primary_exchange]
     errors = []
     for name in order:
         try:
-            df = EXCHANGES[name].fetch_klines(settings.symbol, timeframe, total or settings.history_candles)
+            df = EXCHANGES[name].fetch_klines(symbol, timeframe, total or settings.history_candles)
             df = drop_unfinished(df, timeframe)
             if len(df) >= 200:
                 return df, name
             errors.append(f"{name}: only {len(df)} candles")
         except Exception as err:  # noqa: BLE001
             errors.append(f"{name}: {err}")
-    raise ConnectionError("Could not load candles. " + " | ".join(errors))
+    raise ConnectionError(f"Could not load {symbol} candles. " + " | ".join(errors))
 
 
-def predict_timeframe(settings: Settings, timeframe: str) -> TimeframePrediction:
-    tv = tradingview.fetch_rating(settings.symbol, timeframe)
-    alert = tradingview.latest_alerts().get(timeframe)
+def predict_timeframe(settings: Settings, timeframe: str, symbol: str | None = None,
+                      log: pd.DataFrame | None = None) -> TimeframePrediction:
+    symbol = symbol or settings.symbols[0]
+    tv = tradingview.fetch_rating(symbol, timeframe)
+    alerts = tradingview.latest_alerts()
+    alert = alerts.get(f"{symbol}|{timeframe}") or (alerts.get(timeframe) if symbol == LEGACY_SYMBOL else None)
     try:
-        candles, source = load_candles(settings, timeframe)
+        candles, source = load_candles(settings, timeframe, symbol=symbol)
         X, y, feats = training_frame(candles)
         model = MovementModel().fit(X, y)
         p_up = float(model.predict_up_proba(feats.iloc[[-1]])[0])
         last_open = feats.index[-1]
         step = pd.to_timedelta(INTERVAL_MS[timeframe], unit="ms")
-        results = signal_results(check_signals(_read_log(), timeframe, candles))
+        log = _read_log() if log is None else log
+        results = signal_results(check_signals(log, timeframe, candles, symbol))
         return TimeframePrediction(
             timeframe=timeframe,
             signal=to_signal(p_up, settings.confidence_threshold),
             last_close=float(candles.loc[last_open, "close"]),
             last_close_time=last_open + step,
             target_close_time=last_open + 2 * step,
-            source=source, tv=tv, tv_alert=alert, results=results)
+            source=source, tv=tv, tv_alert=alert, results=results, symbol=symbol)
     except Exception as err:  # noqa: BLE001
-        return TimeframePrediction(timeframe, None, None, None, None, "-", tv, alert, error=str(err))
+        return TimeframePrediction(timeframe, None, None, None, None, "-", tv, alert, error=str(err), symbol=symbol)
 
 
 def exchange_prices(symbol: str) -> dict[str, float | None]:
@@ -176,46 +197,70 @@ def exchange_prices(symbol: str) -> dict[str, float | None]:
 
 
 def take_snapshot(settings: Settings, timeframes=TIMEFRAMES) -> Snapshot:
-    preds = [predict_timeframe(settings, tf) for tf in timeframes]
-    base = settings.symbol.replace("USDT", "").replace("USDC", "") or "BTC"
+    log = _read_log()
+    preds = [predict_timeframe(settings, tf, sym, log) for sym in settings.symbols for tf in timeframes]
     snap = Snapshot(created=datetime.now(timezone.utc), predictions=preds,
-                    prices=exchange_prices(settings.symbol),
-                    cmc=coinmarketcap.fetch_context(settings.cmc_api_key, base))
+                    prices={sym: exchange_prices(sym) for sym in settings.symbols},
+                    cmc=coinmarketcap.fetch_context(settings.cmc_api_key,
+                                                    [coin_name(sym) for sym in settings.symbols]))
     log_snapshot(snap)
     return snap
+
+
+def _upgrade_log_header() -> None:
+    """Old logs (BTC only) had no symbol column: add it so new rows line up."""
+    try:
+        with PREDICTION_LOG.open(newline="", encoding="utf-8") as fh:
+            rows = list(csv.reader(fh))
+    except OSError:
+        return
+    if not rows or "symbol" in rows[0]:
+        return
+    width = len(rows[0])
+    with PREDICTION_LOG.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(rows[0] + ["symbol"])
+        for r in rows[1:]:
+            if r:
+                w.writerow((r + [""] * width)[:width] + [LEGACY_SYMBOL])
 
 
 def log_snapshot(snap: Snapshot) -> None:
     """Append each prediction to logs/predictions.csv so its real accuracy can be checked later."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     new = not PREDICTION_LOG.exists()
+    if not new:
+        _upgrade_log_header()
     with PREDICTION_LOG.open("a", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         if new:
-            w.writerow(["created_utc", "timeframe", "source", "last_close_time_utc", "target_close_time_utc",
-                        "last_close", "p_up", "direction", "confidence", "tv_recommendation"])
+            w.writerow(LOG_COLUMNS)
         for p in snap.predictions:
             if not p.signal:
                 continue
             w.writerow([snap.created.isoformat(timespec="seconds"), p.timeframe, p.source,
                         p.last_close_time.isoformat(), p.target_close_time.isoformat(), p.last_close,
                         round(p.signal.p_up, 4), p.signal.direction, round(p.signal.confidence, 4),
-                        p.tv.recommendation or ""])
+                        p.tv.recommendation or "", p.symbol])
 
 
 def score_log(settings: Settings) -> pd.DataFrame:
-    """Compare logged predictions with what actually happened. Returns one row per timeframe."""
+    """Compare logged predictions with what actually happened. Returns one row per coin and timeframe."""
     log = _read_log()
     if log.empty:
         return pd.DataFrame()
     rows = []
-    for tf in log["timeframe"].unique():
-        candles, _ = load_candles(settings, tf, total=1000)
-        done = check_signals(log, tf, candles)
+    for (sym, tf), _ in log.groupby(["symbol", "timeframe"], sort=True):
+        try:
+            candles, _ = load_candles(settings, tf, total=1000, symbol=sym)
+        except ConnectionError:
+            continue
+        done = check_signals(log, tf, candles, sym)
         if done.empty:
             continue
         calls = done[done["direction"] != "NEUTRAL"]
         rows.append({
+            "coin": coin_name(sym),
             "timeframe": tf,
             "checked": len(done),
             "accuracy": float(done["hit"].mean()),

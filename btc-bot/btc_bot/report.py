@@ -1,6 +1,7 @@
 """Turns a Snapshot into readable text for the console."""
 from __future__ import annotations
 
+from .config import coin_name
 from .predictor import Snapshot
 
 ARROWS = {"UP": "▲ UP", "DOWN": "▼ DOWN", "NEUTRAL": "• NEUTRAL"}
@@ -53,36 +54,51 @@ def pct(x, signed=True):
     return f"{x:+.2f}%" if signed else f"{x:.1f}%"
 
 
+def price_lines(snap: Snapshot) -> list[str]:
+    """One line per coin, e.g. 'BTC   Binance: $63,090.83   MEXC: $63,125.94'."""
+    out = []
+    for sym, by_exchange in snap.prices.items():
+        prices = "   ".join(f"{EXCHANGE_NAMES.get(k, k)}: {money(v)}" for k, v in by_exchange.items())
+        out.append(f"{coin_name(sym):<5} {prices}")
+    return out
+
+
+def cmc_line(snap: Snapshot) -> str:
+    c = snap.cmc
+    if not c:
+        return ""
+    if not c.has_data:
+        return f"CoinMarketCap: {c.error}" if c.error else ""
+    fg = f"{c.fear_greed_value} ({c.fear_greed_label})" if c.fear_greed_value is not None else "n/a"
+    coins = "   ".join(f"{name} 1h {pct(q.change_1h)} 24h {pct(q.change_24h)}" for name, q in c.coins.items())
+    return f"CoinMarketCap: {coins}   BTC dominance {pct(c.btc_dominance, False)}   Fear & Greed {fg}"
+
+
 def snapshot_text(snap: Snapshot) -> str:
-    out = [f"BTC movement forecast  ·  {snap.created.astimezone():%Y-%m-%d %H:%M:%S} (your time)", ""]
-    prices = "   ".join(f"{EXCHANGE_NAMES.get(k, k)}: {money(v)}" for k, v in snap.prices.items())
-    out.append(f"Live price   {prices}")
-    if snap.cmc:
-        c = snap.cmc
-        if c.price is not None or c.fear_greed_value is not None:
-            fg = f"{c.fear_greed_value} ({c.fear_greed_label})" if c.fear_greed_value is not None else "n/a"
-            out.append(f"CoinMarketCap  1h {pct(c.change_1h)}  24h {pct(c.change_24h)}  "
-                       f"BTC dominance {pct(c.btc_dominance, False)}  Fear & Greed {fg}")
-        if c.error:
-            out.append(f"CoinMarketCap  ({c.error})")
-    out.append("")
-    out.append(f"{'Timeframe':<10}{'Bot says':<12}{'Confidence':<12}{'P(up)':<8}{'TradingView':<14}"
-               f"{'Agree?':<8}{'For candle closing'}")
-    out.append("-" * 86)
+    out = [f"Crypto movement forecast  ·  {snap.created.astimezone():%Y-%m-%d %H:%M:%S} (your time)", ""]
+    out += price_lines(snap)
+    if cmc_line(snap):
+        out.append(cmc_line(snap))
+    header = (f"{'Coin':<6}{'Timeframe':<10}{'Bot says':<12}{'Confidence':<12}{'P(up)':<8}{'TradingView':<14}"
+              f"{'Agree?':<8}{'For candle closing'}")
+    current = None
     for p in snap.predictions:
+        if p.symbol != current:
+            current = p.symbol
+            out += ["", header, "-" * 92]
         if p.error or not p.signal:
-            out.append(f"{p.timeframe:<10}ERROR: {p.error}")
+            out.append(f"{p.coin:<6}{p.timeframe:<10}ERROR: {p.error}")
             continue
         tv = TV_NAMES.get(p.tv.recommendation or "", "n/a")
         agree = {True: "yes", False: "NO", None: "-"}[p.agrees_with_tv]
         when = local_hhmm(p.target_close_time)
-        out.append(f"{p.timeframe:<10}{ARROWS[p.signal.direction]:<12}{p.signal.confidence:<12.0%}"
+        out.append(f"{p.coin:<6}{p.timeframe:<10}{ARROWS[p.signal.direction]:<12}{p.signal.confidence:<12.0%}"
                    f"{p.signal.p_up:<8.2f}{tv:<14}{agree:<8}{when}  (from {money(p.last_close)})")
-        out.append(f"{'':<10}Last result: {signal_badge(p.results)}  {result_line(p.results, p.target_close_time)}")
+        out.append(f"{'':<16}Last result: {signal_badge(p.results)}  {result_line(p.results, p.target_close_time)}")
         if p.tv_alert:
-            out.append(f"{'':<10}TradingView alert: {p.tv_alert.get('action')} at {p.tv_alert.get('received')}")
+            out.append(f"{'':<16}TradingView alert: {p.tv_alert.get('action')} at {p.tv_alert.get('received')}")
     tv_errors = {p.tv.error for p in snap.predictions if p.tv.error}
     if tv_errors:
         out += ["", f"TradingView rating unavailable: {sorted(tv_errors)[0][:200]}"]
-    out += ["", "Signals only. Short-term BTC moves are close to random; check `backtest` before trusting any call."]
+    out += ["", "Signals only. Short-term crypto moves are close to random; check `backtest` before trusting any call."]
     return "\n".join(out)

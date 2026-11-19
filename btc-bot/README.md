@@ -1,6 +1,6 @@
-# BTC Movement Bot (Windows)
+# Crypto Movement Bot (Windows): BTC, ETH, SOL
 
-A small Windows program that predicts whether Bitcoin will go **UP** or **DOWN** over the next
+A small Windows program that predicts whether **Bitcoin (BTC), Ethereum (ETH) and Solana (SOL)** will go **UP** or **DOWN** over the next
 **5 minutes, 15 minutes and 1 hour**, using data from **Binance, MEXC, CoinMarketCap and TradingView**.
 
 > **Signals only.** The bot never logs in to an exchange and never places orders.
@@ -15,10 +15,11 @@ A small Windows program that predicts whether Bitcoin will go **UP** or **DOWN**
   "Live track record" button (or `python -m btc_bot score`) checks how they actually turned out.
 - An optional **TradingView alert receiver** (`start-webhook.bat`).
 
-For each timeframe it shows:
+For each coin and timeframe it shows:
 
 | Column | Meaning |
 |---|---|
+| Coin | BTC, ETH or SOL |
 | Bot says | `UP`, `DOWN`, or `NEUTRAL` when the bot is not sure enough |
 | Confidence | How sure the model is (50% = coin flip) |
 | P(up) | The model's probability that the candle closes higher |
@@ -28,12 +29,12 @@ For each timeframe it shows:
 | Last result | **YES ✔ HIT** if the bot's last prediction was right once its candle closed, **NO ✘ MISSED** if not. A NEUTRAL row is still checked by which way it leaned (P(up) above 0.5 = UP) and is marked **(lean)** |
 | Hit rate | `signals` counts only the confident UP/DOWN calls; `all` counts every prediction by its lean, e.g. `signals 3/5 (60%) · all 11/20 (55%)` |
 
-Under the table, a **Signal results** box shows the same thing in green (hit) or red (missed) for each timeframe,
-with the price move that decided it. Before the first candle closes it says when the first check happens
+Under the table, a **Signal results** box shows the same thing in green (hit) or red (missed), one column per coin
+and one row per timeframe. The console view (`start-watch.bat`) also prints the price move that decided each result. Before the first candle closes it says when the first check happens
 (about 5 minutes for 5m, up to an hour for 1h).
 Results are kept in `logs\predictions.csv`, so the hit rate carries over when you close and reopen the bot.
 
-Above the table you see the live price on Binance and MEXC, and from CoinMarketCap the 1h and 24h change,
+Above the table you see each coin's live price on Binance and MEXC, and from CoinMarketCap each coin's 1h and 24h change,
 BTC dominance and the Fear & Greed index.
 
 ## Setup on Windows (about 5 minutes)
@@ -45,7 +46,7 @@ BTC dominance and the Fear & Greed index.
 4. **Get a free CoinMarketCap API key** at <https://coinmarketcap.com/api/> (Basic plan).
    Open the new `.env` file in Notepad and paste it after `CMC_API_KEY=`. Save.
    (The bot still works without it; you just won't see the CoinMarketCap line.)
-5. **Double-click `start-gui.bat`.** The first update takes 20 to 40 seconds while it downloads history and trains.
+5. **Double-click `start-gui.bat`.** The first update takes about a minute while it downloads history and trains 9 models (3 coins × 3 timeframes).
 
 Binance, MEXC and TradingView need **no account or key**: the bot only reads public market data.
 
@@ -58,7 +59,7 @@ Double-click a `.bat` file, or run these in a Command Prompt inside the folder:
 | Desktop window | `start-gui.bat` | `.venv\Scripts\python -m btc_bot gui` |
 | Console, auto-refresh | `start-watch.bat` | `.venv\Scripts\python -m btc_bot watch` |
 | One forecast | | `.venv\Scripts\python -m btc_bot predict` |
-| Backtest | `backtest.bat` | `.venv\Scripts\python -m btc_bot backtest --candles 5000` |
+| Backtest | `backtest.bat` | `.venv\Scripts\python -m btc_bot backtest --candles 5000` (add `--coins SOLUSDT` for one coin) |
 | Live track record | | `.venv\Scripts\python -m btc_bot score` |
 | TradingView alerts | `start-webhook.bat` | `.venv\Scripts\python -m btc_bot webhook` |
 
@@ -67,7 +68,7 @@ Double-click a `.bat` file, or run these in a Command Prompt inside the folder:
 | Setting | Default | What it does |
 |---|---|---|
 | `CMC_API_KEY` | empty | CoinMarketCap key |
-| `SYMBOL` | `BTCUSDT` | Pair to follow on all sources |
+| `SYMBOLS` | `BTCUSDT,ETHUSDT,SOLUSDT` | Coins to follow, comma separated. Add or remove pairs here (e.g. `BTCUSDT,SOLUSDT`) |
 | `PRIMARY_EXCHANGE` | `binance` | Exchange the model learns from. If it fails, the bot switches to the other one automatically |
 | `HISTORY_CANDLES` | `3000` | Past candles used to train each timeframe |
 | `CONFIDENCE_THRESHOLD` | `0.58` | Below this the bot says NEUTRAL instead of guessing |
@@ -77,16 +78,16 @@ Double-click a `.bat` file, or run these in a Command Prompt inside the folder:
 
 ## How it works
 
-1. **Data.** Downloads the latest closed 5m, 15m and 1h candles from Binance (or MEXC as a fallback).
+1. **Data.** For each coin, downloads the latest closed 5m, 15m and 1h candles from Binance (or MEXC as a fallback).
    The candle that is still forming is ignored, so the model only sees finished candles.
 2. **Features.** Builds about 30 standard indicators from those candles: recent returns, volatility,
    RSI, MACD, distance from the 20 and 50 EMAs, Bollinger %B, ATR, candle shape, volume surprise and time of day.
-3. **Model.** For each timeframe it trains a blend of logistic regression and small gradient-boosted
+3. **Model.** For each coin and timeframe (9 in all) it trains a blend of logistic regression and small gradient-boosted
    trees (scikit-learn) on the latest candles, then predicts whether the *next* candle closes higher.
    It retrains on every refresh, so it keeps up with the market.
 4. **TradingView.** TradingView has no official public data API. The bot uses the
    [`tradingview-ta`](https://pypi.org/project/tradingview-ta/) library to read TradingView's own
-   technical rating for BINANCE:BTCUSDT on each timeframe and shows it next to the bot's call.
+   technical rating for each coin (BINANCE:BTCUSDT, ETHUSDT, SOLUSDT) on each timeframe and shows it next to the bot's call.
    It is shown for comparison and is not mixed into the bot's probability, because it can't be backtested.
 5. **CoinMarketCap.** Shows market-wide context (24h change, dominance, Fear & Greed). It is not used by
    the model either, since the free plan has no minute-by-minute history to learn from.
@@ -101,13 +102,13 @@ If you have your own TradingView strategy or indicator alerts, the bot can show 
    Webhooks need a paid TradingView plan.
 3. In the TradingView alert, set **Webhook URL** to `https://<your-tunnel-address>/tradingview` and the **Message** to:
    ```json
-   {"secret": "your WEBHOOK_SECRET", "timeframe": "{{interval}}", "action": "buy", "price": {{close}}}
+   {"secret": "your WEBHOOK_SECRET", "symbol": "{{ticker}}", "timeframe": "{{interval}}", "action": "buy", "price": {{close}}}
    ```
    Use `"action": "sell"` for sell alerts. The latest alert per timeframe appears under the forecast.
 
 ## How good are the predictions?
 
-Honestly: **not very, and nobody's are.** Over 5 to 60 minutes, Bitcoin's direction is very close to a coin flip.
+Honestly: **not very, and nobody's are.** Over 5 to 60 minutes, the direction of BTC, ETH or SOL is very close to a coin flip.
 Most of the movement is noise, any pattern that works gets traded away quickly, and fees eat small edges.
 Expect accuracy in the **50% to 55%** range, and some weeks below 50%.
 

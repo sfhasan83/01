@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -16,6 +16,17 @@ except ImportError:  # python-dotenv is optional
     pass
 
 
+DEFAULT_SYMBOLS = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
+
+
+def coin_name(symbol: str) -> str:
+    """BTCUSDT -> BTC"""
+    for quote in ("USDT", "USDC", "FDUSD", "BUSD", "USD"):
+        if symbol.endswith(quote) and len(symbol) > len(quote):
+            return symbol[: -len(quote)]
+    return symbol
+
+
 def _get(name: str, default: str) -> str:
     value = os.environ.get(name, "").strip()
     return value if value else default
@@ -24,7 +35,7 @@ def _get(name: str, default: str) -> str:
 @dataclass
 class Settings:
     cmc_api_key: str = ""
-    symbol: str = "BTCUSDT"
+    symbols: list[str] = field(default_factory=lambda: list(DEFAULT_SYMBOLS))
     primary_exchange: str = "binance"
     history_candles: int = 3000
     confidence_threshold: float = 0.58
@@ -37,7 +48,7 @@ class Settings:
     def load(cls) -> "Settings":
         s = cls(
             cmc_api_key=_get("CMC_API_KEY", ""),
-            symbol=_get("SYMBOL", "BTCUSDT").upper(),
+            symbols=[x.strip().upper() for x in _get("SYMBOLS", ",".join(DEFAULT_SYMBOLS)).split(",") if x.strip()],
             primary_exchange=_get("PRIMARY_EXCHANGE", "binance").lower(),
             history_candles=int(_get("HISTORY_CANDLES", "3000")),
             confidence_threshold=float(_get("CONFIDENCE_THRESHOLD", "0.58")),
@@ -48,6 +59,8 @@ class Settings:
         )
         if s.primary_exchange not in ("binance", "mexc"):
             raise ValueError("PRIMARY_EXCHANGE must be 'binance' or 'mexc'")
+        if not s.symbols:
+            s.symbols = list(DEFAULT_SYMBOLS)
         s.confidence_threshold = min(max(s.confidence_threshold, 0.5), 0.99)
         s.history_candles = max(s.history_candles, 500)
         s.refresh_seconds = max(s.refresh_seconds, 10)

@@ -100,15 +100,18 @@ def test_mexc_uses_60m(monkeypatch):
 def test_cmc_parsing(monkeypatch):
     def fake(url, params=None, headers=None):
         if "quotes/latest" in url and "cryptocurrency" in url:
+            assert params["symbol"] == "BTC,ETH,SOL"
             return {"data": {"BTC": [{"quote": {"USD": {"price": 90000, "percent_change_1h": 0.2,
-                                                        "percent_change_24h": -1.1, "volume_24h": 1e10}}}]}}
+                                                        "percent_change_24h": -1.1, "volume_24h": 1e10}}}],
+                             "ETH": {"quote": {"USD": {"price": 3000}}},
+                             "SOL": [{"quote": {"USD": {"price": 150}}}]}}
         if "global-metrics" in url:
             return {"data": {"btc_dominance": 58.1, "quote": {"USD": {}}}}
         return {"data": {"value": 40, "value_classification": "Fear"}}
     monkeypatch.setattr(coinmarketcap, "get_json", fake)
     monkeypatch.setattr(coinmarketcap, "_cache", {})
-    ctx = coinmarketcap.fetch_context("key")
-    assert ctx.price == 90000 and ctx.btc_dominance == 58.1 and ctx.fear_greed_label == "Fear" and not ctx.error
+    ctx = coinmarketcap.fetch_context("key", ["BTC", "ETH", "SOL"])
+    assert ctx.coins["BTC"].price == 90000 and ctx.coins["SOL"].price == 150 and ctx.btc_dominance == 58.1 and ctx.fear_greed_label == "Fear" and not ctx.error
     assert coinmarketcap.fetch_context("").error
 
 
@@ -122,17 +125,23 @@ def test_full_snapshot_with_fallback(monkeypatch, tmp_path):
         raise ConnectionError("blocked")
     monkeypatch.setattr(binance, "fetch_klines", broken)
     monkeypatch.setattr(binance, "fetch_price", broken)
-    monkeypatch.setattr(mexc, "fetch_klines", lambda s, tf, n: rows_to_frame(synthetic_rows(n, steps[tf])))
+    seeds = {"BTCUSDT": 1, "ETHUSDT": 2, "SOLUSDT": 3}
+    monkeypatch.setattr(mexc, "fetch_klines",
+                        lambda s, tf, n: rows_to_frame(synthetic_rows(n, steps[tf], seed=seeds[s])))
     monkeypatch.setattr(mexc, "fetch_price", lambda s: 61000.0)
     monkeypatch.setattr(predictor.tradingview, "fetch_rating",
                         lambda s, tf: predictor.tradingview.TVRating(recommendation="BUY"))
     snap = predictor.take_snapshot(Settings(history_candles=800))
-    assert [p.timeframe for p in snap.predictions] == ["5m", "15m", "1h"]
+    assert [(p.coin, p.timeframe) for p in snap.predictions] == [
+        (c, tf) for c in ("BTC", "ETH", "SOL") for tf in ("5m", "15m", "1h")]
     assert all(p.signal and p.source == "mexc" for p in snap.predictions)
     assert (tmp_path / "p.csv").exists()
     from btc_bot.report import snapshot_text
     text = snapshot_text(snap)
-    assert "MEXC: $61,000.00" in text
+    assert "MEXC: $61,000.00" in text and "SOL " in text and "ETH " in text
+    import csv
+    rows = list(csv.DictReader((tmp_path / "p.csv").open()))
+    assert {r["symbol"] for r in rows} == {"BTCUSDT", "ETHUSDT", "SOLUSDT"}
     print(text)
 
 
@@ -142,7 +151,7 @@ def test_webhook_store(monkeypatch, tmp_path):
     monkeypatch.setattr(webhook, "ALERTS_FILE", tmp_path / "a.json")
     monkeypatch.setattr(tradingview, "ALERTS_FILE", tmp_path / "a.json")
     webhook.store_alert({"timeframe": "15", "action": "SELL", "price": 1})
-    assert json.loads((tmp_path / "a.json").read_text())["15m"]["action"] == "sell"
+    assert json.loads((tmp_path / "a.json").read_text())["BTCUSDT|15m"]["action"] == "sell"
 
 
 def test_webhook_http_roundtrip(monkeypatch, tmp_path):
@@ -165,16 +174,16 @@ def test_webhook_http_roundtrip(monkeypatch, tmp_path):
         except urllib.error.HTTPError as e:
             return e.code
     assert post({"secret": "wrong", "timeframe": "5", "action": "buy"}) == 403
-    assert post({"secret": "s3cret", "timeframe": "5", "action": "buy"}) == 200
+    assert post({"secret": "s3cret", "symbol": "BINANCE:SOLUSDT", "timeframe": "5", "action": "buy"}) == 200
     srv.shutdown()
-    assert tradingview.latest_alerts()["5m"]["action"] == "buy"
+    assert tradingview.latest_alerts()["SOLUSDT|5m"]["action"] == "buy"
 
 
 def test_score_log(monkeypatch, tmp_path):
     monkeypatch.setattr(predictor, "LOG_DIR", tmp_path)
     monkeypatch.setattr(predictor, "PREDICTION_LOG", tmp_path / "p.csv")
     df = rows_to_frame(synthetic_rows(1000))
-    monkeypatch.setattr(predictor, "load_candles", lambda s, tf, total=None: (df, "binance"))
+    monkeypatch.setattr(predictor, "load_candles", lambda s, tf, total=None, symbol=None: (df, "binance"))
     step = pd.Timedelta(minutes=5)
     lines = ["created_utc,timeframe,source,last_close_time_utc,target_close_time_utc,last_close,p_up,"
              "direction,confidence,tv_recommendation"]
@@ -221,3 +230,32 @@ def test_signal_hit_results(monkeypatch, tmp_path):
     assert signal_badge(res) == ("YES ✔ HIT (lean)" if expected[-1][1] else "NO ✘ MISSED (lean)")
     assert "Hit rate: signals" in result_line(res)
     assert signal_badge(predictor.SignalResults()) == "waiting"
+
+
+def test_old_btc_log_is_upgraded(monkeypatch, tmp_path):
+    """A log from the BTC-only version keeps counting as BTC after ETH and SOL are added."""
+    monkeypatch.setattr(predictor, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(predictor, "PREDICTION_LOG", tmp_path / "p.csv")
+    old = ("created_utc,timeframe,source,last_close_time_utc,target_close_time_utc,last_close,p_up,"
+           "direction,confidence,tv_recommendation\n"
+           "2026-01-01T00:00:00+00:00,5m,binance,2026-01-01T00:00:00+00:00,2026-01-01T00:05:00+00:00,"
+           "60000,0.6,UP,0.6,\n")
+    (tmp_path / "p.csv").write_text(old)
+    assert set(predictor._read_log()["symbol"]) == {"BTCUSDT"}
+    sig = model.to_signal(0.3, 0.58)
+    t = pd.Timestamp("2026-01-01T00:05:00", tz="UTC")
+    pred = predictor.TimeframePrediction("5m", sig, 150.0, t, t + pd.Timedelta(minutes=5), "binance",
+                                         predictor.tradingview.TVRating(), symbol="SOLUSDT")
+    predictor.log_snapshot(predictor.Snapshot(created=t.to_pydatetime(), predictions=[pred]))
+    log = predictor._read_log()
+    assert list(log.sort_values("created_utc")["symbol"]) == ["BTCUSDT", "SOLUSDT"]
+    assert (tmp_path / "p.csv").read_text().splitlines()[0].endswith(",symbol")
+
+
+def test_coin_name_and_settings(monkeypatch):
+    from btc_bot.config import coin_name
+    assert coin_name("SOLUSDT") == "SOL" and coin_name("ETHUSDC") == "ETH"
+    monkeypatch.setenv("SYMBOLS", "btcusdt, solusdt")
+    assert Settings.load().symbols == ["BTCUSDT", "SOLUSDT"]
+    monkeypatch.delenv("SYMBOLS")
+    assert Settings.load().symbols == ["BTCUSDT", "ETHUSDT", "SOLUSDT"]

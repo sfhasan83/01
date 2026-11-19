@@ -182,6 +182,11 @@ def run_study(settings: Settings, years: int = YEARS, progress=print) -> list[Co
             progress(f"{coin_name(sym)}: skipped, could not download history from Binance ({err})")
             continue
         progress(f"{coin_name(sym)}: {len(df):,} hourly candles, finding swings...")
+        try:
+            from . import bigmoves
+            bigmoves.record(df, sym, settings.big_move_pct)  # back-fill the 2%+ hour log from 5 years
+        except OSError:
+            pass
         results.append(study(df, sym))
     save_results(results)
     return results

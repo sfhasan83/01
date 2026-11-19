@@ -46,6 +46,7 @@ class Settings:
     sl_atr_mult: float = 1.0
     tp_atr_mult: float = 1.5
     tp_sl_candles: int = 3
+    big_move_pct: float = 2.0
 
     @classmethod
     def load(cls) -> "Settings":
@@ -62,6 +63,7 @@ class Settings:
             sl_atr_mult=float(_get("SL_ATR_MULT", "1.0")),
             tp_atr_mult=float(_get("TP_ATR_MULT", "1.5")),
             tp_sl_candles=int(_get("TP_SL_CANDLES", "3")),
+            big_move_pct=float(_get("BIG_MOVE_PCT", "2.0")),
         )
         if s.primary_exchange not in ("binance", "mexc"):
             raise ValueError("PRIMARY_EXCHANGE must be 'binance' or 'mexc'")

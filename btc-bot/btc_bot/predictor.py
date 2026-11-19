@@ -9,6 +9,7 @@ import pandas as pd
 
 from . import TIMEFRAMES
 from .config import LOG_DIR, Settings, coin_name
+from . import bigmoves
 from . import levels as levels_mod
 from . import tpsl
 from .model import MovementModel, Signal, to_signal, training_frame
@@ -195,6 +196,11 @@ def predict_timeframe(settings: Settings, timeframe: str, symbol: str | None = N
         group = log[(log["timeframe"] == timeframe) & (log["symbol"] == symbol)] if not log.empty else log
         tpsl_results = tpsl.evaluate(group, candles, settings.tp_sl_candles)
         supports, resistances = levels_mod.find_levels(candles)
+        if timeframe == "1h":
+            try:
+                bigmoves.record(candles, symbol, settings.big_move_pct)
+            except OSError:  # e.g. the CSV is open in Excel; it catches up on the next refresh
+                pass
         return TimeframePrediction(
             timeframe=timeframe,
             signal=to_signal(p_up, settings.confidence_threshold),

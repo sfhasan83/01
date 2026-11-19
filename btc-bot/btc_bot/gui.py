@@ -46,6 +46,8 @@ class App:
         ttk.Label(top, textvariable=self.cmc_var).pack(anchor="w")
         self.swing_label = tk.Label(top, text="", font=("Segoe UI", 10, "bold"), fg=TEXT, anchor="w", justify="left")
         self.swing_label.pack(anchor="w", pady=(4, 0))
+        self.bigmove_label = tk.Label(top, text="", font=("Segoe UI", 10), fg=TEXT, anchor="w")
+        self.bigmove_label.pack(anchor="w")
 
         # The table is a grid of labels (not a Treeview) so each cell can have its own colour,
         # and it always grows to fit every coin and timeframe.
@@ -101,6 +103,7 @@ class App:
         ttk.Button(bar, text="Live track record", command=self.score).pack(side="left")
         ttk.Button(bar, text="Swing times", command=self.swings).pack(side="left", padx=6)
         ttk.Button(bar, text="Rebound levels", command=self.show_levels).pack(side="left")
+        ttk.Button(bar, text="Big moves (2%+)", command=self.show_bigmoves).pack(side="left", padx=6)
         self.status = tk.StringVar(value="")
         ttk.Label(bar, textvariable=self.status).pack(side="right")
 
@@ -151,6 +154,11 @@ class App:
                         parts.append(f"== {name}: failed: {err}")
             return "\n\n".join(parts)
         self._run("text:Backtest", job)
+
+    def show_bigmoves(self):
+        from .bigmoves import report_text
+
+        self.popup("Big moves", report_text(self.settings.big_move_pct))
 
     def show_levels(self):
         if self.last_snapshot is None:
@@ -224,6 +232,9 @@ class App:
     # --- display ---------------------------------------------------------
     def show(self, snap):
         self.last_snapshot = snap
+        from .bigmoves import latest_text
+
+        self.bigmove_label.configure(text=latest_text())
         self.price_var.set("\n".join(price_lines(snap)))
         self.cmc_var.set(cmc_line(snap))
         tv_errors = {p.tv.error for p in snap.predictions if p.tv.error}

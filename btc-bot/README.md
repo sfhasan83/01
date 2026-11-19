@@ -69,6 +69,7 @@ Double-click a `.bat` file, or run these in a Command Prompt inside the folder:
 | One forecast | | `.venv\Scripts\python -m btc_bot predict` |
 | Backtest | `backtest.bat` | `.venv\Scripts\python -m btc_bot backtest --candles 5000` (add `--coins SOLUSDT` for one coin) |
 | Live track record | | `.venv\Scripts\python -m btc_bot score` |
+| Big moves (2%+) | `big-moves.bat` | `.venv\Scripts\python -m btc_bot bigmoves` |
 | Daily swing windows | `swing-times.bat` | `.venv\Scripts\python -m btc_bot swings --years 5` |
 | TradingView alerts | `start-webhook.bat` | `.venv\Scripts\python -m btc_bot webhook` |
 
@@ -86,6 +87,7 @@ Double-click a `.bat` file, or run these in a Command Prompt inside the folder:
 | `FEE_RATE` | `0.001` | Fee per trade side used by the backtest (0.1%) |
 | `SL_ATR_MULT` / `TP_ATR_MULT` | `1.0` / `1.5` | Stop-loss and take-profit distance in ATRs |
 | `TP_SL_CANDLES` | `3` | Candles to wait for TP or SL before a call expires |
+| `BIG_MOVE_PCT` | `2.0` | Record hours that went this many % up or down |
 
 ## Take Profit and Stop Loss
 
@@ -122,6 +124,20 @@ For every coin and timeframe the bot finds the price levels where price has turn
 
 The table shows the nearest support and resistance. **Rebound levels** opens the 3 nearest on each side for every
 coin and timeframe, with their swing count and full rebound record.
+
+## Big moves: hours with a 2%+ move up or down
+
+The bot records every **1-hour candle** in which a coin went **2% or more UP** (high vs the hour's open) **or
+2% or more DOWN** (low vs the hour's open) in `logs\big_moves.csv`, which opens in Excel. Each row has the date
+and hour in your time zone, the coin, the direction (UP, DOWN, or BOTH if it did both), the size of each move,
+and the open-to-close change.
+
+- It starts with about 4 months of past hours on the first refresh and adds new ones as they close.
+  Running **Swing times** fills in the full 5 years.
+- The line at the top shows the latest one, e.g. `Last 2%+ hour: SOL 2026-11-19 18:00  UP +2.41%`.
+- **Big moves (2%+)** (or `big-moves.bat`) shows, for each coin: how many big hours, how many per day, UP vs DOWN,
+  the busiest hours of the day as a bar chart, and the latest 30.
+- Change the threshold with `BIG_MOVE_PCT` in `.env`.
 
 ## Daily swing windows (5-year study)
 

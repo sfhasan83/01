@@ -83,6 +83,12 @@ def cmd_swings(settings: Settings, args) -> None:
     print(report_text(results))
 
 
+def cmd_bigmoves(settings: Settings, args) -> None:
+    from .bigmoves import report_text
+
+    print(report_text(settings.big_move_pct))
+
+
 def cmd_webhook(settings: Settings, args) -> None:
     from .webhook import serve
 
@@ -106,6 +112,7 @@ def main(argv=None) -> None:
         ("backtest", cmd_backtest, "Measure past accuracy honestly (walk-forward)"),
         ("score", cmd_score, "Check how logged live predictions actually turned out"),
         ("swings", cmd_swings, "Find the daily swing windows from 5 years of data"),
+        ("bigmoves", cmd_bigmoves, "Show the hours where a coin moved 2%+ up or down"),
         ("webhook", cmd_webhook, "Receive TradingView webhook alerts"),
         ("gui", cmd_gui, "Open the desktop window"),
     ]:

@@ -132,6 +132,8 @@ def test_full_snapshot_with_fallback(monkeypatch, tmp_path):
     monkeypatch.setattr(predictor.tradingview, "fetch_rating",
                         lambda s, tf: predictor.tradingview.TVRating(recommendation="BUY"))
     monkeypatch.setattr(predictor.tradingview, "prefetch", lambda symbols, tf: None)
+    monkeypatch.setattr(predictor.bigmoves, "MOVES_FILE", tmp_path / "big.csv")
+    monkeypatch.setattr(predictor.bigmoves, "LOG_DIR", tmp_path)
     snap = predictor.take_snapshot(Settings(history_candles=800))
     assert [(p.coin, p.timeframe) for p in snap.predictions] == [
         (c, tf) for c in ("BTC", "ETH", "SOL") for tf in ("5m", "15m", "1h")]
@@ -476,3 +478,30 @@ def test_level_rebound_counting():
     assert (reb, brk) == (3, 1) and tests == 4
     lv = levels.Level(100.0, "support", 3, tests, reb, brk, -1.0)
     assert lv.rebound_rate == 0.75 and levels.level_text(lv) == "$100.00 · 3/4"
+
+
+def test_big_moves_up_or_down(monkeypatch, tmp_path):
+    from datetime import timedelta, timezone
+
+    from btc_bot import bigmoves
+    monkeypatch.setattr(bigmoves, "MOVES_FILE", tmp_path / "big.csv")
+    monkeypatch.setattr(bigmoves, "LOG_DIR", tmp_path)
+    idx = pd.date_range("2026-11-19 10:00", periods=5, freq="1h", tz="UTC")
+    df = pd.DataFrame({
+        "open":  [100, 100, 100, 100, 100],
+        "high":  [102.5, 101, 101.0, 102.1, 101.5],   # +2.5%, +1%, +1%, +2.1%, +1.5%
+        "low":   [99.5, 97.5, 99.0, 97.9, 98.6],     # -0.5%, -2.5%, -1%, -2.1%, -1.4%
+        "close": [102, 98, 100, 100, 99],
+        "volume": 1.0}, index=idx)
+    tz = timezone(timedelta(hours=4))
+    rows = bigmoves.detect(df, "SOLUSDT", 2.0, tz)
+    # hour 3 moved 1% each way (2% range) but never 2% in one direction: not recorded
+    assert list(rows["direction"]) == ["UP", "DOWN", "BOTH"]
+    assert list(rows["local_hour"]) == [14, 15, 17] and set(rows["coin"]) == {"SOL"}
+    assert bigmoves.record(df, "SOLUSDT", 2.0, tz) == 3
+    assert bigmoves.record(df, "SOLUSDT", 2.0, tz) == 0  # never duplicated
+    assert bigmoves.record(df, "BTCUSDT", 2.0, tz) == 3  # other coins are separate
+    text = bigmoves.report_text(2.0)
+    assert "== SOL: 3 big hours" in text and "1 UP, 1 DOWN, 1 both ways" in text
+    assert "DOWN -2.50%" in text
+    assert bigmoves.latest_text().startswith("Last 2%+ hour:")

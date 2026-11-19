@@ -67,7 +67,7 @@ def prefetch(symbols: list[str], interval: str, exchange: str = "BINANCE") -> No
         from tradingview_ta import get_multiple_analysis
 
         result = get_multiple_analysis(screener="crypto", interval=_interval_obj(interval),
-                                       symbols=[f"{exchange}:{s}" for s in symbols], timeout=15)
+                                       symbols=[f"{exchange}:{s}" for s in symbols], timeout=8)
         for s in symbols:
             analysis = result.get(f"{exchange}:{s}")
             if analysis is None:

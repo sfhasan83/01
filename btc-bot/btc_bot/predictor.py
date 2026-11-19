@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import csv
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -17,6 +19,11 @@ from .sources import INTERVAL_MS, binance, coinmarketcap, drop_unfinished, mexc,
 
 EXCHANGES = {"binance": binance, "mexc": mexc}
 PREDICTION_LOG = LOG_DIR / "predictions.csv"
+CACHE_DIR = LOG_DIR / "cache"   # recent candles per exchange/coin/timeframe, so restarts only fetch new ones
+_candles: dict[tuple[str, str, str], pd.DataFrame] = {}
+_models: dict[tuple[str, str], tuple[pd.Timestamp, float]] = {}  # (symbol, tf) -> (last candle, p_up)
+_cache_lock = threading.Lock()
+_log_lock = threading.Lock()
 
 
 LOG_COLUMNS = ["created_utc", "timeframe", "source", "last_close_time_utc", "target_close_time_utc",
@@ -156,16 +163,68 @@ class Snapshot:
     cmc: coinmarketcap.MarketContext | None = None
 
 
+def _cache_path(exchange: str, symbol: str, timeframe: str):
+    return CACHE_DIR / f"{exchange}_{symbol}_{timeframe}.csv"
+
+
+def _cached(exchange: str, symbol: str, timeframe: str) -> pd.DataFrame | None:
+    key = (exchange, symbol, timeframe)
+    with _cache_lock:
+        if key in _candles:
+            return _candles[key]
+    path = _cache_path(exchange, symbol, timeframe)
+    try:
+        df = pd.read_csv(path, index_col=0)
+        df.index = pd.to_datetime(df.index, utc=True)
+        return df
+    except (OSError, ValueError):
+        return None
+
+
+def _store(exchange: str, symbol: str, timeframe: str, df: pd.DataFrame, changed: bool) -> None:
+    with _cache_lock:
+        _candles[(exchange, symbol, timeframe)] = df
+    if changed:
+        try:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            df.to_csv(_cache_path(exchange, symbol, timeframe))
+        except OSError:
+            pass
+
+
+def _fetch_recent(exchange: str, symbol: str, timeframe: str, need: int) -> pd.DataFrame:
+    """Latest `need` closed candles, downloading only what is missing from the saved copy."""
+    mod = EXCHANGES[exchange]
+    cached = _cached(exchange, symbol, timeframe)
+    step = pd.to_timedelta(INTERVAL_MS[timeframe], unit="ms")
+    if cached is not None and len(cached) >= min(need, 200):
+        missing = int((pd.Timestamp.now(tz="UTC") - cached.index[-1]) / step) + 2
+        if missing <= 1000:
+            new = drop_unfinished(mod.fetch_klines(symbol, timeframe, missing), timeframe)
+            df = pd.concat([cached, new[cached.columns.intersection(new.columns)]])
+            df = df[~df.index.duplicated(keep="last")].sort_index().tail(need)
+            _store(exchange, symbol, timeframe, df, changed=df.index[-1] != cached.index[-1])
+            return df
+    df = drop_unfinished(mod.fetch_klines(symbol, timeframe, need), timeframe)
+    _store(exchange, symbol, timeframe, df, changed=True)
+    return df
+
+
 def load_candles(settings: Settings, timeframe: str, total: int | None = None,
                  symbol: str | None = None) -> tuple[pd.DataFrame, str]:
-    """Closed candles from the primary exchange, falling back to the other one."""
+    """Closed candles from the primary exchange, falling back to the other one.
+
+    The normal amount (HISTORY_CANDLES) is kept in memory and in logs/cache, so after the first run
+    only the few new candles are downloaded. Bigger requests (backtests) always download fresh."""
     symbol = symbol or settings.symbols[0]
     order = [settings.primary_exchange] + [e for e in EXCHANGES if e != settings.primary_exchange]
     errors = []
     for name in order:
         try:
-            df = EXCHANGES[name].fetch_klines(symbol, timeframe, total or settings.history_candles)
-            df = drop_unfinished(df, timeframe)
+            if total is None or total <= settings.history_candles:
+                df = _fetch_recent(name, symbol, timeframe, total or settings.history_candles)
+            else:
+                df = drop_unfinished(EXCHANGES[name].fetch_klines(symbol, timeframe, total), timeframe)
             if len(df) >= 200:
                 return df, name
             errors.append(f"{name}: only {len(df)} candles")
@@ -175,17 +234,22 @@ def load_candles(settings: Settings, timeframe: str, total: int | None = None,
 
 
 def predict_timeframe(settings: Settings, timeframe: str, symbol: str | None = None,
-                      log: pd.DataFrame | None = None) -> TimeframePrediction:
+                      log: pd.DataFrame | None = None, with_tv: bool = True) -> TimeframePrediction:
     symbol = symbol or settings.symbols[0]
-    tv = tradingview.fetch_rating(symbol, timeframe)
+    tv = tradingview.fetch_rating(symbol, timeframe) if with_tv else tradingview.TVRating()
     alerts = tradingview.latest_alerts()
     alert = alerts.get(f"{symbol}|{timeframe}") or (alerts.get(timeframe) if symbol == LEGACY_SYMBOL else None)
     try:
         candles, source = load_candles(settings, timeframe, symbol=symbol)
         X, y, feats = training_frame(candles)
-        model = MovementModel().fit(X, y)
-        p_up = float(model.predict_up_proba(feats.iloc[[-1]])[0])
         last_open = feats.index[-1]
+        cached_model = _models.get((symbol, timeframe))
+        if cached_model and cached_model[0] == last_open:
+            p_up = cached_model[1]  # no new candle since the last refresh: same answer, no retraining
+        else:
+            model = MovementModel().fit(X, y)
+            p_up = float(model.predict_up_proba(feats.iloc[[-1]])[0])
+            _models[(symbol, timeframe)] = (last_open, p_up)
         step = pd.to_timedelta(INTERVAL_MS[timeframe], unit="ms")
         log = _read_log() if log is None else log
         results = signal_results(check_signals(log, timeframe, candles, symbol))
@@ -225,14 +289,24 @@ def exchange_prices(symbol: str) -> dict[str, float | None]:
 
 
 def take_snapshot(settings: Settings, timeframes=TIMEFRAMES) -> Snapshot:
+    """Everything is fetched in parallel: candles + models for each coin/timeframe, TradingView,
+    CoinMarketCap and live prices."""
     log = _read_log()
-    for tf in timeframes:  # one TradingView request per timeframe for all coins
-        tradingview.prefetch(settings.symbols, tf)
-    preds = [predict_timeframe(settings, tf, sym, log) for sym in settings.symbols for tf in timeframes]
-    snap = Snapshot(created=datetime.now(timezone.utc), predictions=preds,
-                    prices={sym: exchange_prices(sym) for sym in settings.symbols},
-                    cmc=coinmarketcap.fetch_context(settings.cmc_api_key,
-                                                    [coin_name(sym) for sym in settings.symbols]))
+    combos = [(sym, tf) for sym in settings.symbols for tf in timeframes]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        tv_jobs = [pool.submit(tradingview.prefetch, settings.symbols, tf) for tf in timeframes]
+        price_jobs = {sym: pool.submit(exchange_prices, sym) for sym in settings.symbols}
+        cmc_job = pool.submit(coinmarketcap.fetch_context, settings.cmc_api_key,
+                              [coin_name(sym) for sym in settings.symbols])
+        pred_jobs = [pool.submit(predict_timeframe, settings, tf, sym, log, False) for sym, tf in combos]
+        preds = [j.result() for j in pred_jobs]
+        for j in tv_jobs:
+            j.result()
+        prices = {sym: j.result() for sym, j in price_jobs.items()}
+        cmc = cmc_job.result()
+    for p in preds:  # TradingView answers are cached by now
+        p.tv = tradingview.fetch_rating(p.symbol, p.timeframe)
+    snap = Snapshot(created=datetime.now(timezone.utc), predictions=preds, prices=prices, cmc=cmc)
     log_snapshot(snap)
     return snap
 
@@ -263,6 +337,11 @@ def _upgrade_log_header() -> None:
 def log_snapshot(snap: Snapshot) -> None:
     """Append each prediction to logs/predictions.csv so its real accuracy can be checked later."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with _log_lock:
+        _write_log(snap)
+
+
+def _write_log(snap: Snapshot) -> None:
     new = not PREDICTION_LOG.exists()
     if not new:
         _upgrade_log_header()

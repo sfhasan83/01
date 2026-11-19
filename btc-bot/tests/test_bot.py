@@ -2,11 +2,20 @@
 import json
 
 import numpy as np
+import pytest
 import pandas as pd
 
 from btc_bot import backtest, features, model, predictor, webhook
 from btc_bot.config import Settings
 from btc_bot.sources import binance, coinmarketcap, drop_unfinished, mexc, rows_to_frame
+
+
+@pytest.fixture(autouse=True)
+def _fresh_caches(monkeypatch, tmp_path):
+    """Keep the candle/model caches and their files out of the real logs folder."""
+    monkeypatch.setattr(predictor, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(predictor, "_candles", {})
+    monkeypatch.setattr(predictor, "_models", {})
 
 
 def synthetic_rows(n=3000, step_ms=300_000, seed=1, drift=0.0):
@@ -505,3 +514,28 @@ def test_big_moves_up_or_down(monkeypatch, tmp_path):
     assert "== SOL: 3 big hours" in text and "1 UP, 1 DOWN, 1 both ways" in text
     assert "DOWN -2.50%" in text
     assert bigmoves.latest_text().startswith("Last 2%+ hour:")
+
+
+def test_candle_cache_only_downloads_new_candles(monkeypatch, tmp_path):
+    rows = synthetic_rows(3000)
+    full = rows_to_frame(rows)
+    asked = []
+    clock = {"now": full.index[-100] + pd.Timedelta(minutes=5)}
+
+    def fake_fetch(symbol, tf, n):
+        asked.append(n)
+        avail = full[full.index < clock["now"]]
+        return avail.tail(n)
+    monkeypatch.setattr(binance, "fetch_klines", fake_fetch)
+    monkeypatch.setattr(predictor, "drop_unfinished", lambda df, tf: df)
+    monkeypatch.setattr(pd.Timestamp, "now", classmethod(lambda cls, tz=None: clock["now"]))
+    st = Settings(history_candles=1000)
+    first, _ = predictor.load_candles(st, "5m", symbol="BTCUSDT")
+    assert asked == [1000] and len(first) == 1000
+    clock["now"] += pd.Timedelta(minutes=15)  # three new candles
+    second, _ = predictor.load_candles(st, "5m", symbol="BTCUSDT")
+    assert asked[1] <= 6 and len(second) == 1000 and second.index[-1] == first.index[-1] + pd.Timedelta(minutes=15)
+    # a restart (empty memory) reads the saved copy and again downloads only the gap
+    monkeypatch.setattr(predictor, "_candles", {})
+    third, _ = predictor.load_candles(st, "5m", symbol="BTCUSDT")
+    assert asked[2] <= 3 and third.index[-1] == second.index[-1]

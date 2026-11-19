@@ -12,6 +12,7 @@ Saved to logs/big_moves.csv, one row per coin per hour, never duplicated. It is 
 """
 from __future__ import annotations
 
+import threading
 from datetime import datetime
 
 import numpy as np
@@ -20,6 +21,7 @@ import pandas as pd
 from .config import LOG_DIR, coin_name
 
 MOVES_FILE = LOG_DIR / "big_moves.csv"
+_lock = threading.Lock()
 COLUMNS = ["time_utc", "local_time", "local_hour", "weekday", "coin", "direction", "up_pct", "down_pct",
            "change_pct", "open", "high", "low", "close"]
 
@@ -67,6 +69,11 @@ def load() -> pd.DataFrame:
 
 def record(candles: pd.DataFrame, symbol: str, threshold_pct: float, tz=None) -> int:
     """Add any new big-move hours to the log. Returns how many were added."""
+    with _lock:
+        return _record(candles, symbol, threshold_pct, tz)
+
+
+def _record(candles: pd.DataFrame, symbol: str, threshold_pct: float, tz=None) -> int:
     new = detect(candles, symbol, threshold_pct, tz)
     if new.empty:
         return 0

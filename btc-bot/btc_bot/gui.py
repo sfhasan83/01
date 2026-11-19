@@ -8,8 +8,8 @@ from tkinter import scrolledtext, ttk
 
 from . import TIMEFRAMES
 from .config import PROJECT_DIR, Settings, coin_name
-from .levels import level_text
-from .report import TV_NAMES, cmc_line, hit_rate_text, local_hhmm, money, levels_report, prediction_label, price_lines, signal_badge, tpsl_badge, tpsl_text
+# Heavy modules (pandas, scikit-learn, the data sources) are imported in the background after the
+# window is on screen, so the bot opens instantly instead of after several seconds.
 
 COLOURS = {"UP": "#1a7f37", "DOWN": "#cf222e", "NEUTRAL": "#6e7781"}
 SIDE_COLOURS = {"LONG": "#1a7f37", "SHORT": "#cf222e"}
@@ -73,6 +73,7 @@ class App:
                     row.append(lbl)
                 row[0].configure(text=coin_name(sym), font=("Segoe UI", 10, "bold"))
                 row[1].configure(text=tf)
+                row[2].configure(text="loading...", fg=MUTED)
                 self.cells[(sym, tf)] = row
                 r += 1
 
@@ -112,7 +113,6 @@ class App:
             "so even a good model is wrong very often. Check the backtest before trusting any call.")).pack(anchor="w")
 
         self.root.after(200, self.refresh)
-        self.root.after(300, self.tick_swings)
         self.root.after(500, self.poll)
 
     # --- background work -------------------------------------------------
@@ -128,16 +128,22 @@ class App:
         if self.busy:
             return
         self.busy = True
-        self.status.set("Updating...")
-        from .predictor import take_snapshot
-        self._run("snapshot", lambda: take_snapshot(self.settings))
+        self.status.set("Updating..." if self.last_snapshot else
+                        "Starting: downloading prices and training (first start takes longest)...")
+
+        def job():
+            from .predictor import take_snapshot  # imported here, off the window's thread
+
+            return take_snapshot(self.settings)
+        self._run("snapshot", job)
 
     def backtest(self):
         self.status.set("Backtesting (a few minutes for all coins)...")
-        from .backtest import format_result, walk_forward
-        from .predictor import load_candles
 
         def job():
+            from .backtest import format_result, walk_forward
+            from .predictor import load_candles
+
             parts = []
             for sym in self.settings.symbols:
                 for tf in TIMEFRAMES:
@@ -164,6 +170,8 @@ class App:
         if self.last_snapshot is None:
             self.status.set("Wait for the first update, then try again.")
             return
+        from .report import levels_report
+
         self.popup("Rebound levels", levels_report(self.last_snapshot))
 
     def tick_swings(self):
@@ -216,7 +224,10 @@ class App:
                     if err:
                         self.status.set(f"Update failed: {err}")
                     else:
+                        first = self.last_snapshot is None
                         self.show(value)
+                        if first:
+                            self.tick_swings()
                     self.root.after(self.settings.refresh_seconds * 1000, self.refresh)
                 elif kind == "status":
                     self.status.set(value)
@@ -231,6 +242,10 @@ class App:
 
     # --- display ---------------------------------------------------------
     def show(self, snap):
+        from .levels import level_text
+        from .report import (TV_NAMES, cmc_line, hit_rate_text, local_hhmm, money, prediction_label, price_lines,
+                             signal_badge, tpsl_badge, tpsl_text)
+
         self.last_snapshot = snap
         from .bigmoves import latest_text
 

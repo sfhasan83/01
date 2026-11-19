@@ -300,3 +300,24 @@ def test_tradingview_batches_and_backs_off(monkeypatch):
     assert len(calls) == n  # backing off
     tv._cache.clear()
     assert "429" in tv.fetch_rating("BTCUSDT", "5m").error
+
+
+def test_tradingview_empty_answer_backs_off(monkeypatch):
+    import sys
+    import types
+
+    from btc_bot.sources import tradingview as tv
+    for name in ("_cache", "_blocked_until", "_last_error"):
+        monkeypatch.setattr(tv, name, {})
+    calls = []
+
+    def fake_multi(screener, interval, symbols, timeout=None):
+        calls.append(1)
+        raise ValueError("Expecting value: line 1 column 1 (char 0)")
+    monkeypatch.setitem(sys.modules, "tradingview_ta", types.SimpleNamespace(
+        get_multiple_analysis=fake_multi, Interval=types.SimpleNamespace(
+            INTERVAL_5_MINUTES="5m", INTERVAL_15_MINUTES="15m", INTERVAL_1_HOUR="1h")))
+    err = tv.fetch_rating("BTCUSDT", "5m").error
+    assert "empty answer" in err and "10 minutes" in err
+    tv.fetch_rating("ETHUSDT", "5m")
+    assert len(calls) == 1

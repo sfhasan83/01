@@ -43,11 +43,14 @@ BTC dominance and the Fear & Greed index.
 1. **Install Python 3.10 or newer** from <https://www.python.org/downloads/>.
    On the first installer screen tick **"Add python.exe to PATH"**.
 2. **Download this folder**: on GitHub click **Code → Download ZIP**, unzip it, and open the `btc-bot` folder.
-3. **Double-click `setup.bat`.** It creates a private Python environment in `.venv` and installs everything.
+3. **Double-click `setup.bat`.** It creates a private Python environment in `.venv`, installs everything,
+   and puts a **Crypto Movement Bot** icon on your Desktop. (If Windows shows "Windows protected your PC",
+   click **More info → Run anyway**.)
 4. **Get a free CoinMarketCap API key** at <https://coinmarketcap.com/api/> (Basic plan).
    Open the new `.env` file in Notepad and paste it after `CMC_API_KEY=`. Save.
    (The bot still works without it; you just won't see the CoinMarketCap line.)
-5. **Double-click `start-gui.bat`.** The first update takes about a minute while it downloads history and trains 9 models (3 coins × 3 timeframes).
+5. **Double-click the "Crypto Movement Bot" icon** that setup put on your Desktop (also in the Start menu).
+   If the icon is missing, double-click `create-shortcut.bat` to make it again, or use `start-gui.bat`. The first update takes about a minute while it downloads history and trains 9 models (3 coins × 3 timeframes).
 
 Binance, MEXC and TradingView need **no account or key**: the bot only reads public market data.
 
@@ -57,7 +60,7 @@ Double-click a `.bat` file, or run these in a Command Prompt inside the folder:
 
 | What | Double-click | Or type |
 |---|---|---|
-| Desktop window | `start-gui.bat` | `.venv\Scripts\python -m btc_bot gui` |
+| Desktop window | Desktop icon, or `start-gui.bat` | `.venv\Scripts\python -m btc_bot gui` |
 | Console, auto-refresh | `start-watch.bat` | `.venv\Scripts\python -m btc_bot watch` |
 | One forecast | | `.venv\Scripts\python -m btc_bot predict` |
 | Backtest | `backtest.bat` | `.venv\Scripts\python -m btc_bot backtest --candles 5000` (add `--coins SOLUSDT` for one coin) |

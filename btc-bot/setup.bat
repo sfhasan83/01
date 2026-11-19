@@ -9,6 +9,9 @@ call .venv\Scripts\python.exe -m pip install --upgrade pip
 call .venv\Scripts\python.exe -m pip install -r requirements.txt || (echo Installing packages failed. & pause & exit /b 1)
 if not exist .env copy .env.example .env >nul
 echo.
-echo Done. Open the .env file in Notepad and paste your CoinMarketCap API key.
-echo Then double-click start-gui.bat (window) or start-watch.bat (console).
+echo Creating a "Crypto Movement Bot" icon on your Desktop...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0create-shortcut.ps1"
+echo.
+echo Done. Your CoinMarketCap key goes in the .env file (open it with Notepad).
+echo Start the bot any time by double-clicking "Crypto Movement Bot" on your Desktop.
 pause

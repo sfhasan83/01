@@ -84,6 +84,12 @@ def prefetch(symbols: list[str], interval: str, exchange: str = "BINANCE") -> No
         if "429" in msg:
             _blocked_until[interval] = now + BACKOFF_SECONDS
             msg = "TradingView is limiting requests (HTTP 429); trying again in 10 minutes"
+        elif "Expecting value" in msg or "JSON" in msg:
+            # TradingView answered with an empty or non-JSON page, usually its way of turning away
+            # automated requests for a while
+            _blocked_until[interval] = now + BACKOFF_SECONDS
+            msg = ("TradingView sent back an empty answer (it is probably limiting requests from your "
+                   "connection); trying again in 10 minutes")
         else:
             _blocked_until[interval] = now + 120
         _last_error[interval] = msg

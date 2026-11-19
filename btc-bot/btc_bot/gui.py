@@ -7,11 +7,16 @@ import tkinter as tk
 from tkinter import scrolledtext, ttk
 
 from . import TIMEFRAMES
-from .config import Settings, coin_name
+from .config import PROJECT_DIR, Settings, coin_name
 from .report import TV_NAMES, cmc_line, hit_rate_text, local_hhmm, money, prediction_label, price_lines, signal_badge
 
 COLOURS = {"UP": "#1a7f37", "DOWN": "#cf222e", "NEUTRAL": "#6e7781"}
 SIDE_COLOURS = {"LONG": "#1a7f37", "SHORT": "#cf222e"}
+TEXT = "#1f2328"
+MUTED = "#6e7781"
+GRID = "#d0d7de"
+HEAD_BG = "#eaeef2"
+ROW_BG = ("#ffffff", "#f6f8fa")
 
 
 class App:
@@ -21,8 +26,14 @@ class App:
         self.busy = False
 
         root.title("Crypto Movement Bot: " + ", ".join(coin_name(x) for x in settings.symbols) + " (signals only)")
-        root.geometry("1400x700")
+        root.geometry("1420x780")
         root.minsize(760, 360)
+        icon = PROJECT_DIR / "bot.ico"
+        if icon.exists():
+            try:
+                root.iconbitmap(default=str(icon))
+            except tk.TclError:  # .ico files only work on Windows
+                pass
 
         top = ttk.Frame(root, padding=10)
         top.pack(fill="x")
@@ -31,18 +42,31 @@ class App:
         ttk.Label(top, textvariable=self.price_var, font=("Segoe UI", 11, "bold"), justify="left").pack(anchor="w")
         ttk.Label(top, textvariable=self.cmc_var).pack(anchor="w")
 
-        cols = ("coin", "tf", "side", "call", "conf", "pup", "tv", "agree", "closes", "from", "last", "rate")
+        # The table is a grid of labels (not a Treeview) so each cell can have its own colour,
+        # and it always grows to fit every coin and timeframe.
         heads = ("Coin", "Timeframe", "Prediction", "Bot says", "Confidence", "P(up)", "TradingView", "Agree?",
                  "For candle closing", "From price", "Last result", "Hit rate")
-        self.tree = ttk.Treeview(root, columns=cols, show="headings", height=len(TIMEFRAMES) * len(settings.symbols))
-        for c, h in zip(cols, heads):
-            self.tree.heading(c, text=h)
-            self.tree.column(c, width={"coin": 60, "tf": 75, "side": 100, "last": 150, "rate": 240}.get(c, 92), anchor="center")
-        # Rows are coloured by the prediction: green = LONG, red = SHORT
-        for side, colour in SIDE_COLOURS.items():
-            self.tree.tag_configure(side, foreground=colour, font=("Segoe UI", 11, "bold"))
-        self.tree.tag_configure("ERR", foreground="#9a6700")
-        self.tree.pack(fill="x", padx=10)
+        widths = (6, 9, 11, 10, 10, 7, 12, 7, 15, 13, 20, 30)
+        table = tk.Frame(root, bg=GRID, bd=1, relief="solid")
+        table.pack(fill="x", padx=10)
+        for c, (h, w) in enumerate(zip(heads, widths)):
+            tk.Label(table, text=h, width=w, bg=HEAD_BG, fg=TEXT, font=("Segoe UI", 10, "bold"),
+                     padx=4, pady=4).grid(row=0, column=c, sticky="nsew", padx=(0, 1), pady=(0, 1))
+            table.grid_columnconfigure(c, weight=1)
+        self.cells: dict[tuple[str, str], list[tk.Label]] = {}
+        r = 1
+        for i, sym in enumerate(settings.symbols):
+            bg = ROW_BG[i % 2]  # shade alternate coins so the groups are easy to tell apart
+            for tf in TIMEFRAMES:
+                row = []
+                for c, w in enumerate(widths):
+                    lbl = tk.Label(table, text="", width=w, bg=bg, fg=TEXT, font=("Segoe UI", 10), padx=4, pady=3)
+                    lbl.grid(row=r, column=c, sticky="nsew", padx=(0, 1), pady=(0, 1))
+                    row.append(lbl)
+                row[0].configure(text=coin_name(sym), font=("Segoe UI", 10, "bold"))
+                row[1].configure(text=tf)
+                self.cells[(sym, tf)] = row
+                r += 1
 
         self.tv_note = ttk.Label(root, text="", foreground="#9a6700", padding=(10, 2, 10, 0))
         self.tv_note.pack(anchor="w")
@@ -51,17 +75,17 @@ class App:
         box = ttk.LabelFrame(root, text="Signal results (checked when each candle closes)", padding=8)
         box.pack(fill="x", padx=10, pady=(8, 0))
         self.result_labels = {}
-        for col, sym in enumerate(settings.symbols):
-            ttk.Label(box, text=coin_name(sym), font=("Segoe UI", 11, "bold")).grid(
-                row=0, column=col * 3, columnspan=3, sticky="w", padx=(0 if col == 0 else 24, 0))
+        for sym in settings.symbols:
+            col = ttk.Frame(box)
+            col.pack(side="left", fill="x", expand=True, anchor="n")
+            ttk.Label(col, text=coin_name(sym), font=("Segoe UI", 11, "bold")).grid(row=0, column=0, columnspan=3, sticky="w")
             for r, tf in enumerate(TIMEFRAMES, start=1):
-                pad = (0 if col == 0 else 24, 4)
-                ttk.Label(box, text=tf, width=4).grid(row=r, column=col * 3, sticky="w", padx=pad)
-                badge = tk.Label(box, text="waiting", width=18, font=("Segoe UI", 10, "bold"),
+                ttk.Label(col, text=tf, width=4).grid(row=r, column=0, sticky="w")
+                badge = tk.Label(col, text="waiting", width=17, font=("Segoe UI", 10, "bold"),
                                  fg="white", bg=COLOURS["NEUTRAL"])
-                badge.grid(row=r, column=col * 3 + 1, sticky="w", pady=1)
-                detail = ttk.Label(box, text="-", width=34)
-                detail.grid(row=r, column=col * 3 + 2, sticky="w", padx=(6, 0))
+                badge.grid(row=r, column=1, sticky="w", pady=1)
+                detail = ttk.Label(col, text="-")
+                detail.grid(row=r, column=2, sticky="w", padx=(6, 12))
                 self.result_labels[(sym, tf)] = (badge, detail)
 
         bar = ttk.Frame(root, padding=10)
@@ -149,20 +173,37 @@ class App:
         self.cmc_var.set(cmc_line(snap))
         tv_errors = {p.tv.error for p in snap.predictions if p.tv.error}
         self.tv_note.configure(text=f"TradingView rating unavailable: {sorted(tv_errors)[0][:160]}" if tv_errors else "")
-        self.tree.delete(*self.tree.get_children())
+        bold = ("Segoe UI", 10, "bold")
+        normal = ("Segoe UI", 10)
         for p in snap.predictions:
+            row = self.cells.get((p.symbol, p.timeframe))
+            if not row:
+                continue
             if p.error or not p.signal:
-                self.tree.insert("", "end", values=(p.coin, p.timeframe, "-", "error", "", "", "", "", "", p.error, "", ""),
-                                 tags=("ERR",))
+                values = ["-", "error", "", "", "", "", "", "", (p.error or "")[:60], ""]
+                for lbl, v in zip(row[2:], values):
+                    lbl.configure(text=v, fg="#9a6700", font=normal)
                 continue
             s = p.signal
+            r = p.results
             side = "LONG" if s.p_up > 0.5 else "SHORT"
-            self.tree.insert("", "end", tags=(side,), values=(
-                p.coin, p.timeframe, prediction_label(s), s.direction, f"{s.confidence:.0%}", f"{s.p_up:.2f}",
-                TV_NAMES.get(p.tv.recommendation or "", "n/a"),
-                {True: "yes", False: "NO", None: "-"}[p.agrees_with_tv],
-                local_hhmm(p.target_close_time), money(p.last_close),
-                signal_badge(p.results), hit_rate_text(p.results)))
+            tv = TV_NAMES.get(p.tv.recommendation or "", "n/a")
+            tv_colour = {"UP": COLOURS["UP"], "DOWN": COLOURS["DOWN"]}.get(p.tv.direction, MUTED)
+            result_colour = MUTED if not r or r.last_hit is None else (COLOURS["UP"] if r.last_hit else COLOURS["DOWN"])
+            cells = [
+                (prediction_label(s), SIDE_COLOURS[side], bold),
+                (s.direction, COLOURS[s.direction], bold if s.direction != "NEUTRAL" else normal),
+                (f"{s.confidence:.0%}", TEXT, normal),
+                (f"{s.p_up:.2f}", TEXT, normal),
+                (tv, tv_colour if tv != "n/a" else MUTED, normal),
+                ({True: "yes", False: "NO", None: "-"}[p.agrees_with_tv], TEXT, normal),
+                (local_hhmm(p.target_close_time), TEXT, normal),
+                (money(p.last_close), TEXT, normal),
+                (signal_badge(r), result_colour, bold if r and r.last_hit is not None else normal),
+                (hit_rate_text(r), TEXT if r and r.all_checked else MUTED, normal),
+            ]
+            for lbl, (text, fg, font) in zip(row[2:], cells):
+                lbl.configure(text=text, fg=fg, font=font)
             labels = self.result_labels.get((p.symbol, p.timeframe))
             if labels:
                 badge, detail = labels

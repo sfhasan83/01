@@ -15,3 +15,7 @@ Latest report: [daily-reports/2026-11-19.md](daily-reports/2026-11-19.md)
 ## Grocery shop software
 
 [grocery-app/](grocery-app/) holds **Shop Books**, an offline accounting and stock app for the Sharjah grocery shop. Open `grocery-app/shop-books.html` in a browser. Instructions are in [grocery-app/README.md](grocery-app/README.md).
+
+## Crypto Movement Bot (BTC, ETH, SOL)
+
+[btc-bot/](btc-bot/) is a Windows program that predicts the direction of Bitcoin, Ethereum and Solana over the next 5 minutes, 15 minutes and 1 hour from Binance, MEXC, CoinMarketCap and TradingView data. Signals only, no trading. Setup steps are in [btc-bot/README.md](btc-bot/README.md).

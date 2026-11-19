@@ -374,3 +374,74 @@ def test_backtest_reports_tpsl():
     r = backtest.walk_forward(df, "5m", threshold=0.55, train_size=1500, step=200)
     assert r.tpsl["trades"] > 0 and r.tpsl["TP"] + r.tpsl["SL"] + r.tpsl["EXPIRED"] == r.tpsl["trades"]
     assert "TP/SL on confident calls" in backtest.format_result(r)
+
+
+def _planted_swing_hours(days=800, hours_utc=(1, 8, 13), seed=0):
+    rng = np.random.default_rng(seed)
+    idx = pd.date_range("2022-01-01", periods=24 * days, freq="1h", tz="UTC")
+    r = rng.normal(0, 0.004, len(idx))
+    for h in hours_utc:  # a sharp move into the hour, reversed straight after: a planted swing
+        m = (idx.hour == h) & (rng.random(len(idx)) < 0.5)
+        sign = rng.choice([-1, 1], len(idx))
+        r[m] += sign[m] * 0.02
+        after = np.roll(m, 1)
+        r[after] -= np.roll(sign, 1)[after] * 0.025
+    c = 60000 * np.exp(np.cumsum(r))
+    o = np.r_[c[0], c[:-1]]
+    return pd.DataFrame({"open": o, "close": c, "high": np.maximum(o, c) * 1.001,
+                         "low": np.minimum(o, c) * 0.999, "volume": 1.0}, index=idx)
+
+
+def test_swing_study_finds_planted_hours_in_local_time():
+    from datetime import timedelta, timezone
+
+    from btc_bot import swings
+    res = swings.study(_planted_swing_hours(), "BTCUSDT", tz=timezone(timedelta(hours=4)))
+    found = sorted(w.hour for w in res.windows)
+    # planted at UTC 01, 08, 13 (+ the reversal hour) -> Dubai 05/06, 12/13, 17/18
+    assert all(any(h in (t, t + 1) for h in found) for t in (5, 12, 17)), found
+    assert res.test_year_in_windows > res.test_chance * 1.5
+    assert res.tz_label == "UTC+04:00"
+    text = swings.report_text([res])
+    assert "Window 1" in text and "Honesty check" in text
+
+
+def test_swing_study_on_noise_says_no_pattern():
+    from datetime import timedelta, timezone
+
+    from btc_bot import swings
+    res = swings.study(_planted_swing_hours(hours_utc=()), "ETHUSDT", tz=timezone(timedelta(hours=4)))
+    assert any("NOT" in n or "shifts" in n for n in res.notes)
+
+
+def test_next_swing_window_text():
+    from datetime import datetime, timedelta, timezone
+
+    from btc_bot import swings
+    tz = timezone(timedelta(hours=4))
+    data = {"coins": [{"symbol": "BTCUSDT", "windows": [{"hour": 17}, {"hour": 5}]},
+                      {"symbol": "SOLUSDT", "windows": [{"hour": 17}]}]}
+    now = datetime(2026, 11, 19, 16, 40, tzinfo=tz)
+    text = swings.next_window_text(data, now)
+    assert text.startswith("Next swing window: 17:00-18:00 (in 20 min) for BTC/SOL")
+    assert "NOW" in swings.next_window_text(data, datetime(2026, 11, 19, 17, 10, tzinfo=tz))
+    assert "not calculated" in swings.next_window_text(None)
+
+
+def test_history_cache_only_fetches_new_candles(monkeypatch, tmp_path):
+    from btc_bot import swings
+    monkeypatch.setattr(swings, "HISTORY_DIR", tmp_path)
+    full = _planted_swing_hours(days=40)
+    now = full.index[-1] + pd.Timedelta(hours=1)
+    monkeypatch.setattr(swings, "drop_unfinished", lambda df, tf: df)
+    calls = []
+
+    def fake_since(symbol, interval, start_ms, progress=None):
+        calls.append(start_ms)
+        return full[full.index >= pd.Timestamp(start_ms, unit="ms", tz="UTC")]
+    monkeypatch.setattr(swings.binance, "fetch_klines_since", fake_since)
+    monkeypatch.setattr(pd.Timestamp, "now", classmethod(lambda cls, tz=None: now))
+    first = swings.load_history("BTCUSDT", years=0.1)
+    assert len(first) > 800 and (tmp_path / "BTCUSDT_1h.csv").exists()
+    second = swings.load_history("BTCUSDT", years=0.1)
+    assert calls[1] > calls[0] and len(second) == len(first)

@@ -74,6 +74,15 @@ def cmd_score(settings: Settings, args) -> None:
     print(table.to_string(index=False, float_format=lambda x: f"{x:.1%}"))
 
 
+def cmd_swings(settings: Settings, args) -> None:
+    from .swings import report_text, run_study
+
+    print("Studying swing times. The first run downloads 5 years of hourly prices per coin (a few minutes).\n")
+    results = run_study(settings, years=args.years)
+    print()
+    print(report_text(results))
+
+
 def cmd_webhook(settings: Settings, args) -> None:
     from .webhook import serve
 
@@ -96,6 +105,7 @@ def main(argv=None) -> None:
         ("watch", cmd_watch, "Keep refreshing the forecast in this window"),
         ("backtest", cmd_backtest, "Measure past accuracy honestly (walk-forward)"),
         ("score", cmd_score, "Check how logged live predictions actually turned out"),
+        ("swings", cmd_swings, "Find the daily swing windows from 5 years of data"),
         ("webhook", cmd_webhook, "Receive TradingView webhook alerts"),
         ("gui", cmd_gui, "Open the desktop window"),
     ]:
@@ -103,6 +113,8 @@ def main(argv=None) -> None:
         p.set_defaults(func=fn)
         if name in ("predict", "watch", "backtest"):
             p.add_argument("--timeframes", nargs="+", choices=TIMEFRAMES, default=list(TIMEFRAMES), help=tf_help)
+        if name == "swings":
+            p.add_argument("--years", type=int, default=5, help="Years of history to study (default 5)")
         if name == "backtest":
             p.add_argument("--candles", type=int, default=5000, help="Candles of history per timeframe (default 5000)")
     for p in sub.choices.values():

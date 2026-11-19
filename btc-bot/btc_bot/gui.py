@@ -41,6 +41,8 @@ class App:
         self.cmc_var = tk.StringVar(value="")
         ttk.Label(top, textvariable=self.price_var, font=("Segoe UI", 11, "bold"), justify="left").pack(anchor="w")
         ttk.Label(top, textvariable=self.cmc_var).pack(anchor="w")
+        self.swing_label = tk.Label(top, text="", font=("Segoe UI", 10, "bold"), fg=TEXT, anchor="w", justify="left")
+        self.swing_label.pack(anchor="w", pady=(4, 0))
 
         # The table is a grid of labels (not a Treeview) so each cell can have its own colour,
         # and it always grows to fit every coin and timeframe.
@@ -93,6 +95,7 @@ class App:
         ttk.Button(bar, text="Refresh now", command=self.refresh).pack(side="left")
         ttk.Button(bar, text="Run backtest", command=self.backtest).pack(side="left", padx=6)
         ttk.Button(bar, text="Live track record", command=self.score).pack(side="left")
+        ttk.Button(bar, text="Swing times", command=self.swings).pack(side="left", padx=6)
         self.status = tk.StringVar(value="")
         ttk.Label(bar, textvariable=self.status).pack(side="right")
 
@@ -101,6 +104,7 @@ class App:
             "so even a good model is wrong very often. Check the backtest before trusting any call.")).pack(anchor="w")
 
         self.root.after(200, self.refresh)
+        self.root.after(300, self.tick_swings)
         self.root.after(500, self.poll)
 
     # --- background work -------------------------------------------------
@@ -143,6 +147,38 @@ class App:
             return "\n\n".join(parts)
         self._run("text:Backtest", job)
 
+    def tick_swings(self):
+        """Update the 'next swing window' line every 30 seconds; orange when a window is near."""
+        from .swings import load_results, next_window_text, next_windows
+
+        data = load_results()
+        self.swing_label.configure(text=next_window_text(data))
+        upcoming = next_windows(data)
+        near = False
+        if upcoming:
+            from datetime import datetime
+            mins = (upcoming[0][0] - datetime.now().astimezone()).total_seconds() / 60
+            near = mins <= 30
+        self.swing_label.configure(fg="#bc4c00" if near else TEXT)
+        self.root.after(30_000, self.tick_swings)
+
+    def tick_swings_once(self):
+        from .swings import load_results, next_window_text
+
+        self.swing_label.configure(text=next_window_text(load_results()))
+
+    def swings(self):
+        self.status.set("Studying swing times (first run downloads 5 years of data, a few minutes)...")
+        from .swings import load_results, report_text, run_study
+
+        def job():
+            results = run_study(self.settings, progress=lambda msg: self.results.put(("status", msg, None)))
+            return report_text(results)
+        data = load_results()
+        if data:  # show the saved study straight away, refresh it in the background
+            self.popup("Swing times (saved study, updating...)", report_text(data["coins"]))
+        self._run("text:Swing times", job)
+
     def score(self):
         from .predictor import score_log
 
@@ -163,9 +199,13 @@ class App:
                     else:
                         self.show(value)
                     self.root.after(self.settings.refresh_seconds * 1000, self.refresh)
+                elif kind == "status":
+                    self.status.set(value)
                 elif kind.startswith("text:"):
                     self.status.set("")
                     self.popup(kind[5:], str(err) if err else value)
+                    if kind == "text:Swing times":
+                        self.root.after(100, self.tick_swings_once)
         except queue.Empty:
             pass
         self.root.after(500, self.poll)

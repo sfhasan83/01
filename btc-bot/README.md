@@ -68,6 +68,7 @@ Double-click a `.bat` file, or run these in a Command Prompt inside the folder:
 | One forecast | | `.venv\Scripts\python -m btc_bot predict` |
 | Backtest | `backtest.bat` | `.venv\Scripts\python -m btc_bot backtest --candles 5000` (add `--coins SOLUSDT` for one coin) |
 | Live track record | | `.venv\Scripts\python -m btc_bot score` |
+| Daily swing windows | `swing-times.bat` | `.venv\Scripts\python -m btc_bot swings --years 5` |
 | TradingView alerts | `start-webhook.bat` | `.venv\Scripts\python -m btc_bot webhook` |
 
 ## Settings (`.env`)
@@ -104,6 +105,26 @@ have made money before fees.
 
 Change the distances in `.env`: `SL_ATR_MULT`, `TP_ATR_MULT` and `TP_SL_CANDLES`. The backtest also tests
 the TP/SL plan on the confident calls, after fees. These are suggestions only, and the bot never places orders.
+
+## Daily swing windows (5-year study)
+
+Click **Swing times** in the window (or double-click `swing-times.bat`). The bot downloads **5 years of
+hourly prices** for each coin from Binance and finds the times of day when swing tops and bottoms happen most.
+The first run takes a few minutes. The data is saved in `logs\history`, so later runs only fetch the new hours.
+
+- A **swing** is an hour whose high is the highest (a top) or whose low is the lowest (a bottom) of the 6 hours
+  on each side, *and* after which price moves at least 2 ATR away. That leaves real turning points, not noise.
+- The bot counts swings by hour of day in **your computer's time zone** and picks the **3 busiest hours**,
+  at least 3 hours apart. For each window the report shows how often it has a swing, how much busier it is than an
+  average hour, whether it's mostly tops or bottoms, and the typical move afterwards.
+- The window shows **"Next swing window: 17:00-18:00 (in 20 min) for BTC/SOL"** at the top. It turns orange
+  when a window is 30 minutes away or running.
+- **Honesty check:** the report also picks the windows *without* the last 12 months, then measures how many
+  of the last 12 months' swings actually fell inside them, compared with pure chance (3 hours out of 24 = 12.5%).
+  It also lists the top hours for each year separately, so you can see whether the pattern stays the same.
+  If it doesn't beat chance, the report says so.
+
+A window means swings happen there **more often** than at other hours. It does not promise a swing today.
 
 ## How it works
 

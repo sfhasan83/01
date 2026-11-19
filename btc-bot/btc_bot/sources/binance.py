@@ -34,3 +34,21 @@ def fetch_price(symbol: str) -> float:
 
 
 __all__ = ["fetch_klines", "fetch_price", "INTERVAL_MS"]
+
+
+def fetch_klines_since(symbol: str, interval: str, start_ms: int, progress=None) -> pd.DataFrame:
+    """Every candle from start_ms until now, paging forward 1000 at a time (used for multi-year history)."""
+    rows: list[list] = []
+    start = start_ms
+    while True:
+        batch = get_json(f"{BASE_URL}/api/v3/klines",
+                         params={"symbol": symbol, "interval": interval, "startTime": start, "limit": MAX_LIMIT})
+        if not batch:
+            break
+        rows += batch
+        if progress:
+            progress(len(rows))
+        if len(batch) < MAX_LIMIT:
+            break
+        start = int(batch[-1][0]) + INTERVAL_MS[interval]
+    return rows_to_frame(rows)

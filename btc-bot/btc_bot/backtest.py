@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from . import tpsl
 from .model import MovementModel, training_frame
 
 
@@ -28,11 +29,14 @@ class BacktestResult:
     fee_rate: float
     start: pd.Timestamp | None = None
     end: pd.Timestamp | None = None
+    tpsl: dict = field(default_factory=dict)  # TP/SL simulation on the confident calls
+    tpsl_settings: tuple = (1.0, 1.5, 3)       # (SL x ATR, TP x ATR, candles)
     notes: list[str] = field(default_factory=list)
 
 
 def walk_forward(candles: pd.DataFrame, timeframe: str, threshold: float = 0.58,
-                 fee_rate: float = 0.001, train_size: int = 1500, step: int = 100) -> BacktestResult:
+                 fee_rate: float = 0.001, train_size: int = 1500, step: int = 100,
+                 sl_mult: float = 1.0, tp_mult: float = 1.5, tp_sl_candles: int = 3) -> BacktestResult:
     X, y, _ = training_frame(candles)
     if len(X) < train_size + step:
         raise ValueError(f"Need at least {train_size + step} usable candles for {timeframe}, got {len(X)}. "
@@ -76,6 +80,9 @@ def walk_forward(candles: pd.DataFrame, timeframe: str, threshold: float = 0.58,
         start=p.index[0],
         end=p.index[-1],
     )
+    sides = pd.Series(np.where(pred_up, "LONG", "SHORT"), index=p.index)
+    res.tpsl = tpsl.simulate(candles, p[confident], sides[confident], sl_mult, tp_mult, tp_sl_candles, fee_rate)
+    res.tpsl_settings = (sl_mult, tp_mult, tp_sl_candles)
     best_baseline = max(res.baseline_up, 1 - res.baseline_up, res.baseline_momentum)
     if res.accuracy <= best_baseline + 0.01:
         res.notes.append("No real edge: accuracy is not clearly better than a simple rule.")
@@ -97,5 +104,15 @@ def format_result(r: BacktestResult) -> str:
         f"  Following confident calls, after fees: {r.strategy_return * 100:+.2f}%  "
         f"(fee {r.fee_rate * 100:.2f}% per side; buy-and-hold {r.buy_hold_return * 100:+.2f}%)",
     ]
+    t = r.tpsl
+    if t.get("trades"):
+        sl_m, tp_m, n = r.tpsl_settings
+        lines.append(
+            f"  TP/SL on confident calls (SL {sl_m:g}xATR, TP {tp_m:g}xATR, {n} candles): {t['trades']} trades, "
+            f"TP first {pct(t['TP'] / t['trades'])}, SL first {pct(t['SL'] / t['trades'])}, "
+            f"expired {pct(t['EXPIRED'] / t['trades'])}; avg {t['avg_r']:+.2f}R, "
+            f"{t['return_after_fees'] * 100:+.2f}% after fees")
+        if t["return_after_fees"] < 0:
+            r.notes.append("Trading the TP/SL plan would also have LOST money after fees.")
     lines += [f"  ! {n}" for n in r.notes]
     return "\n".join(lines)

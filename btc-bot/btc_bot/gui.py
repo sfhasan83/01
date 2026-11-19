@@ -8,7 +8,7 @@ from tkinter import scrolledtext, ttk
 
 from . import TIMEFRAMES
 from .config import PROJECT_DIR, Settings, coin_name
-from .report import TV_NAMES, cmc_line, hit_rate_text, local_hhmm, money, prediction_label, price_lines, signal_badge
+from .report import TV_NAMES, cmc_line, hit_rate_text, local_hhmm, money, prediction_label, price_lines, signal_badge, tpsl_badge, tpsl_text
 
 COLOURS = {"UP": "#1a7f37", "DOWN": "#cf222e", "NEUTRAL": "#6e7781"}
 SIDE_COLOURS = {"LONG": "#1a7f37", "SHORT": "#cf222e"}
@@ -26,7 +26,7 @@ class App:
         self.busy = False
 
         root.title("Crypto Movement Bot: " + ", ".join(coin_name(x) for x in settings.symbols) + " (signals only)")
-        root.geometry("1420x780")
+        root.geometry("1600x820")
         root.minsize(760, 360)
         icon = PROJECT_DIR / "bot.ico"
         if icon.exists():
@@ -45,8 +45,8 @@ class App:
         # The table is a grid of labels (not a Treeview) so each cell can have its own colour,
         # and it always grows to fit every coin and timeframe.
         heads = ("Coin", "Timeframe", "Prediction", "Bot says", "Confidence", "P(up)", "TradingView", "Agree?",
-                 "For candle closing", "From price", "Last result", "Hit rate")
-        widths = (6, 9, 11, 10, 10, 7, 12, 7, 15, 13, 20, 30)
+                 "Candle closes", "Entry price", "Take profit", "Stop loss", "TP/SL result", "Last result", "Hit rate")
+        widths = (5, 8, 10, 9, 9, 6, 11, 6, 11, 11, 11, 11, 11, 18, 27)
         table = tk.Frame(root, bg=GRID, bd=1, relief="solid")
         table.pack(fill="x", padx=10)
         for c, (h, w) in enumerate(zip(heads, widths)):
@@ -134,7 +134,10 @@ class App:
                         candles, src = load_candles(self.settings, tf, total=max(5000, self.settings.history_candles),
                                                     symbol=sym)
                         parts.append(format_result(walk_forward(candles, name, self.settings.confidence_threshold,
-                                                                self.settings.fee_rate)) + f"\n  (data: {src})")
+                                                                self.settings.fee_rate,
+                                                                sl_mult=self.settings.sl_atr_mult,
+                                                                tp_mult=self.settings.tp_atr_mult,
+                                                                tp_sl_candles=self.settings.tp_sl_candles)) + f"\n  (data: {src})")
                     except Exception as err:  # noqa: BLE001
                         parts.append(f"== {name}: failed: {err}")
             return "\n\n".join(parts)
@@ -180,7 +183,7 @@ class App:
             if not row:
                 continue
             if p.error or not p.signal:
-                values = ["-", "error", "", "", "", "", "", "", (p.error or "")[:60], ""]
+                values = ["-", "error", "", "", "", "", "", "", "", "", "", (p.error or "")[:60], ""]
                 for lbl, v in zip(row[2:], values):
                     lbl.configure(text=v, fg="#9a6700", font=normal)
                 continue
@@ -190,6 +193,9 @@ class App:
             tv = TV_NAMES.get(p.tv.recommendation or "", "n/a")
             tv_colour = {"UP": COLOURS["UP"], "DOWN": COLOURS["DOWN"]}.get(p.tv.direction, MUTED)
             result_colour = MUTED if not r or r.last_hit is None else (COLOURS["UP"] if r.last_hit else COLOURS["DOWN"])
+            t = p.tpsl_results
+            tpsl_colour = MUTED if not t or t.last_outcome in (None, "EXPIRED") else \
+                (COLOURS["UP"] if t.last_outcome == "TP" else COLOURS["DOWN"])
             cells = [
                 (prediction_label(s), SIDE_COLOURS[side], bold),
                 (s.direction, COLOURS[s.direction], bold if s.direction != "NEUTRAL" else normal),
@@ -199,6 +205,9 @@ class App:
                 ({True: "yes", False: "NO", None: "-"}[p.agrees_with_tv], TEXT, normal),
                 (local_hhmm(p.target_close_time), TEXT, normal),
                 (money(p.last_close), TEXT, normal),
+                (money(p.take_profit), COLOURS["UP"], normal),
+                (money(p.stop_loss), COLOURS["DOWN"], normal),
+                (tpsl_badge(p.tpsl_results), tpsl_colour, bold if tpsl_colour != MUTED else normal),
                 (signal_badge(r), result_colour, bold if r and r.last_hit is not None else normal),
                 (hit_rate_text(r), TEXT if r and r.all_checked else MUTED, normal),
             ]
@@ -212,7 +221,7 @@ class App:
                     (COLOURS["UP"] if r.last_hit else COLOURS["DOWN"])
                 badge.configure(text=signal_badge(r), bg=colour)
                 if r and r.last_hit is not None:
-                    detail.configure(text=hit_rate_text(r))
+                    detail.configure(text=hit_rate_text(r) + f"\nTP/SL: {tpsl_text(p.tpsl_results)}")
                 else:
                     detail.configure(text=f"first check {local_hhmm(p.target_close_time)}")
         self.status.set(f"Updated {snap.created.astimezone():%H:%M:%S}")

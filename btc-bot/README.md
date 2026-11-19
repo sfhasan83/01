@@ -26,7 +26,10 @@ For each coin and timeframe it shows:
 | P(up) | The model's probability that the candle closes higher |
 | TradingView | TradingView's own technical rating for the same timeframe (Strong buy ... Strong sell) |
 | Agree? | Whether the bot and TradingView point the same way |
-| For candle closing | The local time the predicted candle closes, and the price it is measured from |
+| Candle closes | The local time the predicted candle closes |
+| Entry price | The last closed price the prediction (and TP/SL) is measured from |
+| Take profit / Stop loss | Suggested exit prices for the LONG or SHORT, see below |
+| TP/SL result | Whether the latest finished suggestion reached **TP ✔** (green) or **SL ✘** (red) first, or **expired** |
 | Last result | **YES ✔ HIT** if the bot's last prediction was right once its candle closed, **NO ✘ MISSED** if not. A NEUTRAL row is still checked by which way it leaned (P(up) above 0.5 = UP) and is marked **(lean)** |
 | Hit rate | `signals` counts only the confident UP/DOWN calls; `all` counts every prediction by its lean, e.g. `signals 3/5 (60%) · all 11/20 (55%)` |
 
@@ -79,6 +82,28 @@ Double-click a `.bat` file, or run these in a Command Prompt inside the folder:
 | `REFRESH_SECONDS` | `60` | How often the window refreshes |
 | `WEBHOOK_PORT` / `WEBHOOK_SECRET` | `8080` / `change-me` | TradingView alert receiver |
 | `FEE_RATE` | `0.001` | Fee per trade side used by the backtest (0.1%) |
+| `SL_ATR_MULT` / `TP_ATR_MULT` | `1.0` / `1.5` | Stop-loss and take-profit distance in ATRs |
+| `TP_SL_CANDLES` | `3` | Candles to wait for TP or SL before a call expires |
+
+## Take Profit and Stop Loss
+
+For every row the bot suggests a take-profit and a stop-loss price, based on **ATR** (the average size of one
+candle on that timeframe, over the last 14 candles):
+
+| | Stop loss | Take profit |
+|---|---|---|
+| LONG | entry − 1.0 × ATR | entry + 1.5 × ATR |
+| SHORT | entry + 1.0 × ATR | entry − 1.5 × ATR |
+
+So by default you risk 1 to aim for 1.5. After each call the bot watches the next 3 candles and records
+which level price touched first. If both are touched inside one candle it counts as a stop loss, because
+there's no way to know which came first. If neither is touched, the call **expires** at the 3rd candle's close.
+The Signal results box shows the running count, e.g. `TP 4 · SL 3 · exp 1 (50% TP) · +0.6R`. **R** is profit
+in units of risk: +1.5R for a take profit, −1R for a stop loss. A positive total means the TP/SL plan would
+have made money before fees.
+
+Change the distances in `.env`: `SL_ATR_MULT`, `TP_ATR_MULT` and `TP_SL_CANDLES`. The backtest also tests
+the TP/SL plan on the confident calls, after fees. These are suggestions only, and the bot never places orders.
 
 ## How it works
 

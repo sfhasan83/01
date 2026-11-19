@@ -22,6 +22,20 @@ def prediction_label(signal) -> str:
     return "LONG ▲" if signal.p_up > 0.5 else "SHORT ▼"
 
 
+def tpsl_badge(t) -> str:
+    """Result of the latest finished TP/SL trade."""
+    if t is None or t.last_outcome is None:
+        return "waiting"
+    return {"TP": "TP ✔ hit", "SL": "SL ✘ hit", "EXPIRED": "expired"}[t.last_outcome]
+
+
+def tpsl_text(t) -> str:
+    """e.g. 'TP 4 · SL 3 · exp 1 (50% TP) · +0.6R'"""
+    if t is None or not t.finished:
+        return f"{t.open} running" if t and t.open else "-"
+    return (f"TP {t.tp} · SL {t.sl} · exp {t.expired} ({t.tp_rate:.0%} TP) · {t.total_r:+.1f}R")
+
+
 def signal_badge(r) -> str:
     """Result of the last checked prediction: 'YES ✔ HIT', 'NO ✘ MISSED' (+ '(lean)') or 'waiting'."""
     if r is None or r.last_hit is None:
@@ -102,7 +116,10 @@ def snapshot_text(snap: Snapshot) -> str:
         when = local_hhmm(p.target_close_time)
         out.append(f"{p.coin:<6}{p.timeframe:<10}{prediction_label(p.signal):<12}{ARROWS[p.signal.direction]:<12}{p.signal.confidence:<12.0%}"
                    f"{p.signal.p_up:<8.2f}{tv:<14}{agree:<8}{when}  (from {money(p.last_close)})")
+        out.append(f"{'':<16}Take profit {money(p.take_profit)}   Stop loss {money(p.stop_loss)}   "
+                   f"(entry {money(p.last_close)}, {p.side})")
         out.append(f"{'':<16}Last result: {signal_badge(p.results)}  {result_line(p.results, p.target_close_time)}")
+        out.append(f"{'':<16}TP/SL: last {tpsl_badge(p.tpsl_results)}   {tpsl_text(p.tpsl_results)}")
         if p.tv_alert:
             out.append(f"{'':<16}TradingView alert: {p.tv_alert.get('action')} at {p.tv_alert.get('received')}")
     tv_errors = {p.tv.error for p in snap.predictions if p.tv.error}

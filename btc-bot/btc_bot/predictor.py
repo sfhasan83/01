@@ -9,6 +9,7 @@ import pandas as pd
 
 from . import TIMEFRAMES
 from .config import LOG_DIR, Settings, coin_name
+from . import tpsl
 from .model import MovementModel, Signal, to_signal, training_frame
 from .sources import INTERVAL_MS, binance, coinmarketcap, drop_unfinished, mexc, tradingview
 
@@ -17,7 +18,7 @@ PREDICTION_LOG = LOG_DIR / "predictions.csv"
 
 
 LOG_COLUMNS = ["created_utc", "timeframe", "source", "last_close_time_utc", "target_close_time_utc",
-               "last_close", "p_up", "direction", "confidence", "tv_recommendation", "symbol"]
+               "last_close", "p_up", "direction", "confidence", "tv_recommendation", "symbol", "tp", "sl"]
 LEGACY_SYMBOL = "BTCUSDT"  # logs written before multi-coin support were all BTC
 
 
@@ -34,6 +35,15 @@ class TimeframePrediction:
     error: str | None = None
     results: "SignalResults | None" = None
     symbol: str = LEGACY_SYMBOL
+    take_profit: float | None = None
+    stop_loss: float | None = None
+    tpsl_results: tpsl.TPSLResults | None = None
+
+    @property
+    def side(self) -> str | None:
+        if not self.signal:
+            return None
+        return "LONG" if self.signal.p_up > 0.5 else "SHORT"
 
     @property
     def coin(self) -> str:
@@ -175,13 +185,20 @@ def predict_timeframe(settings: Settings, timeframe: str, symbol: str | None = N
         step = pd.to_timedelta(INTERVAL_MS[timeframe], unit="ms")
         log = _read_log() if log is None else log
         results = signal_results(check_signals(log, timeframe, candles, symbol))
+        entry = float(candles.loc[last_open, "close"])
+        side = "LONG" if p_up > 0.5 else "SHORT"
+        atr_now = float(tpsl.atr(candles).iloc[-1])
+        tp, sl = tpsl.levels(entry, side, atr_now, settings.sl_atr_mult, settings.tp_atr_mult)
+        group = log[(log["timeframe"] == timeframe) & (log["symbol"] == symbol)] if not log.empty else log
+        tpsl_results = tpsl.evaluate(group, candles, settings.tp_sl_candles)
         return TimeframePrediction(
             timeframe=timeframe,
             signal=to_signal(p_up, settings.confidence_threshold),
             last_close=float(candles.loc[last_open, "close"]),
             last_close_time=last_open + step,
             target_close_time=last_open + 2 * step,
-            source=source, tv=tv, tv_alert=alert, results=results, symbol=symbol)
+            source=source, tv=tv, tv_alert=alert, results=results, symbol=symbol,
+            take_profit=tp, stop_loss=sl, tpsl_results=tpsl_results)
     except Exception as err:  # noqa: BLE001
         return TimeframePrediction(timeframe, None, None, None, None, "-", tv, alert, error=str(err), symbol=symbol)
 
@@ -210,21 +227,26 @@ def take_snapshot(settings: Settings, timeframes=TIMEFRAMES) -> Snapshot:
 
 
 def _upgrade_log_header() -> None:
-    """Old logs (BTC only) had no symbol column: add it so new rows line up."""
+    """Older logs lack newer columns (symbol, tp, sl): add them so new rows line up.
+    Rows from the BTC-only version get symbol BTCUSDT; missing TP/SL stay empty."""
     try:
         with PREDICTION_LOG.open(newline="", encoding="utf-8") as fh:
             rows = list(csv.reader(fh))
     except OSError:
         return
-    if not rows or "symbol" in rows[0]:
+    if not rows or rows[0] == LOG_COLUMNS:
         return
-    width = len(rows[0])
+    old = rows[0]
     with PREDICTION_LOG.open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(rows[0] + ["symbol"])
+        w.writerow(LOG_COLUMNS)
         for r in rows[1:]:
-            if r:
-                w.writerow((r + [""] * width)[:width] + [LEGACY_SYMBOL])
+            if not r:
+                continue
+            rec = dict(zip(old, r))
+            if not rec.get("symbol"):
+                rec["symbol"] = LEGACY_SYMBOL
+            w.writerow([rec.get(c, "") for c in LOG_COLUMNS])
 
 
 def log_snapshot(snap: Snapshot) -> None:
@@ -243,7 +265,9 @@ def log_snapshot(snap: Snapshot) -> None:
             w.writerow([snap.created.isoformat(timespec="seconds"), p.timeframe, p.source,
                         p.last_close_time.isoformat(), p.target_close_time.isoformat(), p.last_close,
                         round(p.signal.p_up, 4), p.signal.direction, round(p.signal.confidence, 4),
-                        p.tv.recommendation or "", p.symbol])
+                        p.tv.recommendation or "", p.symbol,
+                        "" if p.take_profit is None else round(p.take_profit, 6),
+                        "" if p.stop_loss is None else round(p.stop_loss, 6)])
 
 
 def score_log(settings: Settings) -> pd.DataFrame:

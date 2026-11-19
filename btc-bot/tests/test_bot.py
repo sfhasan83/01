@@ -140,6 +140,10 @@ def test_full_snapshot_with_fallback(monkeypatch, tmp_path):
     from btc_bot.report import snapshot_text
     text = snapshot_text(snap)
     assert ("LONG ▲" in text or "SHORT ▼" in text) and "Prediction" in text
+    assert "Take profit $" in text and "Stop loss $" in text
+    p0 = snap.predictions[0]
+    assert (p0.take_profit > p0.last_close > p0.stop_loss) if p0.side == "LONG" else \
+        (p0.take_profit < p0.last_close < p0.stop_loss)
     assert "MEXC: $61,000.00" in text and "SOL " in text and "ETH " in text
     import csv
     rows = list(csv.DictReader((tmp_path / "p.csv").open()))
@@ -251,7 +255,7 @@ def test_old_btc_log_is_upgraded(monkeypatch, tmp_path):
     predictor.log_snapshot(predictor.Snapshot(created=t.to_pydatetime(), predictions=[pred]))
     log = predictor._read_log()
     assert list(log.sort_values("created_utc")["symbol"]) == ["BTCUSDT", "SOLUSDT"]
-    assert (tmp_path / "p.csv").read_text().splitlines()[0].endswith(",symbol")
+    assert (tmp_path / "p.csv").read_text().splitlines()[0].endswith(",symbol,tp,sl")
 
 
 def test_coin_name_and_settings(monkeypatch):
@@ -321,3 +325,52 @@ def test_tradingview_empty_answer_backs_off(monkeypatch):
     assert "empty answer" in err and "10 minutes" in err
     tv.fetch_rating("ETHUSDT", "5m")
     assert len(calls) == 1
+
+
+def test_tpsl_levels_and_outcomes():
+    from btc_bot import tpsl
+    tp, sl = tpsl.levels(100.0, "LONG", 2.0, 1.0, 1.5)
+    assert (tp, sl) == (103.0, 98.0)
+    tp, sl = tpsl.levels(100.0, "SHORT", 2.0, 1.0, 1.5)
+    assert (tp, sl) == (97.0, 102.0)
+    idx = pd.date_range("2026-01-01", periods=3, freq="5min", tz="UTC")
+
+    def candles(rows):
+        return pd.DataFrame(rows, columns=["open", "high", "low", "close"], index=idx[:len(rows)])
+    # LONG: TP touched in the 2nd candle
+    assert tpsl.outcome("LONG", 103, 98, candles([[100, 101, 99, 100.5], [100.5, 103.5, 100, 103]]), 3) == ("TP", 103)
+    # both touched in one candle: counted as SL (cautious)
+    assert tpsl.outcome("LONG", 103, 98, candles([[100, 104, 97, 100]]), 3) == ("SL", 98)
+    # SHORT: SL touched
+    assert tpsl.outcome("SHORT", 97, 102, candles([[100, 102.5, 99, 101]]), 3) == ("SL", 102)
+    # nothing touched within 2 candles -> expired at the 2nd close
+    assert tpsl.outcome("LONG", 103, 98, candles([[100, 101, 99, 100], [100, 101, 99, 100.7], [1, 1, 1, 1]]), 2) \
+        == ("EXPIRED", 100.7)
+    # not enough candles yet -> still open
+    assert tpsl.outcome("LONG", 103, 98, candles([[100, 101, 99, 100]]), 3) == ("OPEN", None)
+    assert tpsl.r_multiple("LONG", 100, 98, 103) == 1.5 and tpsl.r_multiple("SHORT", 100, 102, 102) == -1
+
+
+def test_tpsl_evaluate_live_log():
+    from btc_bot import tpsl
+    idx = pd.date_range("2026-01-01", periods=4, freq="5min", tz="UTC")
+    candles = pd.DataFrame({"open": [100, 100, 101, 99], "high": [101, 101.5, 103.5, 99.5],
+                            "low": [99, 99.5, 100.5, 96], "close": [100, 101, 103, 97]}, index=idx)
+    log = pd.DataFrame({
+        "last_close_time_utc": [idx[1], idx[1], idx[3]],
+        "last_close": [100, 100, 101],
+        "p_up": [0.6, 0.4, 0.6],
+        "tp": [103, 97, 104], "sl": [98, 102, 99],
+    })
+    res = tpsl.evaluate(log, candles, 2)
+    # LONG from idx1: candle1 ok, candle2 high 103.5 -> TP. SHORT from idx1: candle2 high 103.5 -> SL.
+    # LONG from idx3: low 96 -> SL? only one candle and it hits SL
+    assert (res.tp, res.sl, res.expired, res.open) == (1, 2, 0, 0)
+    assert res.last_outcome == "SL" and abs(res.total_r - (1.5 - 1 - 1)) < 1e-9
+
+
+def test_backtest_reports_tpsl():
+    df = rows_to_frame(synthetic_rows(2400))
+    r = backtest.walk_forward(df, "5m", threshold=0.55, train_size=1500, step=200)
+    assert r.tpsl["trades"] > 0 and r.tpsl["TP"] + r.tpsl["SL"] + r.tpsl["EXPIRED"] == r.tpsl["trades"]
+    assert "TP/SL on confident calls" in backtest.format_result(r)

@@ -43,6 +43,9 @@ class Settings:
     webhook_port: int = 8080
     webhook_secret: str = "change-me"
     fee_rate: float = 0.001
+    sl_atr_mult: float = 1.0
+    tp_atr_mult: float = 1.5
+    tp_sl_candles: int = 3
 
     @classmethod
     def load(cls) -> "Settings":
@@ -56,6 +59,9 @@ class Settings:
             webhook_port=int(_get("WEBHOOK_PORT", "8080")),
             webhook_secret=_get("WEBHOOK_SECRET", "change-me"),
             fee_rate=float(_get("FEE_RATE", "0.001")),
+            sl_atr_mult=float(_get("SL_ATR_MULT", "1.0")),
+            tp_atr_mult=float(_get("TP_ATR_MULT", "1.5")),
+            tp_sl_candles=int(_get("TP_SL_CANDLES", "3")),
         )
         if s.primary_exchange not in ("binance", "mexc"):
             raise ValueError("PRIMARY_EXCHANGE must be 'binance' or 'mexc'")
@@ -64,4 +70,7 @@ class Settings:
         s.confidence_threshold = min(max(s.confidence_threshold, 0.5), 0.99)
         s.history_candles = max(s.history_candles, 500)
         s.refresh_seconds = max(s.refresh_seconds, 10)
+        s.sl_atr_mult = max(s.sl_atr_mult, 0.1)
+        s.tp_atr_mult = max(s.tp_atr_mult, 0.1)
+        s.tp_sl_candles = max(s.tp_sl_candles, 1)
         return s

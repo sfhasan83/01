@@ -54,7 +54,9 @@ def cmd_backtest(settings: Settings, args) -> None:
             name = f"{coin_name(sym)} {tf}"
             try:
                 candles, source = load_candles(settings, tf, total=candles_needed, symbol=sym)
-                res = walk_forward(candles, name, settings.confidence_threshold, settings.fee_rate)
+                res = walk_forward(candles, name, settings.confidence_threshold, settings.fee_rate,
+                                  sl_mult=settings.sl_atr_mult, tp_mult=settings.tp_atr_mult,
+                                  tp_sl_candles=settings.tp_sl_candles)
                 print(format_result(res) + f"\n  (data: {source})\n")
             except Exception as err:  # noqa: BLE001
                 print(f"== {name}: backtest failed: {err}\n")

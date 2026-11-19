@@ -38,11 +38,18 @@ class TimeframePrediction:
 
 @dataclass
 class SignalResults:
-    """How the bot's past UP/DOWN calls on one timeframe turned out, once their candles closed."""
-    hits: int = 0
-    misses: int = 0
-    last_hit: bool | None = None          # True = YES signal hit, False = NO missed, None = nothing checked yet
-    last_direction: str | None = None
+    """How the bot's past calls on one timeframe turned out, once their candles closed.
+
+    Every prediction is checked by its lean (P(up) above 0.5 means it leaned UP).
+    "Signals" are only the confident UP/DOWN calls; NEUTRAL rows count as leans only.
+    """
+    hits: int = 0                # confident UP/DOWN signals that were right
+    misses: int = 0              # confident UP/DOWN signals that were wrong
+    all_hits: int = 0            # every checked prediction, judged by its lean
+    all_checked: int = 0
+    last_hit: bool | None = None          # True = YES hit, False = NO missed, None = nothing checked yet
+    last_direction: str | None = None     # UP or DOWN (the lean, for NEUTRAL rows)
+    last_is_lean: bool = False            # True when the last checked row was NEUTRAL
     last_target_close: pd.Timestamp | None = None
     last_from_price: float | None = None
     last_close_price: float | None = None
@@ -54,6 +61,10 @@ class SignalResults:
     @property
     def hit_rate(self) -> float | None:
         return self.hits / self.checked if self.checked else None
+
+    @property
+    def all_hit_rate(self) -> float | None:
+        return self.all_hits / self.all_checked if self.all_checked else None
 
 
 def _read_log() -> pd.DataFrame:
@@ -93,14 +104,15 @@ def signal_results(checked: pd.DataFrame) -> SignalResults:
     res = SignalResults()
     if checked.empty:
         return res
+    res.all_checked = int(len(checked))
+    res.all_hits = int(checked["hit"].sum())
     calls = checked[checked["direction"] != "NEUTRAL"]
-    if calls.empty:
-        return res
     res.hits = int(calls["hit"].sum())
     res.misses = int(len(calls) - res.hits)
-    last = calls.iloc[-1]
+    last = checked.iloc[-1]
     res.last_hit = bool(last["hit"])
-    res.last_direction = last["direction"]
+    res.last_is_lean = last["direction"] == "NEUTRAL"
+    res.last_direction = "UP" if last["p_up"] > 0.5 else "DOWN"
     res.last_target_close = last["target_close_time_utc"]
     res.last_from_price = float(last["last_close"])
     res.last_close_price = float(last["actual_close"])

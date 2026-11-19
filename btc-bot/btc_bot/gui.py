@@ -20,7 +20,7 @@ class App:
         self.busy = False
 
         root.title("BTC Movement Bot (signals only)")
-        root.geometry("1080x520")
+        root.geometry("1220x540")
         root.minsize(760, 360)
 
         top = ttk.Frame(root, padding=10)
@@ -32,15 +32,18 @@ class App:
 
         cols = ("tf", "call", "conf", "pup", "tv", "agree", "closes", "from", "last", "rate")
         heads = ("Timeframe", "Bot says", "Confidence", "P(up)", "TradingView", "Agree?",
-                 "For candle closing", "From price", "Last signal", "Hit rate")
+                 "For candle closing", "From price", "Last result", "Hit rate")
         self.tree = ttk.Treeview(root, columns=cols, show="headings", height=len(TIMEFRAMES))
         for c, h in zip(cols, heads):
             self.tree.heading(c, text=h)
-            self.tree.column(c, width=100, anchor="center")
+            self.tree.column(c, width={"last": 150, "rate": 240}.get(c, 95), anchor="center")
         for d, colour in COLOURS.items():
             self.tree.tag_configure(d, foreground=colour, font=("Segoe UI", 11, "bold"))
         self.tree.tag_configure("ERR", foreground="#9a6700")
         self.tree.pack(fill="x", padx=10)
+
+        self.tv_note = ttk.Label(root, text="", foreground="#9a6700", padding=(10, 2, 10, 0))
+        self.tv_note.pack(anchor="w")
 
         # One coloured line per timeframe: did the last UP/DOWN signal hit?
         box = ttk.LabelFrame(root, text="Signal results (checked when each candle closes)", padding=8)
@@ -50,7 +53,7 @@ class App:
             row = ttk.Frame(box)
             row.pack(fill="x", anchor="w")
             ttk.Label(row, text=f"{tf:>4}", width=5, font=("Segoe UI", 10, "bold")).pack(side="left")
-            badge = tk.Label(row, text="waiting", width=13, font=("Segoe UI", 10, "bold"),
+            badge = tk.Label(row, text="waiting", width=18, font=("Segoe UI", 10, "bold"),
                              fg="white", bg=COLOURS["NEUTRAL"])
             badge.pack(side="left", padx=(0, 8))
             detail = ttk.Label(row, text="")
@@ -143,6 +146,8 @@ class App:
                              f"BTC dominance {pct(c.btc_dominance, False)}   Fear & Greed {fg}")
         elif c and c.error:
             self.cmc_var.set(f"CoinMarketCap: {c.error}")
+        tv_errors = {p.tv.error for p in snap.predictions if p.tv.error}
+        self.tv_note.configure(text=f"TradingView rating unavailable: {sorted(tv_errors)[0][:160]}" if tv_errors else "")
         self.tree.delete(*self.tree.get_children())
         for p in snap.predictions:
             if p.error or not p.signal:
@@ -162,8 +167,7 @@ class App:
                 colour = COLOURS["NEUTRAL"] if not r or r.last_hit is None else \
                     (COLOURS["UP"] if r.last_hit else COLOURS["DOWN"])
                 badge.configure(text=signal_badge(r), bg=colour)
-                detail.configure(text=result_line(r).split(": ", 1)[-1] if r and r.last_hit is not None
-                                 else result_line(r))
+                detail.configure(text=result_line(r, p.target_close_time))
         self.status.set(f"Updated {snap.created.astimezone():%H:%M:%S}")
 
     def popup(self, title, text):

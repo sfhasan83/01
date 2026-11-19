@@ -15,25 +15,32 @@ def local_hhmm(ts) -> str:
 
 
 def signal_badge(r) -> str:
-    """Short result of the last UP/DOWN call: 'YES ✔ HIT', 'NO ✘ MISSED' or 'waiting'."""
+    """Result of the last checked prediction: 'YES ✔ HIT', 'NO ✘ MISSED' (+ '(lean)') or 'waiting'."""
     if r is None or r.last_hit is None:
         return "waiting"
-    return "YES ✔ HIT" if r.last_hit else "NO ✘ MISSED"
+    text = "YES ✔ HIT" if r.last_hit else "NO ✘ MISSED"
+    return f"{text} (lean)" if r.last_is_lean else text
 
 
 def hit_rate_text(r) -> str:
-    if r is None or not r.checked:
+    """e.g. 'signals 3/5 (60%) · all 10/18 (56%)'."""
+    if r is None or not r.all_checked:
         return "-"
-    return f"{r.hits}/{r.checked} ({r.hit_rate:.0%})"
+    every = f"all {r.all_hits}/{r.all_checked} ({r.all_hit_rate:.0%})"
+    if not r.checked:
+        return every
+    return f"signals {r.hits}/{r.checked} ({r.hit_rate:.0%}) · {every}"
 
 
-def result_line(r) -> str:
-    """One sentence about the last checked signal, e.g. for the console or the window."""
+def result_line(r, next_due=None) -> str:
+    """One sentence about the last checked prediction, for the console or the window."""
     if r is None or r.last_hit is None:
-        return "No signal checked yet. Results appear after a called candle closes."
+        when = f" The first one is checked at {local_hhmm(next_due)}." if next_due is not None else ""
+        return f"Nothing checked yet: a result appears when a predicted candle closes.{when}"
     move = f"{money(r.last_from_price)} → {money(r.last_close_price)}"
-    return (f"{signal_badge(r)}: said {r.last_direction} for the candle closing "
-            f"{local_hhmm(r.last_target_close)}, price went {move}.  Hit rate {hit_rate_text(r)}")
+    said = f"leaned {r.last_direction} (NEUTRAL)" if r.last_is_lean else f"said {r.last_direction}"
+    return (f"{said} for the candle closing {local_hhmm(r.last_target_close)}, price went {move}.  "
+            f"Hit rate: {hit_rate_text(r)}")
 
 
 def money(x):
@@ -71,8 +78,11 @@ def snapshot_text(snap: Snapshot) -> str:
         when = local_hhmm(p.target_close_time)
         out.append(f"{p.timeframe:<10}{ARROWS[p.signal.direction]:<12}{p.signal.confidence:<12.0%}"
                    f"{p.signal.p_up:<8.2f}{tv:<14}{agree:<8}{when}  (from {money(p.last_close)})")
-        out.append(f"{'':<10}Last signal: {result_line(p.results)}")
+        out.append(f"{'':<10}Last result: {signal_badge(p.results)}  {result_line(p.results, p.target_close_time)}")
         if p.tv_alert:
             out.append(f"{'':<10}TradingView alert: {p.tv_alert.get('action')} at {p.tv_alert.get('received')}")
+    tv_errors = {p.tv.error for p in snap.predictions if p.tv.error}
+    if tv_errors:
+        out += ["", f"TradingView rating unavailable: {sorted(tv_errors)[0][:200]}"]
     out += ["", "Signals only. Short-term BTC moves are close to random; check `backtest` before trusting any call."]
     return "\n".join(out)

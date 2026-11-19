@@ -206,15 +206,18 @@ def test_signal_hit_results(monkeypatch, tmp_path):
         lines.append(f"{(t + pd.Timedelta(minutes=1)).isoformat()},5m,binance,{(t + step).isoformat()},"
                      f"{(t + 2 * step).isoformat()},{df['close'].iloc[i]},{1 - p_up},UP,0.6,")
         went_up = df["close"].iloc[i + 1] > df["close"].iloc[i]
-        if direction != "NEUTRAL":
-            expected.append(went_up == (direction == "UP"))
+        expected.append((direction, went_up == (p_up > 0.5)))
     (tmp_path / "p.csv").write_text("\n".join(lines) + "\n")
-    # a 6th call whose candle has not closed yet must not be counted
+    # with only 15 candles, the last two calls have not closed yet and must not be counted
     res = predictor.signal_results(predictor.check_signals(predictor._read_log(), "5m", df.iloc[:15]))
-    assert res.checked == 3 and res.hits == sum(expected[:3])
+    strong = [hit for d, hit in expected if d != "NEUTRAL"]
+    assert res.checked == 3 and res.hits == sum(strong[:3])
+    assert res.all_checked == 4 and res.all_hits == sum(hit for _, hit in expected[:4])
     res = predictor.signal_results(predictor.check_signals(predictor._read_log(), "5m", df))
-    assert res.checked == 4 and res.hits == sum(expected)
-    assert res.last_hit == expected[-1] and res.last_direction == "DOWN"
-    assert signal_badge(res) == ("YES ✔ HIT" if expected[-1] else "NO ✘ MISSED")
-    assert "Hit rate" in result_line(res)
+    assert res.checked == 4 and res.hits == sum(strong)
+    assert res.all_checked == 6 and res.all_hits == sum(hit for _, hit in expected)
+    # the last row was NEUTRAL (p_up 0.52): it is still scored, by its UP lean, and labelled as a lean
+    assert res.last_is_lean and res.last_direction == "UP" and res.last_hit == expected[-1][1]
+    assert signal_badge(res) == ("YES ✔ HIT (lean)" if expected[-1][1] else "NO ✘ MISSED (lean)")
+    assert "Hit rate: signals" in result_line(res)
     assert signal_badge(predictor.SignalResults()) == "waiting"

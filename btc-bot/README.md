@@ -25,11 +25,12 @@ For each timeframe it shows:
 | TradingView | TradingView's own technical rating for the same timeframe (Strong buy ... Strong sell) |
 | Agree? | Whether the bot and TradingView point the same way |
 | For candle closing | The local time the predicted candle closes, and the price it is measured from |
-| Last signal | **YES ✔ HIT** if the bot's last UP/DOWN call was right once its candle closed, **NO ✘ MISSED** if not |
-| Hit rate | Signals that hit out of all signals checked so far, e.g. `12/20 (60%)` |
+| Last result | **YES ✔ HIT** if the bot's last prediction was right once its candle closed, **NO ✘ MISSED** if not. A NEUTRAL row is still checked by which way it leaned (P(up) above 0.5 = UP) and is marked **(lean)** |
+| Hit rate | `signals` counts only the confident UP/DOWN calls; `all` counts every prediction by its lean, e.g. `signals 3/5 (60%) · all 11/20 (55%)` |
 
 Under the table, a **Signal results** box shows the same thing in green (hit) or red (missed) for each timeframe,
-with the price move that decided it. NEUTRAL calls are not counted, because the bot did not pick a side.
+with the price move that decided it. Before the first candle closes it says when the first check happens
+(about 5 minutes for 5m, up to an hour for 1h).
 Results are kept in `logs\predictions.csv`, so the hit rate carries over when you close and reopen the bot.
 
 Above the table you see the live price on Binance and MEXC, and from CoinMarketCap the 1h and 24h change,
@@ -128,7 +129,8 @@ shows that trading its calls would lose money to fees. Run the backtest on real 
 
 - **"Python was not found"**: reinstall Python and tick "Add python.exe to PATH", then run `setup.bat` again.
 - **"Could not load candles"**: your internet or country may block Binance. Set `PRIMARY_EXCHANGE=mexc` in `.env`.
-- **TradingView shows n/a**: TradingView sometimes rate-limits. It recovers on its own after a few minutes.
+- **TradingView shows n/a**: the reason is printed in orange under the table. TradingView sometimes rate-limits
+  or blocks automated requests; the rest of the bot keeps working without it.
 - **CoinMarketCap errors**: check the key in `.env`. The free plan allows about 330 calls a day, so the bot
   refreshes CoinMarketCap only every 15 minutes (about 290 calls a day if left running), even when the prices refresh every minute.
 

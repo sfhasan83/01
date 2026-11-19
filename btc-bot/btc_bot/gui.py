@@ -8,9 +8,10 @@ from tkinter import scrolledtext, ttk
 
 from . import TIMEFRAMES
 from .config import Settings, coin_name
-from .report import TV_NAMES, cmc_line, hit_rate_text, local_hhmm, money, price_lines, signal_badge
+from .report import TV_NAMES, cmc_line, hit_rate_text, local_hhmm, money, prediction_label, price_lines, signal_badge
 
 COLOURS = {"UP": "#1a7f37", "DOWN": "#cf222e", "NEUTRAL": "#6e7781"}
+SIDE_COLOURS = {"LONG": "#1a7f37", "SHORT": "#cf222e"}
 
 
 class App:
@@ -20,7 +21,7 @@ class App:
         self.busy = False
 
         root.title("Crypto Movement Bot: " + ", ".join(coin_name(x) for x in settings.symbols) + " (signals only)")
-        root.geometry("1320x700")
+        root.geometry("1400x700")
         root.minsize(760, 360)
 
         top = ttk.Frame(root, padding=10)
@@ -30,15 +31,16 @@ class App:
         ttk.Label(top, textvariable=self.price_var, font=("Segoe UI", 11, "bold"), justify="left").pack(anchor="w")
         ttk.Label(top, textvariable=self.cmc_var).pack(anchor="w")
 
-        cols = ("coin", "tf", "call", "conf", "pup", "tv", "agree", "closes", "from", "last", "rate")
-        heads = ("Coin", "Timeframe", "Bot says", "Confidence", "P(up)", "TradingView", "Agree?",
+        cols = ("coin", "tf", "side", "call", "conf", "pup", "tv", "agree", "closes", "from", "last", "rate")
+        heads = ("Coin", "Timeframe", "Prediction", "Bot says", "Confidence", "P(up)", "TradingView", "Agree?",
                  "For candle closing", "From price", "Last result", "Hit rate")
         self.tree = ttk.Treeview(root, columns=cols, show="headings", height=len(TIMEFRAMES) * len(settings.symbols))
         for c, h in zip(cols, heads):
             self.tree.heading(c, text=h)
-            self.tree.column(c, width={"coin": 60, "tf": 75, "last": 150, "rate": 240}.get(c, 95), anchor="center")
-        for d, colour in COLOURS.items():
-            self.tree.tag_configure(d, foreground=colour, font=("Segoe UI", 11, "bold"))
+            self.tree.column(c, width={"coin": 60, "tf": 75, "side": 100, "last": 150, "rate": 240}.get(c, 92), anchor="center")
+        # Rows are coloured by the prediction: green = LONG, red = SHORT
+        for side, colour in SIDE_COLOURS.items():
+            self.tree.tag_configure(side, foreground=colour, font=("Segoe UI", 11, "bold"))
         self.tree.tag_configure("ERR", foreground="#9a6700")
         self.tree.pack(fill="x", padx=10)
 
@@ -150,12 +152,13 @@ class App:
         self.tree.delete(*self.tree.get_children())
         for p in snap.predictions:
             if p.error or not p.signal:
-                self.tree.insert("", "end", values=(p.coin, p.timeframe, "error", "", "", "", "", "", p.error, "", ""),
+                self.tree.insert("", "end", values=(p.coin, p.timeframe, "-", "error", "", "", "", "", "", p.error, "", ""),
                                  tags=("ERR",))
                 continue
             s = p.signal
-            self.tree.insert("", "end", tags=(s.direction,), values=(
-                p.coin, p.timeframe, s.direction, f"{s.confidence:.0%}", f"{s.p_up:.2f}",
+            side = "LONG" if s.p_up > 0.5 else "SHORT"
+            self.tree.insert("", "end", tags=(side,), values=(
+                p.coin, p.timeframe, prediction_label(s), s.direction, f"{s.confidence:.0%}", f"{s.p_up:.2f}",
                 TV_NAMES.get(p.tv.recommendation or "", "n/a"),
                 {True: "yes", False: "NO", None: "-"}[p.agrees_with_tv],
                 local_hhmm(p.target_close_time), money(p.last_close),

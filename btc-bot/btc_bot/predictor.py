@@ -198,6 +198,8 @@ def exchange_prices(symbol: str) -> dict[str, float | None]:
 
 def take_snapshot(settings: Settings, timeframes=TIMEFRAMES) -> Snapshot:
     log = _read_log()
+    for tf in timeframes:  # one TradingView request per timeframe for all coins
+        tradingview.prefetch(settings.symbols, tf)
     preds = [predict_timeframe(settings, tf, sym, log) for sym in settings.symbols for tf in timeframes]
     snap = Snapshot(created=datetime.now(timezone.utc), predictions=preds,
                     prices={sym: exchange_prices(sym) for sym in settings.symbols},

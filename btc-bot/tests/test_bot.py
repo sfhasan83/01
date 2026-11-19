@@ -131,6 +131,7 @@ def test_full_snapshot_with_fallback(monkeypatch, tmp_path):
     monkeypatch.setattr(mexc, "fetch_price", lambda s: 61000.0)
     monkeypatch.setattr(predictor.tradingview, "fetch_rating",
                         lambda s, tf: predictor.tradingview.TVRating(recommendation="BUY"))
+    monkeypatch.setattr(predictor.tradingview, "prefetch", lambda symbols, tf: None)
     snap = predictor.take_snapshot(Settings(history_candles=800))
     assert [(p.coin, p.timeframe) for p in snap.predictions] == [
         (c, tf) for c in ("BTC", "ETH", "SOL") for tf in ("5m", "15m", "1h")]
@@ -138,6 +139,7 @@ def test_full_snapshot_with_fallback(monkeypatch, tmp_path):
     assert (tmp_path / "p.csv").exists()
     from btc_bot.report import snapshot_text
     text = snapshot_text(snap)
+    assert ("LONG ▲" in text or "SHORT ▼" in text) and "Prediction" in text
     assert "MEXC: $61,000.00" in text and "SOL " in text and "ETH " in text
     import csv
     rows = list(csv.DictReader((tmp_path / "p.csv").open()))
@@ -259,3 +261,42 @@ def test_coin_name_and_settings(monkeypatch):
     assert Settings.load().symbols == ["BTCUSDT", "SOLUSDT"]
     monkeypatch.delenv("SYMBOLS")
     assert Settings.load().symbols == ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+
+
+def test_tradingview_batches_and_backs_off(monkeypatch):
+    import sys
+    import types
+
+    from btc_bot.sources import tradingview as tv
+    monkeypatch.setattr(tv, "_cache", {})
+    monkeypatch.setattr(tv, "_blocked_until", {})
+    monkeypatch.setattr(tv, "_last_error", {})
+    calls = []
+    state = {"fail": False}
+
+    def fake_multi(screener, interval, symbols, timeout=None):
+        calls.append(list(symbols))
+        if state["fail"]:
+            raise Exception("Can't access TradingView's API. HTTP status code: 429.")
+        return {s: types.SimpleNamespace(summary={"RECOMMENDATION": "BUY", "BUY": 10, "SELL": 2, "NEUTRAL": 5})
+                for s in symbols}
+    fake_mod = types.SimpleNamespace(get_multiple_analysis=fake_multi,
+                                     Interval=types.SimpleNamespace(INTERVAL_5_MINUTES="5m",
+                                                                    INTERVAL_15_MINUTES="15m",
+                                                                    INTERVAL_1_HOUR="1h"))
+    monkeypatch.setitem(sys.modules, "tradingview_ta", fake_mod)
+    syms = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+    tv.prefetch(syms, "5m")
+    assert calls == [["BINANCE:BTCUSDT", "BINANCE:ETHUSDT", "BINANCE:SOLUSDT"]]
+    assert all(tv.fetch_rating(s, "5m").recommendation == "BUY" for s in syms)
+    assert len(calls) == 1  # served from cache
+    # a 429 keeps showing the last good rating and pauses requests
+    for key in list(tv._cache):
+        tv._cache[key].fetched -= 1000
+    state["fail"] = True
+    assert tv.fetch_rating("BTCUSDT", "5m").recommendation == "BUY"
+    n = len(calls)
+    tv.prefetch(syms, "5m")
+    assert len(calls) == n  # backing off
+    tv._cache.clear()
+    assert "429" in tv.fetch_rating("BTCUSDT", "5m").error

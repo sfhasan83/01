@@ -15,6 +15,13 @@ def local_hhmm(ts) -> str:
     return ts.to_pydatetime().astimezone().strftime("%H:%M")
 
 
+def prediction_label(signal) -> str:
+    """LONG if the model leans up (P(up) above 0.5), SHORT if it leans down. Shown even for NEUTRAL calls."""
+    if signal is None:
+        return "-"
+    return "LONG ▲" if signal.p_up > 0.5 else "SHORT ▼"
+
+
 def signal_badge(r) -> str:
     """Result of the last checked prediction: 'YES ✔ HIT', 'NO ✘ MISSED' (+ '(lean)') or 'waiting'."""
     if r is None or r.last_hit is None:
@@ -39,7 +46,8 @@ def result_line(r, next_due=None) -> str:
         when = f" The first one is checked at {local_hhmm(next_due)}." if next_due is not None else ""
         return f"Nothing checked yet: a result appears when a predicted candle closes.{when}"
     move = f"{money(r.last_from_price)} → {money(r.last_close_price)}"
-    said = f"leaned {r.last_direction} (NEUTRAL)" if r.last_is_lean else f"said {r.last_direction}"
+    side = "LONG" if r.last_direction == "UP" else "SHORT"
+    said = f"predicted {side} (NEUTRAL lean)" if r.last_is_lean else f"predicted {side}"
     return (f"{said} for the candle closing {local_hhmm(r.last_target_close)}, price went {move}.  "
             f"Hit rate: {hit_rate_text(r)}")
 
@@ -79,20 +87,20 @@ def snapshot_text(snap: Snapshot) -> str:
     out += price_lines(snap)
     if cmc_line(snap):
         out.append(cmc_line(snap))
-    header = (f"{'Coin':<6}{'Timeframe':<10}{'Bot says':<12}{'Confidence':<12}{'P(up)':<8}{'TradingView':<14}"
+    header = (f"{'Coin':<6}{'Timeframe':<10}{'Prediction':<12}{'Bot says':<12}{'Confidence':<12}{'P(up)':<8}{'TradingView':<14}"
               f"{'Agree?':<8}{'For candle closing'}")
     current = None
     for p in snap.predictions:
         if p.symbol != current:
             current = p.symbol
-            out += ["", header, "-" * 92]
+            out += ["", header, "-" * 104]
         if p.error or not p.signal:
             out.append(f"{p.coin:<6}{p.timeframe:<10}ERROR: {p.error}")
             continue
         tv = TV_NAMES.get(p.tv.recommendation or "", "n/a")
         agree = {True: "yes", False: "NO", None: "-"}[p.agrees_with_tv]
         when = local_hhmm(p.target_close_time)
-        out.append(f"{p.coin:<6}{p.timeframe:<10}{ARROWS[p.signal.direction]:<12}{p.signal.confidence:<12.0%}"
+        out.append(f"{p.coin:<6}{p.timeframe:<10}{prediction_label(p.signal):<12}{ARROWS[p.signal.direction]:<12}{p.signal.confidence:<12.0%}"
                    f"{p.signal.p_up:<8.2f}{tv:<14}{agree:<8}{when}  (from {money(p.last_close)})")
         out.append(f"{'':<16}Last result: {signal_badge(p.results)}  {result_line(p.results, p.target_close_time)}")
         if p.tv_alert:

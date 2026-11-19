@@ -20,7 +20,8 @@ For each coin and timeframe it shows:
 | Column | Meaning |
 |---|---|
 | Coin | BTC, ETH or SOL |
-| Bot says | `UP`, `DOWN`, or `NEUTRAL` when the bot is not sure enough |
+| Prediction | **LONG ▲** (green) if the model leans up, **SHORT ▼** (red) if it leans down. Always shown, even when the bot says NEUTRAL |
+| Bot says | `UP` or `DOWN` when the model is confident enough, otherwise `NEUTRAL` (treat LONG/SHORT on a NEUTRAL row as a weak lean) |
 | Confidence | How sure the model is (50% = coin flip) |
 | P(up) | The model's probability that the candle closes higher |
 | TradingView | TradingView's own technical rating for the same timeframe (Strong buy ... Strong sell) |
@@ -130,8 +131,9 @@ shows that trading its calls would lose money to fees. Run the backtest on real 
 
 - **"Python was not found"**: reinstall Python and tick "Add python.exe to PATH", then run `setup.bat` again.
 - **"Could not load candles"**: your internet or country may block Binance. Set `PRIMARY_EXCHANGE=mexc` in `.env`.
-- **TradingView shows n/a**: the reason is printed in orange under the table. TradingView sometimes rate-limits
-  or blocks automated requests; the rest of the bot keeps working without it.
+- **TradingView shows n/a**: the reason is printed in orange under the table. The bot asks TradingView for all coins
+  in one request per timeframe and reuses the answer for 3 to 10 minutes. If TradingView still answers "HTTP 429"
+  (too many requests), the bot keeps the last rating and waits 10 minutes before asking again.
 - **CoinMarketCap errors**: check the key in `.env`. The free plan allows about 330 calls a day, so the bot
   refreshes CoinMarketCap only every 15 minutes (about 290 calls a day if left running), even when the prices refresh every minute.
 

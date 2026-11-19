@@ -10,7 +10,7 @@ Everything needed to launch and grow an Amazon store on Amazon.com (US), Amazon.
 | [daily-reports/TEMPLATE.md](daily-reports/TEMPLATE.md) | The repeatable report format |
 | [daily-reports/HOW-TO-RUN.md](daily-reports/HOW-TO-RUN.md) | How each report is researched and scored |
 
-Latest report: [daily-reports/2026-11-18.md](daily-reports/2026-11-18.md)
+Latest report: [daily-reports/2026-11-19.md](daily-reports/2026-11-19.md)
 
 ## Grocery shop software
 

@@ -187,3 +187,34 @@ def test_score_log(monkeypatch, tmp_path):
     up_share = (df["close"].iloc[901:951].values > df["close"].iloc[900:950].values).mean()
     assert table.iloc[0]["checked"] == 50
     assert abs(table.iloc[0]["accuracy"] - up_share) < 1e-9
+
+
+def test_signal_hit_results(monkeypatch, tmp_path):
+    from btc_bot.report import result_line, signal_badge
+    monkeypatch.setattr(predictor, "PREDICTION_LOG", tmp_path / "p.csv")
+    df = rows_to_frame(synthetic_rows(50))
+    step = pd.Timedelta(minutes=5)
+    header = ("created_utc,timeframe,source,last_close_time_utc,target_close_time_utc,last_close,p_up,"
+              "direction,confidence,tv_recommendation")
+    lines, expected = [header], []
+    for i, (p_up, direction) in zip(range(10, 16), [(0.7, "UP"), (0.3, "DOWN"), (0.52, "NEUTRAL"),
+                                                     (0.7, "UP"), (0.3, "DOWN"), (0.52, "NEUTRAL")]):
+        t = df.index[i]
+        lines.append(f"{t.isoformat()},5m,binance,{(t + step).isoformat()},{(t + 2 * step).isoformat()},"
+                     f"{df['close'].iloc[i]},{p_up},{direction},0.6,")
+        # a repeated, later call for the same candle must be ignored
+        lines.append(f"{(t + pd.Timedelta(minutes=1)).isoformat()},5m,binance,{(t + step).isoformat()},"
+                     f"{(t + 2 * step).isoformat()},{df['close'].iloc[i]},{1 - p_up},UP,0.6,")
+        went_up = df["close"].iloc[i + 1] > df["close"].iloc[i]
+        if direction != "NEUTRAL":
+            expected.append(went_up == (direction == "UP"))
+    (tmp_path / "p.csv").write_text("\n".join(lines) + "\n")
+    # a 6th call whose candle has not closed yet must not be counted
+    res = predictor.signal_results(predictor.check_signals(predictor._read_log(), "5m", df.iloc[:15]))
+    assert res.checked == 3 and res.hits == sum(expected[:3])
+    res = predictor.signal_results(predictor.check_signals(predictor._read_log(), "5m", df))
+    assert res.checked == 4 and res.hits == sum(expected)
+    assert res.last_hit == expected[-1] and res.last_direction == "DOWN"
+    assert signal_badge(res) == ("YES ✔ HIT" if expected[-1] else "NO ✘ MISSED")
+    assert "Hit rate" in result_line(res)
+    assert signal_badge(predictor.SignalResults()) == "waiting"

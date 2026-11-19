@@ -27,12 +27,84 @@ class TimeframePrediction:
     tv: tradingview.TVRating
     tv_alert: dict | None = None
     error: str | None = None
+    results: "SignalResults | None" = None
 
     @property
     def agrees_with_tv(self) -> bool | None:
         if not self.signal or self.signal.direction == "NEUTRAL" or self.tv.direction == "NEUTRAL":
             return None
         return self.signal.direction == self.tv.direction
+
+
+@dataclass
+class SignalResults:
+    """How the bot's past UP/DOWN calls on one timeframe turned out, once their candles closed."""
+    hits: int = 0
+    misses: int = 0
+    last_hit: bool | None = None          # True = YES signal hit, False = NO missed, None = nothing checked yet
+    last_direction: str | None = None
+    last_target_close: pd.Timestamp | None = None
+    last_from_price: float | None = None
+    last_close_price: float | None = None
+
+    @property
+    def checked(self) -> int:
+        return self.hits + self.misses
+
+    @property
+    def hit_rate(self) -> float | None:
+        return self.hits / self.checked if self.checked else None
+
+
+def _read_log() -> pd.DataFrame:
+    if not PREDICTION_LOG.exists():
+        return pd.DataFrame()
+    try:
+        log = pd.read_csv(PREDICTION_LOG)
+    except (OSError, ValueError):
+        return pd.DataFrame()
+    if log.empty:
+        return log
+    for col in ("last_close_time_utc", "target_close_time_utc"):
+        log[col] = pd.to_datetime(log[col], utc=True)
+    # watch mode logs the same candle many times: keep the first call made for each candle
+    return log.sort_values("created_utc").drop_duplicates(["timeframe", "target_close_time_utc"], keep="first")
+
+
+def check_signals(log: pd.DataFrame, timeframe: str, candles: pd.DataFrame) -> pd.DataFrame:
+    """Logged predictions for this timeframe whose candle has closed, with what really happened."""
+    if log.empty:
+        return pd.DataFrame()
+    group = log[log["timeframe"] == timeframe]
+    if group.empty:
+        return pd.DataFrame()
+    close_by_end = candles["close"].copy()
+    close_by_end.index = candles.index + pd.to_timedelta(INTERVAL_MS[timeframe], unit="ms")
+    actual = group["target_close_time_utc"].map(close_by_end)
+    done = group[actual.notna()].copy()
+    done["actual_close"] = actual[actual.notna()]
+    done["went_up"] = done["actual_close"] > done["last_close"]
+    done["said_up"] = done["p_up"] > 0.5
+    done["hit"] = done["went_up"] == done["said_up"]
+    return done.sort_values("target_close_time_utc")
+
+
+def signal_results(checked: pd.DataFrame) -> SignalResults:
+    res = SignalResults()
+    if checked.empty:
+        return res
+    calls = checked[checked["direction"] != "NEUTRAL"]
+    if calls.empty:
+        return res
+    res.hits = int(calls["hit"].sum())
+    res.misses = int(len(calls) - res.hits)
+    last = calls.iloc[-1]
+    res.last_hit = bool(last["hit"])
+    res.last_direction = last["direction"]
+    res.last_target_close = last["target_close_time_utc"]
+    res.last_from_price = float(last["last_close"])
+    res.last_close_price = float(last["actual_close"])
+    return res
 
 
 @dataclass
@@ -69,13 +141,14 @@ def predict_timeframe(settings: Settings, timeframe: str) -> TimeframePrediction
         p_up = float(model.predict_up_proba(feats.iloc[[-1]])[0])
         last_open = feats.index[-1]
         step = pd.to_timedelta(INTERVAL_MS[timeframe], unit="ms")
+        results = signal_results(check_signals(_read_log(), timeframe, candles))
         return TimeframePrediction(
             timeframe=timeframe,
             signal=to_signal(p_up, settings.confidence_threshold),
             last_close=float(candles.loc[last_open, "close"]),
             last_close_time=last_open + step,
             target_close_time=last_open + 2 * step,
-            source=source, tv=tv, tv_alert=alert)
+            source=source, tv=tv, tv_alert=alert, results=results)
     except Exception as err:  # noqa: BLE001
         return TimeframePrediction(timeframe, None, None, None, None, "-", tv, alert, error=str(err))
 
@@ -120,29 +193,22 @@ def log_snapshot(snap: Snapshot) -> None:
 
 def score_log(settings: Settings) -> pd.DataFrame:
     """Compare logged predictions with what actually happened. Returns one row per timeframe."""
-    if not PREDICTION_LOG.exists():
+    log = _read_log()
+    if log.empty:
         return pd.DataFrame()
-    log = pd.read_csv(PREDICTION_LOG, parse_dates=["last_close_time_utc", "target_close_time_utc"])
-    # one prediction per target candle (watch mode logs the same candle many times)
-    log = log.sort_values("created_utc").drop_duplicates(["timeframe", "target_close_time_utc"], keep="first")
     rows = []
-    for tf, group in log.groupby("timeframe"):
+    for tf in log["timeframe"].unique():
         candles, _ = load_candles(settings, tf, total=1000)
-        close_by_end = candles["close"].copy()
-        close_by_end.index = candles.index + pd.to_timedelta(INTERVAL_MS[tf], unit="ms")
-        actual = group["target_close_time_utc"].map(close_by_end)
-        done = actual.notna()
-        if not done.any():
+        done = check_signals(log, tf, candles)
+        if done.empty:
             continue
-        g = group[done]
-        went_up = actual[done].values > g["last_close"].values
-        said_up = g["p_up"].values > 0.5
-        conf = g["direction"].values != "NEUTRAL"
+        calls = done[done["direction"] != "NEUTRAL"]
         rows.append({
             "timeframe": tf,
-            "checked": int(done.sum()),
-            "accuracy": float((went_up == said_up).mean()),
-            "confident_calls": int(conf.sum()),
-            "confident_accuracy": float((went_up[conf] == said_up[conf]).mean()) if conf.any() else float("nan"),
+            "checked": len(done),
+            "accuracy": float(done["hit"].mean()),
+            "signals": len(calls),
+            "signal_hits": int(calls["hit"].sum()),
+            "signal_hit_rate": float(calls["hit"].mean()) if len(calls) else float("nan"),
         })
     return pd.DataFrame(rows)

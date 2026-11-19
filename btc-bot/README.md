@@ -25,6 +25,12 @@ For each timeframe it shows:
 | TradingView | TradingView's own technical rating for the same timeframe (Strong buy ... Strong sell) |
 | Agree? | Whether the bot and TradingView point the same way |
 | For candle closing | The local time the predicted candle closes, and the price it is measured from |
+| Last signal | **YES ✔ HIT** if the bot's last UP/DOWN call was right once its candle closed, **NO ✘ MISSED** if not |
+| Hit rate | Signals that hit out of all signals checked so far, e.g. `12/20 (60%)` |
+
+Under the table, a **Signal results** box shows the same thing in green (hit) or red (missed) for each timeframe,
+with the price move that decided it. NEUTRAL calls are not counted, because the bot did not pick a side.
+Results are kept in `logs\predictions.csv`, so the hit rate carries over when you close and reopen the bot.
 
 Above the table you see the live price on Binance and MEXC, and from CoinMarketCap the 1h and 24h change,
 BTC dominance and the Fear & Greed index.

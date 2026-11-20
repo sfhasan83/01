@@ -1,7 +1,7 @@
 """Turns a Snapshot into readable text for the console."""
 from __future__ import annotations
 
-from .config import coin_name
+from .config import coin_name, price_text
 from .levels import describe, level_text
 from .predictor import Snapshot
 
@@ -68,7 +68,7 @@ def result_line(r, next_due=None) -> str:
 
 
 def money(x):
-    return "n/a" if x is None else f"${x:,.2f}"
+    return price_text(x)
 
 
 def pct(x, signed=True):
@@ -99,6 +99,8 @@ def cmc_line(snap: Snapshot) -> str:
 
 def snapshot_text(snap: Snapshot) -> str:
     out = [f"Crypto movement forecast  ·  {snap.created.astimezone():%Y-%m-%d %H:%M:%S} (your time)", ""]
+    if snap.coins_note:
+        out.append(snap.coins_note)
     out += price_lines(snap)
     if cmc_line(snap):
         out.append(cmc_line(snap))
@@ -145,7 +147,7 @@ def levels_report(snap: Snapshot) -> str:
         lines.append(f"== {p.coin} {p.timeframe}   price {money(p.last_close)}")
         for lv in reversed(p.resistances):
             lines.append("   " + describe(lv))
-        lines.append(f"   {'--- price':<10} ${p.last_close:>12,.2f}")
+        lines.append(f"   {'--- price':<10} {price_text(p.last_close):>13}")
         for lv in p.supports:
             lines.append("   " + describe(lv))
         lines.append("")

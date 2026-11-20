@@ -27,6 +27,16 @@ def coin_name(symbol: str) -> str:
     return symbol
 
 
+def price_text(x: float | None) -> str:
+    """Dollar price with enough decimals for cheap coins: $61,785.73, $72.253, $2.1034, $0.17123."""
+    if x is None:
+        return "n/a"
+    import math
+
+    digits = 2 if x == 0 else max(2, min(8, 5 - int(math.floor(math.log10(abs(x)))) - 1))
+    return f"${x:,.{digits}f}"
+
+
 def _get(name: str, default: str) -> str:
     value = os.environ.get(name, "").strip()
     return value if value else default
@@ -36,6 +46,7 @@ def _get(name: str, default: str) -> str:
 class Settings:
     cmc_api_key: str = ""
     symbols: list[str] = field(default_factory=lambda: list(DEFAULT_SYMBOLS))
+    top_coins: int = 10  # follow the top N coins by CoinMarketCap market cap; 0 = use SYMBOLS
     primary_exchange: str = "binance"
     history_candles: int = 3000
     confidence_threshold: float = 0.58
@@ -53,6 +64,7 @@ class Settings:
         s = cls(
             cmc_api_key=_get("CMC_API_KEY", ""),
             symbols=[x.strip().upper() for x in _get("SYMBOLS", ",".join(DEFAULT_SYMBOLS)).split(",") if x.strip()],
+            top_coins=int(_get("TOP_COINS", "10")),
             primary_exchange=_get("PRIMARY_EXCHANGE", "binance").lower(),
             history_candles=int(_get("HISTORY_CANDLES", "3000")),
             confidence_threshold=float(_get("CONFIDENCE_THRESHOLD", "0.58")),
@@ -69,6 +81,7 @@ class Settings:
             raise ValueError("PRIMARY_EXCHANGE must be 'binance' or 'mexc'")
         if not s.symbols:
             s.symbols = list(DEFAULT_SYMBOLS)
+        s.top_coins = min(max(s.top_coins, 0), 30)
         s.confidence_threshold = min(max(s.confidence_threshold, 0.5), 0.99)
         s.history_candles = max(s.history_candles, 500)
         s.refresh_seconds = max(s.refresh_seconds, 10)

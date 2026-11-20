@@ -1,4 +1,4 @@
-"""Crypto (BTC, ETH, SOL) short-term movement predictor (signals only, never places orders)."""
+"""Crypto (top coins by market cap) short-term movement predictor (signals only, never places orders)."""
 
 __version__ = "0.1.0"
 

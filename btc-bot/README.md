@@ -1,6 +1,7 @@
-# Crypto Movement Bot (Windows): BTC, ETH, SOL
+# Crypto Movement Bot (Windows): top 10 coins
 
-A small Windows program that predicts whether **Bitcoin (BTC), Ethereum (ETH) and Solana (SOL)** will go **UP** or **DOWN** over the next
+A small Windows program that predicts whether the **top 10 coins by CoinMarketCap market cap** (BTC, ETH, XRP, BNB, SOL, ...)
+will go **UP** or **DOWN** over the next
 **5 minutes, 15 minutes and 1 hour**, using data from **Binance, MEXC, CoinMarketCap and TradingView**.
 
 > **Signals only.** The bot never logs in to an exchange and never places orders.
@@ -15,11 +16,33 @@ A small Windows program that predicts whether **Bitcoin (BTC), Ethereum (ETH) an
   "Live track record" button (or `python -m btc_bot score`) checks how they actually turned out.
 - An optional **TradingView alert receiver** (`start-webhook.bat`).
 
+## Which coins
+
+The bot asks CoinMarketCap for the current ranking and follows the **top 10 by market cap** (`TOP_COINS=10`).
+The list is saved in `logs\top_coins.json` and renewed every 12 hours, so a coin that climbs into the top 10 is
+picked up on its own. It skips:
+
+- **Stablecoins** (USDT, USDC, USDe, ...) and wrapped or staked copies (WBTC, stETH, ...): their price hardly moves, so
+  there is nothing to predict. The next coin in the ranking takes the place.
+- Coins with **no USDT pair on Binance or MEXC**. A coin that only one exchange lists (for example HYPE, which is on
+  MEXC but not Binance) is followed on that exchange only, and its other price shows as missing.
+
+The window lists the skipped coins under the swing line. It needs `CMC_API_KEY`; without it (or if CoinMarketCap
+can't be reached and nothing is saved yet) the bot follows the `SYMBOLS` list instead. Set `TOP_COINS=0` to always
+use `SYMBOLS`, or `TOP_COINS=5` / `15` for a different number (up to 30).
+
+## The window
+
+One block per coin, largest first. On the left: the coin, its CoinMarketCap rank, its Binance price, its MEXC price
+and its 1h / 24h change (the coloured bar is green when the coin is up over 24 hours, red when down). On the right,
+one row per timeframe. The table scrolls (mouse wheel) and its headings stay in place. Above it, the dark bar shows
+BTC dominance, the Fear & Greed index and the 24h change of the whole market. Hover a hit rate, a TP/SL result or a
+prediction for more detail.
+
 For each coin and timeframe it shows:
 
 | Column | Meaning |
 |---|---|
-| Coin | BTC, ETH or SOL |
 | Prediction | **LONG ▲** (green) if the model leans up, **SHORT ▼** (red) if it leans down. Always shown, even when the bot says NEUTRAL |
 | Bot says | `UP` or `DOWN` when the model is confident enough, otherwise `NEUTRAL` (treat LONG/SHORT on a NEUTRAL row as a weak lean) |
 | Confidence | How sure the model is (50% = coin flip) |
@@ -31,16 +54,14 @@ For each coin and timeframe it shows:
 | Take profit / Stop loss | Suggested exit prices for the LONG or SHORT, see below |
 | TP/SL result | Whether the latest finished suggestion reached **TP ✔** (green) or **SL ✘** (red) first, or **expired** |
 | Support (bounce up) / Resistance (bounce down) | The nearest rebound levels below and above the price, with how many times price rebounded out of the times it tested them (e.g. `$62,810.00 · 5/7`). Blue = strong level, grey = weak or new |
-| Last result | **YES ✔ HIT** if the bot's last prediction was right once its candle closed, **NO ✘ MISSED** if not. A NEUTRAL row is still checked by which way it leaned (P(up) above 0.5 = UP) and is marked **(lean)** |
-| Hit rate | `signals` counts only the confident UP/DOWN calls; `all` counts every prediction by its lean, e.g. `signals 3/5 (60%) · all 11/20 (55%)` |
+| Last call | **YES ✔ HIT** if the bot's last prediction was right once its candle closed, **NO ✘ MISSED** if not. A NEUTRAL row is still checked by which way it leaned (P(up) above 0.5 = UP) and is marked **(lean)** |
+| Hit rate · R | How many checked predictions leaned the right way, e.g. `55% of 20`, and the total result of the TP/SL suggestions in R (1R = the stop-loss distance). Green from 55%, red under 45%. Hover it to see `signals` (only the confident UP/DOWN calls) and `all` (every prediction by its lean) |
 
-Under the table, a **Signal results** box shows the same thing in green (hit) or red (missed), one column per coin
-and one row per timeframe. The console view (`start-watch.bat`) also prints the price move that decided each result. Before the first candle closes it says when the first check happens
+The console view (`start-watch.bat`) also prints the price move that decided each result. Before the first candle closes it says when the first check happens
 (about 5 minutes for 5m, up to an hour for 1h).
 Results are kept in `logs\predictions.csv`, so the hit rate carries over when you close and reopen the bot.
 
-Above the table you see each coin's live price on Binance and MEXC, and from CoinMarketCap each coin's 1h and 24h change,
-BTC dominance and the Fear & Greed index.
+Prices below $1 are shown with more decimals (e.g. `$0.094120`), so take profit and stop loss stay usable on cheap coins.
 
 ## Setup on Windows (about 5 minutes)
 
@@ -54,7 +75,7 @@ BTC dominance and the Fear & Greed index.
    Open the new `.env` file in Notepad and paste it after `CMC_API_KEY=`. Save.
    (The bot still works without it; you just won't see the CoinMarketCap line.)
 5. **Double-click the "Crypto Movement Bot" icon** that setup put on your Desktop (also in the Start menu).
-   If the icon is missing, double-click `create-shortcut.bat` to make it again, or use `start-gui.bat`. If the bot ever fails to start, it shows an error box and saves the details in `logs\startup-error.log`; `start-gui-debug.bat` starts it with a console so you can see every message. The window opens straight away. The very first update downloads price history and trains 9 models (3 coins × 3 timeframes), usually within 10 to 30 seconds. After that the bot saves the prices in `logs\cache`, so later starts and refreshes only download the newest candles, and it reuses each model until a new candle closes.
+   If the icon is missing, double-click `create-shortcut.bat` to make it again, or use `start-gui.bat`. If the bot ever fails to start, it shows an error box and saves the details in `logs\startup-error.log`; `start-gui-debug.bat` starts it with a console so you can see every message. The window opens straight away. The very first update downloads price history and trains 30 models (10 coins × 3 timeframes), usually within 30 to 90 seconds. After that the bot saves the prices in `logs\cache`, so later starts and refreshes only download the newest candles, and it reuses each model until a new candle closes.
 
 Binance, MEXC and TradingView need **no account or key**: the bot only reads public market data.
 
@@ -78,7 +99,8 @@ Double-click a `.bat` file, or run these in a Command Prompt inside the folder:
 | Setting | Default | What it does |
 |---|---|---|
 | `CMC_API_KEY` | empty | CoinMarketCap key |
-| `SYMBOLS` | `BTCUSDT,ETHUSDT,SOLUSDT` | Coins to follow, comma separated. Add or remove pairs here (e.g. `BTCUSDT,SOLUSDT`) |
+| `TOP_COINS` | `10` | Follow the top N coins by CoinMarketCap market cap (stablecoins skipped). `0` = use `SYMBOLS` instead |
+| `SYMBOLS` | `BTCUSDT,ETHUSDT,SOLUSDT` | Coins to follow when `TOP_COINS=0` or the top list can't be fetched, comma separated |
 | `PRIMARY_EXCHANGE` | `binance` | Exchange the model learns from. If it fails, the bot switches to the other one automatically |
 | `HISTORY_CANDLES` | `3000` | Past candles used to train each timeframe |
 | `CONFIDENCE_THRESHOLD` | `0.58` | Below this the bot says NEUTRAL instead of guessing |
@@ -102,7 +124,7 @@ candle on that timeframe, over the last 14 candles):
 So by default you risk 1 to aim for 1.5. After each call the bot watches the next 3 candles and records
 which level price touched first. If both are touched inside one candle it counts as a stop loss, because
 there's no way to know which came first. If neither is touched, the call **expires** at the 3rd candle's close.
-The Signal results box shows the running count, e.g. `TP 4 · SL 3 · exp 1 (50% TP) · +0.6R`. **R** is profit
+Hovering the hit rate or TP/SL result shows the running count, e.g. `TP 4 · SL 3 · exp 1 (50% TP) · +0.6R`. **R** is profit
 in units of risk: +1.5R for a take profit, −1R for a stop loss. A positive total means the TP/SL plan would
 have made money before fees.
 
@@ -191,7 +213,7 @@ If you have your own TradingView strategy or indicator alerts, the bot can show 
 
 ## How good are the predictions?
 
-Honestly: **not very, and nobody's are.** Over 5 to 60 minutes, the direction of BTC, ETH or SOL is very close to a coin flip.
+Honestly: **not very, and nobody's are.** Over 5 to 60 minutes, the direction of any of these coins is very close to a coin flip.
 Most of the movement is noise, any pattern that works gets traded away quickly, and fees eat small edges.
 Expect accuracy in the **50% to 55%** range, and some weeks below 50%.
 

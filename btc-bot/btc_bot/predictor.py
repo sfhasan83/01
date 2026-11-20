@@ -13,7 +13,7 @@ from . import TIMEFRAMES
 from .config import LOG_DIR, Settings, coin_name
 from . import bigmoves
 from . import levels as levels_mod
-from . import tpsl
+from . import topcoins, tpsl
 from .model import MovementModel, Signal, to_signal, training_frame
 from .sources import INTERVAL_MS, binance, coinmarketcap, drop_unfinished, mexc, tradingview
 
@@ -161,6 +161,8 @@ class Snapshot:
     predictions: list[TimeframePrediction]
     prices: dict[str, dict[str, float | None]] = field(default_factory=dict)  # symbol -> exchange -> price
     cmc: coinmarketcap.MarketContext | None = None
+    symbols: list[str] = field(default_factory=list)  # coins in this snapshot, in market cap order
+    coins_note: str = ""                              # where the coin list came from
 
 
 def _cache_path(exchange: str, symbol: str, timeframe: str):
@@ -218,6 +220,9 @@ def load_candles(settings: Settings, timeframe: str, total: int | None = None,
     only the few new candles are downloaded. Bigger requests (backtests) always download fresh."""
     symbol = symbol or settings.symbols[0]
     order = [settings.primary_exchange] + [e for e in EXCHANGES if e != settings.primary_exchange]
+    listed = topcoins.listed_on(symbol)
+    if listed:  # don't ask an exchange for a pair it doesn't trade
+        order = [e for e in order if e in listed]
     errors = []
     for name in order:
         try:
@@ -236,7 +241,7 @@ def load_candles(settings: Settings, timeframe: str, total: int | None = None,
 def predict_timeframe(settings: Settings, timeframe: str, symbol: str | None = None,
                       log: pd.DataFrame | None = None, with_tv: bool = True) -> TimeframePrediction:
     symbol = symbol or settings.symbols[0]
-    tv = tradingview.fetch_rating(symbol, timeframe) if with_tv else tradingview.TVRating()
+    tv = tradingview.fetch_rating(symbol, timeframe, tv_exchange(symbol)) if with_tv else tradingview.TVRating()
     alerts = tradingview.latest_alerts()
     alert = alerts.get(f"{symbol}|{timeframe}") or (alerts.get(timeframe) if symbol == LEGACY_SYMBOL else None)
     try:
@@ -278,9 +283,19 @@ def predict_timeframe(settings: Settings, timeframe: str, symbol: str | None = N
         return TimeframePrediction(timeframe, None, None, None, None, "-", tv, alert, error=str(err), symbol=symbol)
 
 
+def tv_exchange(symbol: str) -> str:
+    """TradingView needs the exchange too: Binance when it has the pair, else MEXC."""
+    listed = topcoins.listed_on(symbol)
+    return "MEXC" if listed and "binance" not in listed else "BINANCE"
+
+
 def exchange_prices(symbol: str) -> dict[str, float | None]:
     prices: dict[str, float | None] = {}
+    listed = topcoins.listed_on(symbol)
     for name, mod in EXCHANGES.items():
+        if listed and name not in listed:
+            prices[name] = None  # not traded there
+            continue
         try:
             prices[name] = mod.fetch_price(symbol)
         except Exception:  # noqa: BLE001
@@ -291,10 +306,18 @@ def exchange_prices(symbol: str) -> dict[str, float | None]:
 def take_snapshot(settings: Settings, timeframes=TIMEFRAMES) -> Snapshot:
     """Everything is fetched in parallel: candles + models for each coin/timeframe, TradingView,
     CoinMarketCap and live prices."""
+    try:
+        topcoins.resolve(settings)  # the current top coins by market cap (saved list, renewed every 12 h)
+    except Exception:  # noqa: BLE001 - keep going with the coins we already have
+        pass
     log = _read_log()
     combos = [(sym, tf) for sym in settings.symbols for tf in timeframes]
+    by_tv_exchange: dict[str, list[str]] = {}
+    for sym in settings.symbols:
+        by_tv_exchange.setdefault(tv_exchange(sym), []).append(sym)
     with ThreadPoolExecutor(max_workers=8) as pool:
-        tv_jobs = [pool.submit(tradingview.prefetch, settings.symbols, tf) for tf in timeframes]
+        tv_jobs = [pool.submit(tradingview.prefetch, syms, tf, ex)
+                   for tf in timeframes for ex, syms in by_tv_exchange.items()]
         price_jobs = {sym: pool.submit(exchange_prices, sym) for sym in settings.symbols}
         cmc_job = pool.submit(coinmarketcap.fetch_context, settings.cmc_api_key,
                               [coin_name(sym) for sym in settings.symbols])
@@ -305,8 +328,9 @@ def take_snapshot(settings: Settings, timeframes=TIMEFRAMES) -> Snapshot:
         prices = {sym: j.result() for sym, j in price_jobs.items()}
         cmc = cmc_job.result()
     for p in preds:  # TradingView answers are cached by now
-        p.tv = tradingview.fetch_rating(p.symbol, p.timeframe)
-    snap = Snapshot(created=datetime.now(timezone.utc), predictions=preds, prices=prices, cmc=cmc)
+        p.tv = tradingview.fetch_rating(p.symbol, p.timeframe, tv_exchange(p.symbol))
+    snap = Snapshot(created=datetime.now(timezone.utc), predictions=preds, prices=prices, cmc=cmc,
+                    symbols=list(settings.symbols), coins_note=topcoins.note())
     log_snapshot(snap)
     return snap
 

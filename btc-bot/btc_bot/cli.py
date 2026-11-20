@@ -192,11 +192,20 @@ def _run(argv=None) -> None:
             p.add_argument("--candles", type=int, default=5000, help="Candles of history per timeframe (default 5000)")
     for p in sub.choices.values():
         p.add_argument("--coins", nargs="+", metavar="SYMBOL",
-                       help="Override SYMBOLS from .env, e.g. --coins BTCUSDT SOLUSDT")
+                       help="Follow only these coins instead of the top coins, e.g. --coins BTCUSDT SOLUSDT")
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
         args = parser.parse_args(["gui"])
     settings = Settings.load()
     if args.coins:
         settings.symbols = [c.upper() for c in args.coins]
+        settings.top_coins = 0
+    elif args.func in (cmd_backtest, cmd_score, cmd_swings):
+        # backtest, score, swings: use the current top coins too (predict/watch/gui look them up each refresh)
+        from .topcoins import resolve
+
+        try:
+            resolve(settings)
+        except Exception:  # noqa: BLE001
+            pass
     args.func(settings, args)

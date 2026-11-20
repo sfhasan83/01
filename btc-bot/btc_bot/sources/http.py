@@ -17,6 +17,9 @@ def get_json(url: str, params: dict | None = None, headers: dict | None = None,
             if resp.status_code == 429:  # rate limited: back off
                 time.sleep(2 ** attempt * 2)
                 continue
+            if 400 <= resp.status_code < 500:
+                # e.g. "invalid symbol": asking again won't help, so fail straight away
+                raise ConnectionError(f"Request to {url} failed: HTTP {resp.status_code} {resp.text[:200]}")
             resp.raise_for_status()
             return resp.json()
         except (requests.RequestException, ValueError) as err:

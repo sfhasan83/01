@@ -23,6 +23,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from .config import price_text
 from .tpsl import atr
 
 LEVEL_RADIUS = 5
@@ -149,12 +150,12 @@ def level_text(lv: Level | None) -> str:
     if lv is None:
         return "-"
     if lv.rebound_rate is None:
-        return f"${lv.price:,.2f} · new"
-    return f"${lv.price:,.2f} · {lv.rebounds}/{lv.rebounds + lv.breaks}"
+        return f"{price_text(lv.price)} · new"
+    return f"{price_text(lv.price)} · {lv.rebounds}/{lv.rebounds + lv.breaks}"
 
 
 def describe(lv: Level) -> str:
     rate = "no completed tests yet" if lv.rebound_rate is None else \
         f"rebounded {lv.rebounds} of {lv.rebounds + lv.breaks} times ({lv.rebound_rate:.0%}), broke {lv.breaks}"
-    return (f"{lv.kind:<10} ${lv.price:>12,.2f}  ({lv.distance_pct:+.2f}% away)  {lv.strength:<6}  "
+    return (f"{lv.kind:<10} {price_text(lv.price):>13}  ({lv.distance_pct:+.2f}% away)  {lv.strength:<6}  "
             f"{lv.swings} swing points, {rate}")

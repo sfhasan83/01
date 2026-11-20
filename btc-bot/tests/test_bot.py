@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 import pandas as pd
 
-from btc_bot import backtest, features, model, predictor, webhook
+from btc_bot import backtest, features, model, predictor, topcoins, webhook
 from btc_bot.config import Settings
 from btc_bot.sources import binance, coinmarketcap, drop_unfinished, mexc, rows_to_frame
 
@@ -16,6 +16,10 @@ def _fresh_caches(monkeypatch, tmp_path):
     monkeypatch.setattr(predictor, "CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(predictor, "_candles", {})
     monkeypatch.setattr(predictor, "_models", {})
+    monkeypatch.setattr(topcoins, "TOP_FILE", tmp_path / "top_coins.json")
+    monkeypatch.setattr(topcoins, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(topcoins, "_saved", None)
+    monkeypatch.setattr(topcoins, "_last_try", None)
 
 
 def synthetic_rows(n=3000, step_ms=300_000, seed=1, drift=0.0):
@@ -139,8 +143,8 @@ def test_full_snapshot_with_fallback(monkeypatch, tmp_path):
                         lambda s, tf, n: rows_to_frame(synthetic_rows(n, steps[tf], seed=seeds[s])))
     monkeypatch.setattr(mexc, "fetch_price", lambda s: 61000.0)
     monkeypatch.setattr(predictor.tradingview, "fetch_rating",
-                        lambda s, tf: predictor.tradingview.TVRating(recommendation="BUY"))
-    monkeypatch.setattr(predictor.tradingview, "prefetch", lambda symbols, tf: None)
+                        lambda s, tf, ex="BINANCE": predictor.tradingview.TVRating(recommendation="BUY"))
+    monkeypatch.setattr(predictor.tradingview, "prefetch", lambda symbols, tf, ex="BINANCE": None)
     monkeypatch.setattr(predictor.bigmoves, "MOVES_FILE", tmp_path / "big.csv")
     monkeypatch.setattr(predictor.bigmoves, "LOG_DIR", tmp_path)
     snap = predictor.take_snapshot(Settings(history_candles=800))
@@ -549,3 +553,80 @@ def test_cli_help_builds_on_every_python():
         with pytest.raises(SystemExit) as exc:
             main(argv)
         assert exc.value.code == 0
+
+
+def _listing(rank, coin, tags=(), name=None):
+    return {"cmc_rank": rank, "symbol": coin, "name": name or coin.title(), "tags": list(tags),
+            "quote": {"USD": {"market_cap": 1e12 / rank}}}
+
+
+LISTINGS = [_listing(1, "BTC"), _listing(2, "ETH"), _listing(3, "USDT", ["stablecoin"]), _listing(4, "XRP"),
+            _listing(5, "BNB"), _listing(6, "SOL"), _listing(7, "USDC", ["stablecoin"]), _listing(8, "DOGE"),
+            _listing(9, "STETH"), _listing(10, "TRX"), _listing(11, "ADA"), _listing(12, "HYPE"),
+            _listing(13, "FAKECOIN"), _listing(14, "LINK"), _listing(15, "USDE", ["usd-stablecoin"]),
+            _listing(16, "XLM")]
+PAIRS = {"binance": {f"{c}USDT" for c in ("BTC", "ETH", "XRP", "BNB", "SOL", "DOGE", "TRX", "ADA", "LINK", "XLM")},
+         "mexc": {f"{c}USDT" for c in ("BTC", "ETH", "XRP", "BNB", "SOL", "DOGE", "TRX", "ADA", "HYPE", "LINK")}}
+
+
+def test_top_coins_skip_stablecoins_and_unlisted():
+    chosen, skipped = topcoins.pick(LISTINGS, PAIRS, 10)
+    assert [c.coin for c in chosen] == ["BTC", "ETH", "XRP", "BNB", "SOL", "DOGE", "TRX", "ADA", "HYPE", "LINK"]
+    assert {s["coin"] for s in skipped} == {"USDT", "USDC", "STETH", "FAKECOIN"}
+    hype = next(c for c in chosen if c.coin == "HYPE")
+    assert hype.exchanges == ["mexc"] and hype.symbol == "HYPEUSDT" and hype.rank == 12
+
+
+def test_top_coins_resolve_saves_and_reuses(monkeypatch):
+    calls = []
+
+    def fake_get(url, params=None, headers=None, retries=3, timeout=15):
+        calls.append(url)
+        if "coinmarketcap" in url:
+            return {"data": LISTINGS}
+        ex = "binance" if "binance" in url else "mexc"
+        return [{"symbol": s, "price": "1"} for s in PAIRS[ex]]
+    monkeypatch.setattr("btc_bot.sources.http.get_json", fake_get)
+    s = Settings(cmc_api_key="k", top_coins=10)
+    assert topcoins.resolve(s)[:3] == ["BTCUSDT", "ETHUSDT", "XRPUSDT"] and len(s.symbols) == 10
+    assert len(calls) == 3 and topcoins.TOP_FILE.exists()
+    assert "Top 10 by CoinMarketCap" in topcoins.note() and "USDT" in topcoins.note()
+    topcoins._saved = None  # a restart reads the saved file instead of asking again
+    topcoins.resolve(Settings(cmc_api_key="k", top_coins=10))
+    assert len(calls) == 3
+    assert topcoins.listed_on("HYPEUSDT") == ["mexc"] and predictor.tv_exchange("HYPEUSDT") == "MEXC"
+    assert predictor.tv_exchange("BTCUSDT") == "BINANCE" and topcoins.listed_on("ZZZUSDT") is None
+
+
+def test_top_coins_fall_back_without_key_or_network(monkeypatch):
+    s = Settings(cmc_api_key="", top_coins=10)
+    assert topcoins.resolve(s) == ["BTCUSDT", "ETHUSDT", "SOLUSDT"] and "CMC_API_KEY" in topcoins.note()
+
+    def down(*a, **k):
+        raise ConnectionError("offline")
+    monkeypatch.setattr("btc_bot.sources.http.get_json", down)
+    s = Settings(cmc_api_key="k", top_coins=10)
+    assert topcoins.resolve(s) == ["BTCUSDT", "ETHUSDT", "SOLUSDT"] and "offline" in topcoins.note()
+    s0 = Settings(cmc_api_key="k", top_coins=0, symbols=["BTCUSDT"])
+    assert topcoins.resolve(s0) == ["BTCUSDT"]
+
+
+def test_unlisted_exchange_is_never_asked(monkeypatch, tmp_path):
+    topcoins.TOP_FILE.write_text(json.dumps({"updated": "2099-01-01T00:00:00+00:00", "n": 1, "coins": [
+        {"symbol": "HYPEUSDT", "coin": "HYPE", "rank": 12, "exchanges": ["mexc"]}]}), encoding="utf-8")
+
+    def never(*a, **k):
+        raise AssertionError("Binance does not list HYPE")
+    monkeypatch.setattr(binance, "fetch_klines", never)
+    monkeypatch.setattr(binance, "fetch_price", never)
+    monkeypatch.setattr(mexc, "fetch_klines", lambda s, tf, n: rows_to_frame(synthetic_rows(n, 300_000)))
+    monkeypatch.setattr(mexc, "fetch_price", lambda s: 30.5)
+    _, src = predictor.load_candles(Settings(history_candles=500), "5m", symbol="HYPEUSDT")
+    assert src == "mexc"
+    assert predictor.exchange_prices("HYPEUSDT") == {"binance": None, "mexc": 30.5}
+
+
+def test_price_text_keeps_detail_on_cheap_coins():
+    from btc_bot.config import price_text
+    assert price_text(61785.734) == "$61,785.73" and price_text(72.2534) == "$72.253"
+    assert price_text(2.10341) == "$2.1034" and price_text(0.171234) == "$0.17123" and price_text(None) == "n/a"

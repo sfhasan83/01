@@ -117,6 +117,7 @@ def walk_forward(settings: Settings, progress: Callable[[str], None] = print, fa
         X_all, y_all = training_rows(panel, hz)
         x_pos = day_pos.reindex(X_all.index.get_level_values("date")).to_numpy()
         probs = pd.Series(np.nan, index=panel.index)
+        bases = pd.Series(np.nan, index=panel.index)
         for b, start in enumerate(blocks, start=1):
             progress(f"Backtest {hz}: block {b}/{len(blocks)} (from {cal[start]:%Y-%m-%d})...")
             train = x_pos <= start - n   # outcome known by the prediction day
@@ -125,8 +126,10 @@ def walk_forward(settings: Settings, progress: Callable[[str], None] = print, fa
             model = PooledModel(fast=fast).fit(X_all[train], y_all[train])
             test = ok.to_numpy() & (row_pos >= start) & (row_pos < start + step)
             if test.any():
-                probs.iloc[np.flatnonzero(test)] = model.predict_up_proba(panel[test])
-        res, stock = _evaluate(panel, probs, hz, n, settings)
+                rows = np.flatnonzero(test)
+                probs.iloc[rows] = model.predict_up_proba(panel[test])
+                bases.iloc[rows] = float(y_all[train].mean())
+        res, stock = _evaluate(panel, probs, bases, hz, n, settings)
         results.append(res)
         per_stock[hz] = stock
     _save_stock_record(per_stock)
@@ -136,16 +139,16 @@ def walk_forward(settings: Settings, progress: Callable[[str], None] = print, fa
     return results
 
 
-def _evaluate(panel, probs, hz, n, settings) -> tuple[HorizonResult, pd.DataFrame]:
+def _evaluate(panel, probs, bases, hz, n, settings) -> tuple[HorizonResult, pd.DataFrame]:
     fwd = panel[f"fwd_{hz}"]
     mask = probs.notna() & fwd.notna()
-    p, f = probs[mask], fwd[mask]
+    p, f, base = probs[mask], fwd[mask], bases[mask]
     moved = f != 0
     up = f > 0
     thr = settings.confidence_threshold
-    conf = np.maximum(p, 1 - p)
-    buy = (p >= thr)
-    sell = (p <= 1 - thr)
+    margin = thr - 0.5  # same rule as live signals: measured from the usual share of up moves
+    buy = p >= base + margin
+    sell = p <= base - margin
     liquid = panel.loc[mask, "turnover_20"] >= settings.min_turnover
     past = panel.loc[mask, f"ret_{n}" if f"ret_{n}" in panel else "ret_5"]
     dates = p.index.get_level_values("date")
@@ -155,7 +158,7 @@ def _evaluate(panel, probs, hz, n, settings) -> tuple[HorizonResult, pd.DataFram
         accuracy=float(((p > 0.5) == up)[moved].mean()),
         always_up=float(up[moved].mean()),
         momentum=float(((past > 0) == up)[moved & (past != 0)].mean()),
-        threshold=thr, confident_share=float((conf >= thr).mean()),
+        threshold=thr, confident_share=float((buy | sell).mean()),
         market_avg=float(np.expm1(f).mean()),
     )
     fee = settings.fee_rate
@@ -179,8 +182,8 @@ def _evaluate(panel, probs, hz, n, settings) -> tuple[HorizonResult, pd.DataFram
     best = max(res.always_up, 1 - res.always_up, res.momentum)
     if res.accuracy <= best + 0.01:
         res.notes.append("No clear edge in plain up/down accuracy over a simple rule.")
-    if res.buy["calls"] and res.buy["avg_net"] < res.market_avg:
-        res.notes.append("BUY calls did not beat simply holding the average stock.")
+    if res.buy["calls"] and res.buy["avg"] <= res.market_avg:
+        res.notes.append("BUY calls did not beat the average stock over the same days.")
     if res.buy["calls"] and res.buy["avg_net"] < 0:
         res.notes.append("Following BUY calls LOST money after fees.")
 
@@ -207,7 +210,7 @@ def report_text(results: list[HorizonResult], settings: Settings) -> str:
     sg = lambda x: "n/a" if x != x else f"{x * 100:+.2f}%"  # noqa: E731
     lines = ["PSX signal bot: walk-forward backtest on all stocks",
              f"Fees assumed: {settings.fee_rate * 100:.2f}% per side.  Confidence for a BUY/SELL call: "
-             f"{settings.confidence_threshold:.0%}.  'Liquid' = 20-day average turnover at least "
+             f"{settings.confidence_threshold:.0%} (measured from the usual share of up moves).  'Liquid' = 20-day average turnover at least "
              f"Rs {settings.min_turnover:,.0f} a day.", ""]
     for r in results:
         b, s = r.buy, r.sell

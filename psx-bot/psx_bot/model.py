@@ -66,10 +66,19 @@ class Signal:
     confidence: float  # 0.5 .. 1.0
 
 
-def to_signal(p_up: float, threshold: float) -> Signal:
+def to_signal(p_up: float, threshold: float, base_rate: float = 0.5) -> Signal:
+    """BUY/SELL only when the chance is clearly above/below what is normal for this horizon.
+
+    Stocks rise a bit more often than they fall, and more so over a month, so a plain 55 percent
+    would turn "the market usually goes up" into a BUY on almost everything. The margin is measured
+    from the base rate (the share of up moves in the training data) instead of from 50 percent.
+    """
     conf = max(p_up, 1 - p_up)
-    if conf < threshold:
-        action = "HOLD"
+    margin = threshold - 0.5
+    if p_up >= base_rate + margin:
+        action = "BUY"
+    elif p_up <= base_rate - margin:
+        action = "SELL"
     else:
-        action = "BUY" if p_up > 0.5 else "SELL"
+        action = "HOLD"
     return Signal(float(p_up), action, float(conf))

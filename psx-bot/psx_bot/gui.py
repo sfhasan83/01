@@ -42,8 +42,8 @@ COLUMNS = (
     ("1D", "1 day", 92, "center"),
     ("1W", "1 week", 92, "center"),
     ("1M", "1 month", 92, "center"),
-    ("tp", "Take profit", 92, "e"),
-    ("sl", "Stop loss", 92, "e"),
+    ("tp", "Take profit", 120, "e"),
+    ("sl", "Stop loss", 110, "e"),
     ("trend", "Trend", 82, "center"),
     ("rsi", "RSI", 46, "e"),
     ("turnover", "Turnover/day", 100, "e"),
@@ -129,7 +129,7 @@ class App:
                                     bd=0, font=(FONT, 10, "bold"), padx=12, pady=4, cursor="hand2")
         self.update_btn.pack(side="right")
         self.status = tk.StringVar(value="")
-        tk.Label(right, textvariable=self.status, bg=DARK, fg=DARK_MUTED, font=(FONT, 9), wraplength=460,
+        tk.Label(right, textvariable=self.status, bg=DARK, fg=DARK_MUTED, font=(FONT, 9), wraplength=380,
                  justify="right").pack(side="right", padx=12)
 
         chips = tk.Frame(head, bg=DARK)
@@ -139,7 +139,8 @@ class App:
                            ("mkt5", "Median 5-day move"), ("calls", "1-week calls")):
             chip = tk.Frame(chips, bg=DARK_CHIP, padx=12, pady=5)
             chip.pack(side="left", padx=(0, 8))
-            tk.Label(chip, text=title.upper(), bg=DARK_CHIP, fg=DARK_MUTED, font=(FONT, 8, "bold")).pack(anchor="w")
+            tk.Label(chip, text=title.upper(), bg=DARK_CHIP, fg=DARK_MUTED, font=(FONT, 8, "bold"),
+                     anchor="w").pack(anchor="w", fill="x")
             value = tk.Label(chip, text="…", bg=DARK_CHIP, fg=DARK_TEXT, font=(FONT, 12, "bold"))
             value.pack(anchor="w")
             self.chips[key] = value
@@ -188,8 +189,7 @@ class App:
         legend.pack(side="right")
         for text, fg, bg in (("BUY", UP, UP_BG), ("SELL", DOWN, DOWN_BG)):
             tk.Label(legend, text=text, fg=fg, bg=bg, font=(FONT, 9, "bold"), padx=6).pack(side="left", padx=(0, 4))
-        tk.Label(legend, text="= model's call and its confidence. HOLD ▲/▼ = no confident call, slight lean. "
-                              "Row colour follows the chosen horizon. Double-click a stock for details.",
+        tk.Label(legend, text="= call and confidence.  HOLD ▲/▼ = no clear call.  Double-click a stock for details.",
                  fg=MUTED, bg=PAGE, font=(FONT, 9)).pack(side="left")
         tk.Label(foot, bg=PAGE, fg=MUTED, font=(FONT, 9), anchor="w", justify="left", text=(
             "Signals only: this bot never places orders. Daily stock moves are mostly noise, so even a good "

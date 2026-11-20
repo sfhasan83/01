@@ -32,6 +32,7 @@ class ScanResult:
     market_5d: float        # median 5-day move of all stocks, percent
     counts: dict = field(default_factory=dict)  # horizon -> {"BUY": n, "SELL": n, "HOLD": n}
     trained_rows: dict = field(default_factory=dict)
+    base_rates: dict = field(default_factory=dict)  # horizon -> share of up moves in training data
     notes: list[str] = field(default_factory=list)
 
 
@@ -98,8 +99,10 @@ def run_scan(settings: Settings, progress: Callable[[str], None] = print, fast: 
         X, y = training_rows(panel, hz)
         model = PooledModel(fast=fast).fit(X, y)
         result.trained_rows[hz] = int(len(X))
+        base = float(y.mean())
+        result.base_rates[hz] = base
         p = model.predict_up_proba(latest)
-        sigs = [to_signal(v, settings.confidence_threshold) for v in p]
+        sigs = [to_signal(v, settings.confidence_threshold, base) for v in p]
         table[f"p_{hz}"] = p
         table[f"sig_{hz}"] = [s.action for s in sigs]
         table[f"conf_{hz}"] = [s.confidence for s in sigs]
@@ -119,7 +122,8 @@ def run_scan(settings: Settings, progress: Callable[[str], None] = print, fast: 
     stale = int(panel.xs(last_day, level="date")["stale"].sum()) if last_day in panel.index.get_level_values(0) else 0
     missing = len(histories) - len(table) - stale
     if missing > 0:
-        result.notes.append(f"{missing} stocks skipped: under ~1 year of history or no trades in 20 sessions.")
+        result.notes.append(f"{missing} stock{'s' if missing > 1 else ''} skipped: under about a year of "
+                            "history, or no trades in the last 20 sessions.")
     save_scan(result)
     log_signals(result)
     progress("Done.")
@@ -131,7 +135,7 @@ def save_scan(r: ScanResult) -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     r.table.to_csv(SIGNALS_FILE, index_label="symbol", float_format="%.6g")
     meta = {k: getattr(r, k) for k in ("as_of", "created", "stocks", "breadth", "market_5d", "counts",
-                                       "trained_rows", "notes")}
+                                       "trained_rows", "base_rates", "notes")}
     SCAN_FILE.write_text(json.dumps(meta, indent=1), encoding="utf-8")
 
 
@@ -146,7 +150,8 @@ def load_scan() -> ScanResult | None:
             table[k] = table[k].fillna("").astype(str)
     if "liquid" in table:
         table["liquid"] = table["liquid"].astype(str).str.lower().isin(("true", "1"))
-    return ScanResult(table=table, **meta)
+    known = set(ScanResult.__dataclass_fields__)
+    return ScanResult(table=table, **{k: v for k, v in meta.items() if k in known})
 
 
 def log_signals(r: ScanResult) -> None:

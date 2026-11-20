@@ -50,8 +50,8 @@ class Settings:
     min_turnover: float = 2_000_000    # PKR per day (20-day average); below this a stock is marked illiquid
     confidence_threshold: float = 0.55
     fee_rate: float = 0.0025           # per side: commission, CVT, SECP/CDC fees, roughly 0.25%
-    sl_atr_mult: float = 1.5
-    tp_atr_mult: float = 2.5
+    sl_atr_mult: float = 1.0
+    tp_atr_mult: float = 1.5
     use_yahoo_fallback: bool = True
     auto_update: bool = True           # update data and signals when the window opens
     workers: int = 4
@@ -68,8 +68,8 @@ class Settings:
             min_turnover=float(_get("MIN_TURNOVER", "2000000")),
             confidence_threshold=float(_get("CONFIDENCE_THRESHOLD", "0.55")),
             fee_rate=float(_get("FEE_RATE", "0.0025")),
-            sl_atr_mult=float(_get("SL_ATR_MULT", "1.5")),
-            tp_atr_mult=float(_get("TP_ATR_MULT", "2.5")),
+            sl_atr_mult=float(_get("SL_ATR_MULT", "1.0")),
+            tp_atr_mult=float(_get("TP_ATR_MULT", "1.5")),
             use_yahoo_fallback=_flag("USE_YAHOO_FALLBACK", True),
             auto_update=_flag("AUTO_UPDATE", True),
             workers=int(_get("WORKERS", "4")),

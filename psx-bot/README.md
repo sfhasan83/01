@@ -18,8 +18,12 @@ from the last 5 years of daily prices. **Signals only: it never places orders.**
    low, and how the stock does against the whole market and its breadth.
 3. **Signals for the latest session**: the chance the stock closes higher after each horizon.
    At 55% or more (`CONFIDENCE_THRESHOLD`) that is a BUY, at 45% or less a SELL, and in between a
-   HOLD with a slight lean ▲/▼. Each call comes with a take-profit and stop-loss based on the stock's
-   daily range (ATR), 20-session support and resistance, trend, RSI and daily turnover.
+   HOLD with a slight lean ▲/▼. The 55% is measured from how often stocks normally rise over that
+   horizon, so "the market usually goes up" does not turn into a BUY on everything. Each call comes with a take-profit and stop-loss based on the stock's
+   typical daily range (ATR), 20-session support and resistance, trend, RSI and daily turnover.
+   Stocks that closed locked at the daily price limit are marked UC (upper) or LC (lower), because
+   there may have been no sellers or buyers at that price. Stock splits are detected and the older
+   prices adjusted, so a split is not mistaken for a crash.
 4. **An honest walk-forward backtest** over the saved years. The model is retrained every quarter
    on data up to that point and only ever predicts days it has not seen. It reports accuracy against
    simple rules, how BUY calls did against the average stock after fees, a TP/SL simulation, a

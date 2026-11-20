@@ -35,19 +35,19 @@ WARN = "#9a6700"
 # (key, heading, width, anchor)
 COLUMNS = (
     ("symbol", "Symbol", 80, "w"),
-    ("name", "Company", 230, "w"),
-    ("sector", "Sector", 170, "w"),
-    ("close", "Close (Rs)", 90, "e"),
-    ("change", "Day", 70, "e"),
-    ("1D", "1 day", 92, "center"),
-    ("1W", "1 week", 92, "center"),
-    ("1M", "1 month", 92, "center"),
-    ("tp", "Take profit", 120, "e"),
-    ("sl", "Stop loss", 110, "e"),
-    ("trend", "Trend", 82, "center"),
-    ("rsi", "RSI", 46, "e"),
-    ("turnover", "Turnover/day", 100, "e"),
-    ("record", "Backtest", 88, "center"),
+    ("name", "Company", 170, "w"),
+    ("sector", "Sector", 130, "w"),
+    ("close", "Close (Rs)", 82, "e"),
+    ("change", "Day", 86, "e"),
+    ("1D", "1 day", 84, "center"),
+    ("1W", "1 week", 84, "center"),
+    ("1M", "1 month", 84, "center"),
+    ("tp", "Take profit", 108, "e"),
+    ("sl", "Stop loss", 100, "e"),
+    ("trend", "Trend", 80, "center"),
+    ("rsi", "RSI", 42, "e"),
+    ("turnover", "Turnover", 76, "e"),
+    ("record", "Backtest", 82, "center"),
 )
 SIGNAL_FILTERS = ("All signals", "BUY only", "SELL only", "BUY or SELL")
 
@@ -129,16 +129,19 @@ class App:
                                     bd=0, font=(FONT, 10, "bold"), padx=12, pady=4, cursor="hand2")
         self.update_btn.pack(side="right")
         self.status = tk.StringVar(value="")
-        tk.Label(right, textvariable=self.status, bg=DARK, fg=DARK_MUTED, font=(FONT, 9), wraplength=380,
-                 justify="right").pack(side="right", padx=12)
+        # progress / result line, full width under the header (the header itself is full of tiles)
+        status_bar = tk.Frame(self.root, bg=DARK_CHIP, padx=16, pady=4)
+        status_bar.pack(fill="x")
+        tk.Label(status_bar, textvariable=self.status, bg=DARK_CHIP, fg=DARK_TEXT, font=(FONT, 9),
+                 anchor="w", justify="left").pack(fill="x")
 
         chips = tk.Frame(head, bg=DARK)
-        chips.pack(side="left", padx=(32, 0))
+        chips.pack(side="left", padx=(24, 0))
         self.chips = {}
-        for key, title in (("asof", "Prices up to"), ("stocks", "Stocks"), ("breadth", "Above 50-day avg"),
-                           ("mkt5", "Median 5-day move"), ("calls", "1-week calls")):
-            chip = tk.Frame(chips, bg=DARK_CHIP, padx=12, pady=5)
-            chip.pack(side="left", padx=(0, 8))
+        for key, title in (("asof", "Prices up to"), ("stocks", "Stocks"), ("breadth", "Above 50-day"),
+                           ("mkt5", "Median 5 days"), ("calls", "1-week calls")):
+            chip = tk.Frame(chips, bg=DARK_CHIP, padx=10, pady=5)
+            chip.pack(side="left", padx=(0, 6))
             tk.Label(chip, text=title.upper(), bg=DARK_CHIP, fg=DARK_MUTED, font=(FONT, 8, "bold"),
                      anchor="w").pack(anchor="w", fill="x")
             value = tk.Label(chip, text="…", bg=DARK_CHIP, fg=DARK_TEXT, font=(FONT, 12, "bold"))
@@ -185,16 +188,17 @@ class App:
                           ("Last backtest", self.last_backtest), ("Live track record", self.score),
                           ("Export to CSV", self.export), ("Open data folder", self.open_folder)):
             ttk.Button(bar, text=text, command=cmd).pack(side="left", padx=(0, 6))
-        legend = tk.Frame(bar, bg=PAGE)
-        legend.pack(side="right")
+        legend = tk.Frame(foot, bg=PAGE)
+        legend.pack(anchor="w", pady=(6, 0))
         for text, fg, bg in (("BUY", UP, UP_BG), ("SELL", DOWN, DOWN_BG)):
             tk.Label(legend, text=text, fg=fg, bg=bg, font=(FONT, 9, "bold"), padx=6).pack(side="left", padx=(0, 4))
-        tk.Label(legend, text="= call and confidence.  HOLD ▲/▼ = no clear call.  Double-click a stock for details.",
+        tk.Label(legend, text="= call and confidence.  HOLD ▲/▼ = no clear call.  UC/LC = locked at the daily "
+                              "price limit (hard to trade).  Double-click a stock for details.",
                  fg=MUTED, bg=PAGE, font=(FONT, 9)).pack(side="left")
         tk.Label(foot, bg=PAGE, fg=MUTED, font=(FONT, 9), anchor="w", justify="left", text=(
             "Signals only: this bot never places orders. Daily stock moves are mostly noise, so even a good "
             "model is wrong very often. Check the backtest, and prefer liquid stocks, before trusting any call.")
-        ).pack(anchor="w", pady=(6, 0))
+        ).pack(anchor="w", pady=(2, 0))
 
     def _build_table(self):
         wrap = tk.Frame(self.root, bg=LINE)
@@ -296,7 +300,9 @@ class App:
         for i, (sym, r) in enumerate(rows.iterrows()):
             calls, hit = r.get(f"bt_calls_{hz}", float("nan")), r.get(f"bt_hit_{hz}", float("nan"))
             record = f"{hit:.0%} of {int(calls)}" if calls == calls and calls and hit == hit else "-"
-            values = (sym, r["name"], r["sector"], f"{r['close']:,.2f}", pct(r["change_pct"]),
+            lim = r.get("limit", "")
+            day = pct(r["change_pct"]) + (f" {lim}" if isinstance(lim, str) and lim else "")
+            values = (sym, r["name"], r["sector"], f"{r['close']:,.2f}", day,
                       signal_cell(r, "1D"), signal_cell(r, "1W"), signal_cell(r, "1M"),
                       f"{r[f'tp_{hz}']:,.2f}", f"{r[f'sl_{hz}']:,.2f}", r["trend"], f"{r['rsi']:.0f}",
                       _money_short(r["turnover"]), record)

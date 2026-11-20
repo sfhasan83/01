@@ -30,9 +30,31 @@ def trading_calendar(histories: dict[str, pd.DataFrame], min_share: float = 0.2)
     return pd.DatetimeIndex(sorted(counts[counts >= need].index))
 
 
+def adjust_corporate_actions(df: pd.DataFrame) -> pd.DataFrame:
+    """Undo price jumps that trading cannot cause (stock splits, large bonus issues).
+
+    PSX prices are not adjusted for splits. A day-to-day change far beyond the daily price limit
+    (10 percent or Rs 1) is treated as a corporate action: earlier prices are scaled by the same
+    ratio, so the history reads as one continuous series and no fake crash or rally is learned.
+    """
+    c = df["close"]
+    ratio = c / c.shift(1)
+    jump = ((ratio < 0.67) | (ratio > 1.5)) & ((c - c.shift(1)).abs() > 2.0)
+    if not jump.any():
+        return df
+    df = df.copy()
+    factor = pd.Series(1.0, index=df.index)
+    for day in df.index[jump.to_numpy()]:
+        factor[df.index < day] *= ratio[day]
+    for k in ("open", "high", "low", "close"):
+        df[k] = df[k] * factor
+    df["volume"] = df["volume"] / factor
+    return df
+
+
 def align(df: pd.DataFrame, cal: pd.DatetimeIndex) -> pd.DataFrame:
     """Put one stock on the shared calendar, from its first to its last trading day."""
-    df = df[~df.index.duplicated(keep="last")]
+    df = adjust_corporate_actions(df[~df.index.duplicated(keep="last")].sort_index())
     days = cal[(cal >= df.index.min()) & (cal <= df.index.max())]
     out = df.reindex(days)
     missing = out["close"].isna()
@@ -42,6 +64,15 @@ def align(df: pd.DataFrame, cal: pd.DatetimeIndex) -> pd.DataFrame:
     out["volume"] = out["volume"].fillna(0)
     out["traded"] = (~missing & (out["volume"] > 0)).astype(float)
     return out.dropna(subset=["close"])
+
+
+def limit_flags(df: pd.DataFrame) -> pd.Series:
+    """UC / LC when a stock closed locked at its daily price limit (10 percent, or Rs 1 if more)."""
+    c, prev = df["close"], df["close"].shift(1)
+    limit = np.maximum(prev * 0.10, 1.0)
+    up = (c - prev >= limit * 0.95) & (c >= df["high"] * 0.999)
+    down = (prev - c >= limit * 0.95) & (c <= df["low"] * 1.001)
+    return pd.Series(np.where(up, "UC", np.where(down, "LC", "")), index=df.index)
 
 
 def stock_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -102,7 +133,14 @@ def build_panel(histories: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, pd.Da
         f = f.join(targets(df))
         f["close"] = df["close"]
         f["high"], f["low"], f["volume"] = df["high"], df["low"], df["volume"]
-        f["atr_abs"] = f["atr_14"] * df["close"]
+        # Typical daily range for TP/SL: the median of the last 20 true ranges (one wild day or a
+        # limit move does not blow it up), kept between 0.5 and 8 percent of the price.
+        prev = df["close"].shift(1)
+        tr = pd.concat([df["high"] - df["low"], (df["high"] - prev).abs(), (df["low"] - prev).abs()],
+                       axis=1).max(axis=1)
+        f["atr_abs"] = tr.rolling(20, min_periods=10).median().clip(lower=df["close"] * 0.005,
+                                                                     upper=df["close"] * 0.08)
+        f["limit"] = limit_flags(df)
         f["turnover_20"] = (df["close"] * df["volume"]).rolling(20).mean()
         f["sma_50"] = df["close"].rolling(50).mean()
         f["sma_200"] = df["close"].rolling(200).mean()

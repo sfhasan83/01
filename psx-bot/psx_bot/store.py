@@ -27,6 +27,7 @@ MARKET_SETTLED_HOUR = 16  # the regular session ends by 3:30 PM PKT; after 4 PM 
 WARMUP_DAYS = 300  # extra calendar days kept before the N years, so 200-day averages are ready on day one
 
 Progress = Callable[[str], None]
+NO_HISTORY = "no price history on PSX"
 
 
 @dataclass
@@ -36,6 +37,7 @@ class UpdateSummary:
     up_to_date: int = 0
     from_yahoo: int = 0
     failed: dict = field(default_factory=dict)
+    no_history: list = field(default_factory=list)  # listed but never traded (nothing to download)
     last_trading_day: str = ""
     symbols_source: str = "PSX"
 
@@ -43,6 +45,8 @@ class UpdateSummary:
         parts = [f"{self.total} stocks: {self.downloaded} downloaded, {self.up_to_date} already up to date"]
         if self.from_yahoo:
             parts.append(f"{self.from_yahoo} from Yahoo Finance (PSX failed for them)")
+        if self.no_history:
+            parts.append(f"{len(self.no_history)} have no trading history")
         if self.failed:
             parts.append(f"{len(self.failed)} failed")
         line = ", ".join(parts) + "."
@@ -93,9 +97,10 @@ def universe(symbols: pd.DataFrame, settings: Settings) -> pd.DataFrame:
     if not settings.include_gem:
         df = df[~df["is_gem"]]
     # Bills, bonds, TFCs and sukuk sometimes come without the isDebt flag
-    debt_words = r"\b(?:TFC|SUKUK|T-?BILL|PIB|GOVERNMENT|GOP IJARA|IJARA|BOND)\b"
+    debt_words = r"\b(?:TFC\d*|SUKUK|T-?BILL|PIB|GOVERNMENT|GOP IJARA|IJARA|BOND|PREF\.?|PREFERENCE)\b|\(TFC|PREF SHARE"
     df = df[~df["name"].str.upper().str.contains(debt_words, regex=True, na=False)]
     df = df[~df["sector"].str.upper().str.contains("BILLS AND BONDS|DEBT|FUTURE", regex=True, na=False)]
+    df = df[~df["symbol"].str.contains(r"TFC\d*$", regex=True, na=False)]
     return df.drop_duplicates("symbol").sort_values("symbol").reset_index(drop=True)
 
 
@@ -192,7 +197,7 @@ def update_all(settings: Settings, progress: Progress = print, stop: threading.E
         try:
             df = drop_unfinished_day(client.history(sym))
             if df.empty:
-                raise PSXError("no price history on PSX")
+                return sym, None, NO_HISTORY
             return sym, (df, "PSX"), None
         except PSXError as err:
             if settings.use_yahoo_fallback:
@@ -221,6 +226,8 @@ def update_all(settings: Settings, progress: Progress = print, stop: threading.E
                     checked[sym] = ref_day or df.index.max().strftime("%Y-%m-%d")
                     summary.downloaded += 1
                     summary.from_yahoo += src == "Yahoo"
+                elif err == NO_HISTORY:
+                    summary.no_history.append(sym)
                 elif err != "cancelled":
                     summary.failed[sym] = err
                 if done % 10 == 0 or done == len(todo):

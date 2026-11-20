@@ -66,8 +66,8 @@ def _tpsl(panel: pd.DataFrame, calls: pd.Index, n: int, settings: Settings) -> d
         for i in pos:
             if i < 0 or i + n >= len(cl) or not atr[i] == atr[i]:
                 continue
-            tp = cl[i] + settings.tp_atr_mult * atr[i] * scale
-            sl = cl[i] - settings.sl_atr_mult * atr[i] * scale
+            tp = cl[i] + min(settings.tp_atr_mult * atr[i] * scale, cl[i] * 0.45)
+            sl = cl[i] - min(settings.sl_atr_mult * atr[i] * scale, cl[i] * 0.45)
             risk = cl[i] - sl
             result = None
             for j in range(i + 1, i + n + 1):

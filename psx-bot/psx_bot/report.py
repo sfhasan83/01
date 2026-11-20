@@ -31,10 +31,12 @@ def scan_text(scan, top: int = 25, horizon: str = "1W", liquid_only: bool = True
         if part.empty:
             lines.append("  none")
             continue
-        lines.append(f"  {'Symbol':<9}{'Close':>12}{'Day':>9}  {'1D':<10}{'1W':<10}{'1M':<10}"
+        lines.append(f"  {'Symbol':<9}{'Close':>12}{'Day':>12}  {'1D':<10}{'1W':<10}{'1M':<10}"
                      f"{'TP (' + horizon + ')':>14}{'SL (' + horizon + ')':>14}  Sector")
         for sym, r in part.iterrows():
-            lines.append(f"  {sym:<9}{rs(r['close']):>12}{pct(r['change_pct']):>9}  "
+            lim = r.get("limit", "")
+            day = pct(r["change_pct"]) + (f" {lim}" if isinstance(lim, str) and lim else "")
+            lines.append(f"  {sym:<9}{rs(r['close']):>12}{day:>12}  "
                          f"{signal_cell(r, '1D'):<10}{signal_cell(r, '1W'):<10}{signal_cell(r, '1M'):<10}"
                          f"{rs(r[f'tp_{horizon}']):>14}{rs(r[f'sl_{horizon}']):>14}  {str(r['sector'])[:30]}")
     for n in scan.notes:
@@ -47,6 +49,9 @@ def stock_text(scan, sym: str, history: pd.DataFrame | None = None) -> str:
     lines = [f"{sym}  {r.get('name', '')}", f"Sector: {r.get('sector', '') or 'n/a'}",
              f"Close on {scan.as_of}: {rs(r['close'])}  ({pct(r['change_pct'])} on the day, "
              f"{pct(r['change_5d_pct'])} over 5 sessions)",
+             (f"Closed locked at the {'upper' if r.get('limit') == 'UC' else 'lower'} price limit "
+              "(UC/LC): there may have been no sellers/buyers at this price.\n"
+              if isinstance(r.get("limit"), str) and r.get("limit") else "") +
              f"Trend: {r['trend']}   RSI(14): {r['rsi']:.0f}   Daily range (ATR): {rs(r['atr'])}",
              f"Average turnover (20 sessions): Rs {r['turnover']:,.0f} a day"
              + ("" if r.get("liquid", True) else "  (ILLIQUID: hard to buy or sell at these prices)"),

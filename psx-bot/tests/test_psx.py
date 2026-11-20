@@ -202,3 +202,27 @@ def test_scan_and_backtest_end_to_end():
     assert "BUY calls" in text and "By year" in text
     rec = pd.read_csv(store.DATA_DIR.parent / "logs" / "backtest_stocks.csv", index_col="symbol")
     assert "bt_hit_1W" in rec.columns
+
+
+def test_split_is_adjusted_and_limit_flags():
+    from psx_bot.features import adjust_corporate_actions, limit_flags
+
+    idx = pd.bdate_range("2025-01-01", periods=6)
+    df = pd.DataFrame({"open": [100, 101, 102, 51, 52, 57.2], "high": [101, 102, 103, 52, 53, 57.2],
+                       "low": [99, 100, 101, 50, 51, 52], "close": [100, 101, 102, 51, 52, 57.2],
+                       "volume": [10, 10, 10, 20, 20, 20]}, index=idx)
+    adj = adjust_corporate_actions(df)  # a 1-for-2 split between day 3 and 4
+    assert abs(adj["close"].iloc[2] - 51) < 1e-9 and adj["close"].iloc[3] == 51
+    assert adj["volume"].iloc[0] == 20
+    flags = limit_flags(adj)
+    assert flags.iloc[-1] == "UC" and flags.iloc[3] == ""
+
+
+def test_levels_never_negative():
+    from psx_bot.signals import levels
+
+    s = Settings()
+    tp, sl = levels(49.67, 40.0, 20, "SELL", s)  # an absurd daily range must not give a negative price
+    assert tp > 0 and sl < 49.67 * 1.5
+    tp, sl = levels(100, 2.0, 5, "BUY", s)
+    assert tp > 100 > sl > 0

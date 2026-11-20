@@ -41,7 +41,9 @@ def levels(close: float, atr: float, n_days: int, side: str, settings: Settings)
     if not atr or atr != atr:
         return float("nan"), float("nan")
     scale = math.sqrt(n_days)
-    up, down = settings.tp_atr_mult * atr * scale, settings.sl_atr_mult * atr * scale
+    cap = close * 0.45  # never more than 45 percent away, so a level can never go below zero
+    up = min(settings.tp_atr_mult * atr * scale, cap)
+    down = min(settings.sl_atr_mult * atr * scale, cap)
     if side == "SELL":
         return close - up, close + down
     return close + up, close - down
@@ -82,6 +84,7 @@ def run_scan(settings: Settings, progress: Callable[[str], None] = print, fast: 
     table["turnover"] = lv["turnover_20"]
     table["liquid"] = lv["turnover_20"] >= settings.min_turnover
     table["atr"] = lv["atr_abs"]
+    table["limit"] = lv["limit"].fillna("")
     # 20-session support / resistance from the saved highs and lows
     sup, res = {}, {}
     for sym in table.index:
@@ -145,9 +148,9 @@ def load_scan() -> ScanResult | None:
         table = pd.read_csv(SIGNALS_FILE, index_col="symbol", keep_default_na=False, na_values=[""])
     except (OSError, ValueError):
         return None
-    for k in ("name", "sector", "trend"):
+    for k in ("name", "sector", "trend", "limit"):
         if k in table:
-            table[k] = table[k].fillna("").astype(str)
+            table[k] = table[k].astype(object).where(table[k].notna(), "").astype(str)
     if "liquid" in table:
         table["liquid"] = table["liquid"].astype(str).str.lower().isin(("true", "1"))
     known = set(ScanResult.__dataclass_fields__)

@@ -226,7 +226,7 @@ def report_text(results: list[HorizonResult], settings: Settings) -> str:
             f"     liquid only: {b['liquid']['calls']:,}, right {pc(b['liquid']['hit'])}, after fees "
             f"{sg(b['liquid']['avg_net'])} (average liquid stock {sg(b.get('market_liquid_avg', float('nan')))})",
             f"  SELL calls: {s['calls']:,}, right {pc(s['hit'])}, average move {sg(s['avg'])} "
-            f"(negative = the warning was useful)",
+            f"(useful if below the average stock's {sg(r.market_avg)}; below zero = an actual fall)",
             f"     liquid only: {s['liquid']['calls']:,}, right {pc(s['liquid']['hit'])}, "
             f"average move {sg(s['liquid']['avg'])}",
         ]

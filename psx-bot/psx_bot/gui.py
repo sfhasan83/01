@@ -35,15 +35,15 @@ WARN = "#9a6700"
 # (key, heading, width, anchor)
 COLUMNS = (
     ("symbol", "Symbol", 80, "w"),
-    ("name", "Company", 170, "w"),
-    ("sector", "Sector", 130, "w"),
+    ("name", "Company", 150, "w"),
+    ("sector", "Sector", 115, "w"),
     ("close", "Close (Rs)", 82, "e"),
     ("change", "Day", 86, "e"),
     ("1D", "1 day", 84, "center"),
     ("1W", "1 week", 84, "center"),
     ("1M", "1 month", 84, "center"),
-    ("tp", "Take profit", 108, "e"),
-    ("sl", "Stop loss", 100, "e"),
+    ("tp", "TP", 92, "e"),
+    ("sl", "SL", 92, "e"),
     ("trend", "Trend", 80, "center"),
     ("rsi", "RSI", 42, "e"),
     ("turnover", "Turnover", 76, "e"),
@@ -193,7 +193,7 @@ class App:
         for text, fg, bg in (("BUY", UP, UP_BG), ("SELL", DOWN, DOWN_BG)):
             tk.Label(legend, text=text, fg=fg, bg=bg, font=(FONT, 9, "bold"), padx=6).pack(side="left", padx=(0, 4))
         tk.Label(legend, text="= call and confidence.  HOLD ▲/▼ = no clear call.  UC/LC = locked at the daily "
-                              "price limit (hard to trade).  Double-click a stock for details.",
+                              "price limit (hard to trade).  TP/SL = take profit / stop loss.  Double-click a stock for details.",
                  fg=MUTED, bg=PAGE, font=(FONT, 9)).pack(side="left")
         tk.Label(foot, bg=PAGE, fg=MUTED, font=(FONT, 9), anchor="w", justify="left", text=(
             "Signals only: this bot never places orders. Daily stock moves are mostly noise, so even a good "

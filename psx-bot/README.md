@@ -92,7 +92,9 @@ include, the illiquid limit, the confidence needed for a call, fees, and TP/SL d
 Daily stock moves are mostly noise. Even a model that is right 53 to 55% of the time is wrong almost
 half the time, and illiquid stocks can be impossible to trade at the shown price. PSX limits how far
 a price can move in a day, and short selling is only allowed for some stocks, so treat a SELL call as
-"avoid or exit", not "short". Check the backtest, especially the year-by-year table, before you
+"likely to lag the market: avoid or exit", not "short". In the first real backtest (Nov 2022 to Nov
+2026) BUY calls beat the average stock in every year at every horizon, but 1-week and 1-month SELL
+calls only lagged the market; on average those stocks still rose a little. Check the backtest, especially the year-by-year table, before you
 trust any call. This is not investment advice.
 
 Tests (no internet needed): `.venv\Scripts\python.exe -m pip install pytest` then

@@ -1,0 +1,432 @@
+"""Pulls data from every source and produces one prediction per coin and timeframe."""
+from __future__ import annotations
+
+import csv
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+import pandas as pd
+
+from . import TIMEFRAMES
+from .config import LOG_DIR, Settings, coin_name
+from . import bigmoves
+from . import levels as levels_mod
+from . import topcoins, tpsl
+from .model import MovementModel, Signal, to_signal, training_frame
+from .sources import INTERVAL_MS, binance, coinmarketcap, drop_unfinished, mexc, tradingview
+
+EXCHANGES = {"binance": binance, "mexc": mexc}
+PREDICTION_LOG = LOG_DIR / "predictions.csv"
+CACHE_DIR = LOG_DIR / "cache"   # recent candles per exchange/coin/timeframe, so restarts only fetch new ones
+_candles: dict[tuple[str, str, str], pd.DataFrame] = {}
+_models: dict[tuple[str, str], tuple[pd.Timestamp, float]] = {}  # (symbol, tf) -> (last candle, p_up)
+_cache_lock = threading.Lock()
+_log_lock = threading.Lock()
+
+
+LOG_COLUMNS = ["created_utc", "timeframe", "source", "last_close_time_utc", "target_close_time_utc",
+               "last_close", "p_up", "direction", "confidence", "tv_recommendation", "symbol", "tp", "sl"]
+LEGACY_SYMBOL = "BTCUSDT"  # logs written before multi-coin support were all BTC
+
+
+@dataclass
+class TimeframePrediction:
+    timeframe: str
+    signal: Signal | None
+    last_close: float | None
+    last_close_time: pd.Timestamp | None   # when the last closed candle closed (= start of target candle)
+    target_close_time: pd.Timestamp | None  # when the predicted candle closes
+    source: str
+    tv: tradingview.TVRating
+    tv_alert: dict | None = None
+    error: str | None = None
+    results: "SignalResults | None" = None
+    symbol: str = LEGACY_SYMBOL
+    take_profit: float | None = None
+    stop_loss: float | None = None
+    tpsl_results: tpsl.TPSLResults | None = None
+    supports: list = field(default_factory=list)      # nearest first (levels_mod.Level)
+    resistances: list = field(default_factory=list)
+
+    @property
+    def side(self) -> str | None:
+        if not self.signal:
+            return None
+        return "LONG" if self.signal.p_up > 0.5 else "SHORT"
+
+    @property
+    def coin(self) -> str:
+        return coin_name(self.symbol)
+
+    @property
+    def agrees_with_tv(self) -> bool | None:
+        if not self.signal or self.signal.direction == "NEUTRAL" or self.tv.direction == "NEUTRAL":
+            return None
+        return self.signal.direction == self.tv.direction
+
+
+@dataclass
+class SignalResults:
+    """How the bot's past calls on one timeframe turned out, once their candles closed.
+
+    Every prediction is checked by its lean (P(up) above 0.5 means it leaned UP).
+    "Signals" are only the confident UP/DOWN calls; NEUTRAL rows count as leans only.
+    """
+    hits: int = 0                # confident UP/DOWN signals that were right
+    misses: int = 0              # confident UP/DOWN signals that were wrong
+    all_hits: int = 0            # every checked prediction, judged by its lean
+    all_checked: int = 0
+    last_hit: bool | None = None          # True = YES hit, False = NO missed, None = nothing checked yet
+    last_direction: str | None = None     # UP or DOWN (the lean, for NEUTRAL rows)
+    last_is_lean: bool = False            # True when the last checked row was NEUTRAL
+    last_target_close: pd.Timestamp | None = None
+    last_from_price: float | None = None
+    last_close_price: float | None = None
+
+    @property
+    def checked(self) -> int:
+        return self.hits + self.misses
+
+    @property
+    def hit_rate(self) -> float | None:
+        return self.hits / self.checked if self.checked else None
+
+    @property
+    def all_hit_rate(self) -> float | None:
+        return self.all_hits / self.all_checked if self.all_checked else None
+
+
+def _read_log() -> pd.DataFrame:
+    if not PREDICTION_LOG.exists():
+        return pd.DataFrame()
+    try:
+        log = pd.read_csv(PREDICTION_LOG)
+    except (OSError, ValueError):
+        return pd.DataFrame()
+    if log.empty:
+        return log
+    if "symbol" not in log.columns:
+        log["symbol"] = LEGACY_SYMBOL
+    log["symbol"] = log["symbol"].fillna(LEGACY_SYMBOL)
+    for col in ("last_close_time_utc", "target_close_time_utc"):
+        log[col] = pd.to_datetime(log[col], utc=True)
+    # watch mode logs the same candle many times: keep the first call made for each candle
+    return log.sort_values("created_utc").drop_duplicates(["symbol", "timeframe", "target_close_time_utc"],
+                                                          keep="first")
+
+
+def check_signals(log: pd.DataFrame, timeframe: str, candles: pd.DataFrame,
+                  symbol: str = LEGACY_SYMBOL) -> pd.DataFrame:
+    """Logged predictions for this coin and timeframe whose candle has closed, with what really happened."""
+    if log.empty:
+        return pd.DataFrame()
+    group = log[(log["timeframe"] == timeframe) & (log["symbol"] == symbol)]
+    if group.empty:
+        return pd.DataFrame()
+    close_by_end = candles["close"].copy()
+    close_by_end.index = candles.index + pd.to_timedelta(INTERVAL_MS[timeframe], unit="ms")
+    actual = group["target_close_time_utc"].map(close_by_end)
+    done = group[actual.notna()].copy()
+    done["actual_close"] = actual[actual.notna()]
+    done["went_up"] = done["actual_close"] > done["last_close"]
+    done["said_up"] = done["p_up"] > 0.5
+    done["hit"] = done["went_up"] == done["said_up"]
+    return done.sort_values("target_close_time_utc")
+
+
+def signal_results(checked: pd.DataFrame) -> SignalResults:
+    res = SignalResults()
+    if checked.empty:
+        return res
+    res.all_checked = int(len(checked))
+    res.all_hits = int(checked["hit"].sum())
+    calls = checked[checked["direction"] != "NEUTRAL"]
+    res.hits = int(calls["hit"].sum())
+    res.misses = int(len(calls) - res.hits)
+    last = checked.iloc[-1]
+    res.last_hit = bool(last["hit"])
+    res.last_is_lean = last["direction"] == "NEUTRAL"
+    res.last_direction = "UP" if last["p_up"] > 0.5 else "DOWN"
+    res.last_target_close = last["target_close_time_utc"]
+    res.last_from_price = float(last["last_close"])
+    res.last_close_price = float(last["actual_close"])
+    return res
+
+
+@dataclass
+class Snapshot:
+    created: datetime
+    predictions: list[TimeframePrediction]
+    prices: dict[str, dict[str, float | None]] = field(default_factory=dict)  # symbol -> exchange -> price
+    cmc: coinmarketcap.MarketContext | None = None
+    symbols: list[str] = field(default_factory=list)  # coins in this snapshot, in market cap order
+    coins_note: str = ""                              # where the coin list came from
+
+
+def _cache_path(exchange: str, symbol: str, timeframe: str):
+    return CACHE_DIR / f"{exchange}_{symbol}_{timeframe}.csv"
+
+
+def _cached(exchange: str, symbol: str, timeframe: str) -> pd.DataFrame | None:
+    key = (exchange, symbol, timeframe)
+    with _cache_lock:
+        if key in _candles:
+            return _candles[key]
+    path = _cache_path(exchange, symbol, timeframe)
+    try:
+        df = pd.read_csv(path, index_col=0)
+        df.index = pd.to_datetime(df.index, utc=True)
+        return df
+    except (OSError, ValueError):
+        return None
+
+
+def _store(exchange: str, symbol: str, timeframe: str, df: pd.DataFrame, changed: bool) -> None:
+    with _cache_lock:
+        _candles[(exchange, symbol, timeframe)] = df
+    if changed:
+        try:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            df.to_csv(_cache_path(exchange, symbol, timeframe))
+        except OSError:
+            pass
+
+
+def _fetch_recent(exchange: str, symbol: str, timeframe: str, need: int) -> pd.DataFrame:
+    """Latest `need` closed candles, downloading only what is missing from the saved copy."""
+    mod = EXCHANGES[exchange]
+    cached = _cached(exchange, symbol, timeframe)
+    step = pd.to_timedelta(INTERVAL_MS[timeframe], unit="ms")
+    if cached is not None and len(cached) >= min(need, 200):
+        missing = int((pd.Timestamp.now(tz="UTC") - cached.index[-1]) / step) + 2
+        if missing <= 1000:
+            new = drop_unfinished(mod.fetch_klines(symbol, timeframe, missing), timeframe)
+            df = pd.concat([cached, new[cached.columns.intersection(new.columns)]])
+            df = df[~df.index.duplicated(keep="last")].sort_index().tail(need)
+            _store(exchange, symbol, timeframe, df, changed=df.index[-1] != cached.index[-1])
+            return df
+    df = drop_unfinished(mod.fetch_klines(symbol, timeframe, need), timeframe)
+    _store(exchange, symbol, timeframe, df, changed=True)
+    return df
+
+
+NO_TRADING = "no trading since"  # marks a market the exchange stopped (delisted pair, frozen candles)
+
+
+def _stale(df: pd.DataFrame, timeframe: str, now: pd.Timestamp | None = None) -> bool:
+    """True when the newest closed candle is far behind the clock: the pair is no longer traded there."""
+    step = pd.to_timedelta(INTERVAL_MS[timeframe], unit="ms")
+    now = now or pd.Timestamp.now(tz="UTC")
+    return df.index[-1] + step < now - max(3 * step, pd.Timedelta(minutes=30))
+
+
+def load_candles(settings: Settings, timeframe: str, total: int | None = None,
+                 symbol: str | None = None) -> tuple[pd.DataFrame, str]:
+    """Closed candles from the primary exchange, falling back to the other one.
+
+    The normal amount (HISTORY_CANDLES) is kept in memory and in logs/cache, so after the first run
+    only the few new candles are downloaded. Bigger requests (backtests) always download fresh."""
+    symbol = symbol or settings.symbols[0]
+    order = [settings.primary_exchange] + [e for e in EXCHANGES if e != settings.primary_exchange]
+    listed = topcoins.listed_on(symbol)
+    if listed:  # don't ask an exchange for a pair it doesn't trade
+        order = [e for e in order if e in listed]
+    errors = []
+    for name in order:
+        try:
+            if total is None or total <= settings.history_candles:
+                df = _fetch_recent(name, symbol, timeframe, total or settings.history_candles)
+            else:
+                df = drop_unfinished(EXCHANGES[name].fetch_klines(symbol, timeframe, total), timeframe)
+            if len(df) and _stale(df, timeframe):
+                errors.append(f"{name}: {NO_TRADING} {df.index[-1]:%Y-%m-%d %H:%M} UTC")
+                continue
+            if len(df) >= 200:
+                return df, name
+            errors.append(f"{name}: only {len(df)} candles")
+        except Exception as err:  # noqa: BLE001
+            errors.append(f"{name}: {err}")
+    raise ConnectionError(f"Could not load {symbol} candles. " + " | ".join(errors))
+
+
+def predict_timeframe(settings: Settings, timeframe: str, symbol: str | None = None,
+                      log: pd.DataFrame | None = None, with_tv: bool = True) -> TimeframePrediction:
+    symbol = symbol or settings.symbols[0]
+    tv = tradingview.fetch_rating(symbol, timeframe, tv_exchange(symbol)) if with_tv else tradingview.TVRating()
+    alerts = tradingview.latest_alerts()
+    alert = alerts.get(f"{symbol}|{timeframe}") or (alerts.get(timeframe) if symbol == LEGACY_SYMBOL else None)
+    try:
+        candles, source = load_candles(settings, timeframe, symbol=symbol)
+        X, y, feats = training_frame(candles)
+        last_open = feats.index[-1]
+        cached_model = _models.get((symbol, timeframe))
+        if cached_model and cached_model[0] == last_open:
+            p_up = cached_model[1]  # no new candle since the last refresh: same answer, no retraining
+        else:
+            model = MovementModel().fit(X, y)
+            p_up = float(model.predict_up_proba(feats.iloc[[-1]])[0])
+            _models[(symbol, timeframe)] = (last_open, p_up)
+        step = pd.to_timedelta(INTERVAL_MS[timeframe], unit="ms")
+        log = _read_log() if log is None else log
+        results = signal_results(check_signals(log, timeframe, candles, symbol))
+        entry = float(candles.loc[last_open, "close"])
+        side = "LONG" if p_up > 0.5 else "SHORT"
+        atr_now = float(tpsl.atr(candles).iloc[-1])
+        tp, sl = tpsl.levels(entry, side, atr_now, settings.sl_atr_mult, settings.tp_atr_mult)
+        group = log[(log["timeframe"] == timeframe) & (log["symbol"] == symbol)] if not log.empty else log
+        tpsl_results = tpsl.evaluate(group, candles, settings.tp_sl_candles)
+        supports, resistances = levels_mod.find_levels(candles)
+        if timeframe == "1h":
+            try:
+                bigmoves.record(candles, symbol, settings.big_move_pct)
+            except OSError:  # e.g. the CSV is open in Excel; it catches up on the next refresh
+                pass
+        return TimeframePrediction(
+            timeframe=timeframe,
+            signal=to_signal(p_up, settings.confidence_threshold),
+            last_close=float(candles.loc[last_open, "close"]),
+            last_close_time=last_open + step,
+            target_close_time=last_open + 2 * step,
+            source=source, tv=tv, tv_alert=alert, results=results, symbol=symbol,
+            take_profit=tp, stop_loss=sl, tpsl_results=tpsl_results,
+            supports=supports, resistances=resistances)
+    except Exception as err:  # noqa: BLE001
+        return TimeframePrediction(timeframe, None, None, None, None, "-", tv, alert, error=str(err), symbol=symbol)
+
+
+def tv_exchange(symbol: str) -> str:
+    """TradingView needs the exchange too: Binance when it has the pair, else MEXC."""
+    listed = topcoins.listed_on(symbol)
+    return "MEXC" if listed and "binance" not in listed else "BINANCE"
+
+
+def exchange_prices(symbol: str) -> dict[str, float | None]:
+    prices: dict[str, float | None] = {}
+    listed = topcoins.listed_on(symbol)
+    for name, mod in EXCHANGES.items():
+        if listed and name not in listed:
+            prices[name] = None  # not traded there
+            continue
+        try:
+            prices[name] = mod.fetch_price(symbol)
+        except Exception:  # noqa: BLE001
+            prices[name] = None
+    return prices
+
+
+def take_snapshot(settings: Settings, timeframes=TIMEFRAMES) -> Snapshot:
+    """Everything is fetched in parallel: candles + models for each coin/timeframe, TradingView,
+    CoinMarketCap and live prices."""
+    try:
+        topcoins.resolve(settings)  # the current top coins by market cap (saved list, renewed every 12 h)
+    except Exception:  # noqa: BLE001 - keep going with the coins we already have
+        pass
+    log = _read_log()
+    combos = [(sym, tf) for sym in settings.symbols for tf in timeframes]
+    by_tv_exchange: dict[str, list[str]] = {}
+    for sym in settings.symbols:
+        by_tv_exchange.setdefault(tv_exchange(sym), []).append(sym)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        tv_jobs = [pool.submit(tradingview.prefetch, syms, tf, ex)
+                   for tf in timeframes for ex, syms in by_tv_exchange.items()]
+        price_jobs = {sym: pool.submit(exchange_prices, sym) for sym in settings.symbols}
+        cmc_job = pool.submit(coinmarketcap.fetch_context, settings.cmc_api_key,
+                              [coin_name(sym) for sym in settings.symbols])
+        pred_jobs = [pool.submit(predict_timeframe, settings, tf, sym, log, False) for sym, tf in combos]
+        preds = [j.result() for j in pred_jobs]
+        # a coin whose candles stopped on every exchange has no live market: let the next coin in the ranking in
+        dead = {sym for sym in settings.symbols
+                if all(p.error and NO_TRADING in p.error for p in preds if p.symbol == sym)}
+        if dead and settings.top_coins > 0:
+            for sym in dead:
+                topcoins.mark_dead(sym)
+            preds = [p for p in preds if p.symbol not in dead]
+            settings.symbols = [s for s in settings.symbols if s not in dead]
+        for j in tv_jobs:
+            j.result()
+        prices = {sym: j.result() for sym, j in price_jobs.items()}
+        cmc = cmc_job.result()
+    for p in preds:  # TradingView answers are cached by now
+        p.tv = tradingview.fetch_rating(p.symbol, p.timeframe, tv_exchange(p.symbol))
+    snap = Snapshot(created=datetime.now(timezone.utc), predictions=preds, prices=prices, cmc=cmc,
+                    symbols=list(settings.symbols), coins_note=topcoins.note())
+    log_snapshot(snap)
+    return snap
+
+
+def _upgrade_log_header() -> None:
+    """Older logs lack newer columns (symbol, tp, sl): add them so new rows line up.
+    Rows from the BTC-only version get symbol BTCUSDT; missing TP/SL stay empty."""
+    try:
+        with PREDICTION_LOG.open(newline="", encoding="utf-8") as fh:
+            rows = list(csv.reader(fh))
+    except OSError:
+        return
+    if not rows or rows[0] == LOG_COLUMNS:
+        return
+    old = rows[0]
+    with PREDICTION_LOG.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(LOG_COLUMNS)
+        for r in rows[1:]:
+            if not r:
+                continue
+            rec = dict(zip(old, r))
+            if not rec.get("symbol"):
+                rec["symbol"] = LEGACY_SYMBOL
+            w.writerow([rec.get(c, "") for c in LOG_COLUMNS])
+
+
+def log_snapshot(snap: Snapshot) -> None:
+    """Append each prediction to logs/predictions.csv so its real accuracy can be checked later."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with _log_lock:
+        _write_log(snap)
+
+
+def _write_log(snap: Snapshot) -> None:
+    new = not PREDICTION_LOG.exists()
+    if not new:
+        _upgrade_log_header()
+    with PREDICTION_LOG.open("a", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        if new:
+            w.writerow(LOG_COLUMNS)
+        for p in snap.predictions:
+            if not p.signal:
+                continue
+            w.writerow([snap.created.isoformat(timespec="seconds"), p.timeframe, p.source,
+                        p.last_close_time.isoformat(), p.target_close_time.isoformat(), p.last_close,
+                        round(p.signal.p_up, 4), p.signal.direction, round(p.signal.confidence, 4),
+                        p.tv.recommendation or "", p.symbol,
+                        "" if p.take_profit is None else round(p.take_profit, 6),
+                        "" if p.stop_loss is None else round(p.stop_loss, 6)])
+
+
+def score_log(settings: Settings) -> pd.DataFrame:
+    """Compare logged predictions with what actually happened. Returns one row per coin and timeframe."""
+    log = _read_log()
+    if log.empty:
+        return pd.DataFrame()
+    rows = []
+    for (sym, tf), _ in log.groupby(["symbol", "timeframe"], sort=True):
+        try:
+            candles, _ = load_candles(settings, tf, total=1000, symbol=sym)
+        except ConnectionError:
+            continue
+        done = check_signals(log, tf, candles, sym)
+        if done.empty:
+            continue
+        calls = done[done["direction"] != "NEUTRAL"]
+        rows.append({
+            "coin": coin_name(sym),
+            "timeframe": tf,
+            "checked": len(done),
+            "accuracy": float(done["hit"].mean()),
+            "signals": len(calls),
+            "signal_hits": int(calls["hit"].sum()),
+            "signal_hit_rate": float(calls["hit"].mean()) if len(calls) else float("nan"),
+        })
+    return pd.DataFrame(rows)

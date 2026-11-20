@@ -91,7 +91,10 @@ def prefetch(symbols: list[str], interval: str, exchange: str = "BINANCE") -> No
             msg = ("TradingView sent back an empty answer (it is probably limiting requests from your "
                    "connection); trying again in 10 minutes")
         else:
+            from .http import _explain
+
             _blocked_until[interval] = now + 120
+            msg = _explain("https://scanner.tradingview.com", err)
         _last_error[interval] = msg
 
 

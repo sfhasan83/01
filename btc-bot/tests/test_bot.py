@@ -630,3 +630,11 @@ def test_price_text_keeps_detail_on_cheap_coins():
     from btc_bot.config import price_text
     assert price_text(61785.734) == "$61,785.73" and price_text(72.2534) == "$72.253"
     assert price_text(2.10341) == "$2.1034" and price_text(0.171234) == "$0.17123" and price_text(None) == "n/a"
+
+
+def test_dns_failure_is_explained_plainly():
+    from btc_bot.sources.http import _explain
+    err = Exception("HTTPSConnectionPool(host='api.binance.com', port=443): Max retries exceeded "
+                    "(Caused by NameResolutionError(\"Failed to resolve 'api.binance.com' ([Errno 11001] getaddrinfo failed)\"))")
+    msg = _explain("https://api.binance.com/api/v3/klines", err)
+    assert "can't look up api.binance.com" in msg and "DNS" in msg

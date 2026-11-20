@@ -246,7 +246,9 @@ class App:
         self.canvas.itemconfigure(self.body_win, width=width)
         self.head_canvas.itemconfigure(self.head_win, width=width)
         self.head_canvas.configure(height=self.head.winfo_reqheight())
-        self.canvas.configure(scrollregion=(0, 0, width, self.body.winfo_reqheight()))
+        # never let the scroll area be shorter than the canvas, or Tk shifts the rows down and leaves a gap on top
+        height = max(self.body.winfo_reqheight(), self.canvas.winfo_height())
+        self.canvas.configure(scrollregion=(0, 0, width, height))
         self.head_canvas.configure(scrollregion=(0, 0, width, self.head.winfo_reqheight()))
 
     def _wheel(self, on: bool):
@@ -321,6 +323,7 @@ class App:
                 r += 1
             tk.Frame(self.body, bg=LINE, height=1).grid(row=r, column=0, columnspan=len(COLUMNS) + 1, sticky="ew")
             r += 1
+        self.canvas.yview_moveto(0)
         self.root.after_idle(self._fit)
 
     # --- background work -------------------------------------------------
@@ -492,13 +495,33 @@ class App:
             cells["other"].configure(text=text)
         else:
             cells["price"].configure(text="n/a")
-            cells["other"].configure(text="no price from Binance or MEXC")
+            cells["other"].configure(text="no price yet")
         q = snap.cmc.coins.get(coin_name(sym)) if snap.cmc else None
         for key, label, value in (("ch1", "1h", q.change_1h if q else None), ("ch24", "24h", q.change_24h if q else None)):
             colour = MUTED if value is None else (UP if value >= 0 else DOWN)
             cells[key].configure(text=f"{label} {pct(value)}" if value is not None else "", fg=colour)
         day = q.change_24h if q else None
         cells["strip"].configure(bg=LINE if day is None else (UP if day >= 0 else DOWN))
+
+    def _row_error(self, sym, tf, row, text, full):
+        """A failed row shows its reason in one wide cell instead of squeezing it into a column."""
+        lbl = row.get("error_label")
+        if not text:
+            if lbl:
+                lbl.master.grid_remove()
+            return
+        if lbl is None:
+            pred = row["pred"][0].master
+            info = pred.grid_info()
+            box = tk.Frame(self.body, bg=row["pred"][0].row_bg)
+            box.grid(row=info["row"], column=info["column"] + 1, columnspan=len(COLUMNS) - 2, sticky="nsew")
+            lbl = tk.Label(box, text="", bg=box["bg"], fg=WARN, font=self.f_body, anchor="w")
+            lbl.pack(fill="x", padx=8, pady=4)
+            row["error_label"] = lbl
+            row["error_tip"] = Tooltip(lbl)
+        lbl.configure(text=text)
+        row["error_tip"].text = full
+        lbl.master.grid()
 
     def show(self, snap):
         from .bigmoves import latest_text
@@ -527,8 +550,11 @@ class App:
                 self._set(row["pred"], "error", WARN, bold=True, tip=p.error or "")
                 for key in ("bot", "conf", "tv", "closes", "entry", "tp", "sl", "tpsl", "last", "sup", "res"):
                     self._set(row[key], "")
-                self._set(row["record"], (p.error or "")[:30], WARN, tip=p.error or "")
+                cause = (p.error or "").split(" candles. ", 1)[-1].split(" | ")[0]
+                self._set(row["record"], "")
+                self._row_error(p.symbol, p.timeframe, row, cause, p.error or "")
                 continue
+            self._row_error(p.symbol, p.timeframe, row, "", "")
             s, r, t = p.signal, p.results, p.tpsl_results
             side = "LONG" if s.p_up > 0.5 else "SHORT"
             self._set(row["pred"], prediction_label(s), UP if side == "LONG" else DOWN,

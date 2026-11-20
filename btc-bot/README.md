@@ -24,6 +24,9 @@ picked up on its own. It skips:
 
 - **Stablecoins** (USDT, USDC, USDe, ...) and wrapped or staked copies (WBTC, stETH, ...): their price hardly moves, so
   there is nothing to predict. The next coin in the ranking takes the place.
+- Coins with **no live USDT market on Binance or MEXC**: no pair at all, or a pair with no trading in the last
+  24 hours (a delisted pair keeps an old price, e.g. XMR on Binance). If a coin's candles stop updating while the
+  bot runs, it is dropped for 7 days and the next coin in the ranking takes its place on the next refresh.
 - Coins with **no USDT pair on Binance or MEXC**. A coin that only one exchange lists (for example HYPE, which is on
   MEXC but not Binance) is followed on that exchange only, and its other price shows as missing.
 

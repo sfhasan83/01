@@ -212,6 +212,16 @@ def _fetch_recent(exchange: str, symbol: str, timeframe: str, need: int) -> pd.D
     return df
 
 
+NO_TRADING = "no trading since"  # marks a market the exchange stopped (delisted pair, frozen candles)
+
+
+def _stale(df: pd.DataFrame, timeframe: str, now: pd.Timestamp | None = None) -> bool:
+    """True when the newest closed candle is far behind the clock: the pair is no longer traded there."""
+    step = pd.to_timedelta(INTERVAL_MS[timeframe], unit="ms")
+    now = now or pd.Timestamp.now(tz="UTC")
+    return df.index[-1] + step < now - max(3 * step, pd.Timedelta(minutes=30))
+
+
 def load_candles(settings: Settings, timeframe: str, total: int | None = None,
                  symbol: str | None = None) -> tuple[pd.DataFrame, str]:
     """Closed candles from the primary exchange, falling back to the other one.
@@ -230,6 +240,9 @@ def load_candles(settings: Settings, timeframe: str, total: int | None = None,
                 df = _fetch_recent(name, symbol, timeframe, total or settings.history_candles)
             else:
                 df = drop_unfinished(EXCHANGES[name].fetch_klines(symbol, timeframe, total), timeframe)
+            if len(df) and _stale(df, timeframe):
+                errors.append(f"{name}: {NO_TRADING} {df.index[-1]:%Y-%m-%d %H:%M} UTC")
+                continue
             if len(df) >= 200:
                 return df, name
             errors.append(f"{name}: only {len(df)} candles")
@@ -323,6 +336,14 @@ def take_snapshot(settings: Settings, timeframes=TIMEFRAMES) -> Snapshot:
                               [coin_name(sym) for sym in settings.symbols])
         pred_jobs = [pool.submit(predict_timeframe, settings, tf, sym, log, False) for sym, tf in combos]
         preds = [j.result() for j in pred_jobs]
+        # a coin whose candles stopped on every exchange has no live market: let the next coin in the ranking in
+        dead = {sym for sym in settings.symbols
+                if all(p.error and NO_TRADING in p.error for p in preds if p.symbol == sym)}
+        if dead and settings.top_coins > 0:
+            for sym in dead:
+                topcoins.mark_dead(sym)
+            preds = [p for p in preds if p.symbol not in dead]
+            settings.symbols = [s for s in settings.symbols if s not in dead]
         for j in tv_jobs:
             j.result()
         prices = {sym: j.result() for sym, j in price_jobs.items()}

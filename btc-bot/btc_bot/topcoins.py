@@ -14,7 +14,7 @@ import json
 import threading
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .config import LOG_DIR, Settings
 
@@ -23,8 +23,12 @@ REFRESH_HOURS = 12
 RETRY_SECONDS = 1800       # after a failed refresh, wait 30 minutes before asking CoinMarketCap again
 LISTING_LIMIT = 60         # look this far down the ranking to find N coins worth following
 CMC_URL = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
-EXCHANGE_TICKERS = {"binance": "https://api.binance.com/api/v3/ticker/price",
-                    "mexc": "https://api.mexc.com/api/v3/ticker/price"}
+# 24h tickers, not plain prices: a pair an exchange stopped trading (e.g. XMR on Binance) still has a
+# price, but no volume in the last 24 hours
+EXCHANGE_TICKERS = {"binance": "https://api.binance.com/api/v3/ticker/24hr",
+                    "mexc": "https://api.mexc.com/api/v3/ticker/24hr"}
+FORMAT_VERSION = 2   # saved lists from older versions (which didn't check for live trading) are renewed
+DEAD_DAYS = 7        # a coin found with no live market is left out this long before being checked again
 
 # Stablecoins, wrapped and staked tokens: CoinMarketCap tags catch most, this list catches the rest
 SKIP_TAGS = {"stablecoin", "fiat-stablecoin", "usd-stablecoin", "asset-backed-stablecoin",
@@ -47,6 +51,7 @@ class TopCoin:
 _lock = threading.Lock()
 _last_try: float | None = None
 _last_problem = ""
+_force = False
 _saved: dict | None = None
 _note = ""
 
@@ -92,6 +97,54 @@ def _age_hours(data: dict) -> float:
     return (datetime.now(timezone.utc) - made).total_seconds() / 3600
 
 
+def live_pairs(rows: list[dict], now_ms: int | None = None) -> set[str]:
+    """Pairs that really traded in the last day (some volume, and a 24h window that ends recently)."""
+    now_ms = now_ms or int(time.time() * 1000)
+    live = set()
+    for row in rows or []:
+        try:
+            volume = float(row.get("quoteVolume") or row.get("volume") or 0)
+            close = int(row.get("closeTime") or now_ms)
+        except (TypeError, ValueError):
+            continue
+        if volume > 0 and now_ms - close < 2 * 86_400_000:
+            live.add(row.get("symbol"))
+    return live
+
+
+def _dead(data: dict | None) -> dict[str, str]:
+    """Coins recently found with no live market: {"XMR": "2026-11-20T15:20:00+00:00"}."""
+    out = {}
+    for coin, when in ((data or {}).get("dead") or {}).items():
+        try:
+            if datetime.now(timezone.utc) - datetime.fromisoformat(when) < timedelta(days=DEAD_DAYS):
+                out[coin] = when
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def mark_dead(symbol: str) -> None:
+    """The coin's candles stopped (the exchange no longer trades it): drop it so the next coin in the
+    ranking takes its place on the next refresh."""
+    global _saved, _force
+    with _lock:
+        data = load_saved()
+        if not data:
+            return
+        coin = next((c["coin"] for c in data.get("coins", []) if c["symbol"] == symbol), None)
+        if coin is None:
+            return
+        data["coins"] = [c for c in data["coins"] if c["symbol"] != symbol]
+        data.setdefault("dead", {})[coin] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        _saved = data
+        _force = True
+        try:
+            TOP_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+
+
 def _exchange_pairs() -> dict[str, set[str]]:
     """Every pair each exchange trades right now (one request per exchange)."""
     from .sources.http import get_json
@@ -99,13 +152,14 @@ def _exchange_pairs() -> dict[str, set[str]]:
     pairs: dict[str, set[str]] = {}
     for name, url in EXCHANGE_TICKERS.items():
         try:
-            pairs[name] = {row["symbol"] for row in get_json(url, retries=2)}
+            pairs[name] = live_pairs(get_json(url, retries=2))
         except Exception:  # noqa: BLE001 - an exchange being down must not empty the list
             pass
     return pairs
 
 
-def pick(listings: list[dict], pairs: dict[str, set[str]], n: int, quote: str = "USDT") -> tuple[list[TopCoin], list[dict]]:
+def pick(listings: list[dict], pairs: dict[str, set[str]], n: int, quote: str = "USDT",
+         dead: dict | None = None) -> tuple[list[TopCoin], list[dict]]:
     """Top n coins by market cap that are worth predicting and tradable as COINUSDT somewhere."""
     chosen: list[TopCoin] = []
     skipped: list[dict] = []
@@ -113,6 +167,9 @@ def pick(listings: list[dict], pairs: dict[str, set[str]], n: int, quote: str = 
         if len(chosen) >= n:
             break
         coin = str(row.get("symbol", "")).upper()
+        if coin in (dead or {}):
+            skipped.append({"coin": coin, "rank": row.get("cmc_rank"), "reason": "no live trading on Binance or MEXC"})
+            continue
         tags = {str(t).lower() for t in (row.get("tags") or [])}
         if coin in SKIP_COINS or tags & SKIP_TAGS or coin.startswith("USD"):
             skipped.append({"coin": coin, "rank": row.get("cmc_rank"), "reason": "stablecoin or wrapped token"})
@@ -120,7 +177,7 @@ def pick(listings: list[dict], pairs: dict[str, set[str]], n: int, quote: str = 
         pair = coin + quote
         on = [ex for ex in ("binance", "mexc") if pair in pairs.get(ex, set())]
         if not on and pairs:
-            skipped.append({"coin": coin, "rank": row.get("cmc_rank"), "reason": f"no {quote} pair on Binance or MEXC"})
+            skipped.append({"coin": coin, "rank": row.get("cmc_rank"), "reason": f"no live {quote} pair on Binance or MEXC"})
             continue
         usd = (row.get("quote") or {}).get("USD") or {}
         chosen.append(TopCoin(symbol=pair, coin=coin, name=row.get("name", ""), rank=int(row.get("cmc_rank") or 0),
@@ -137,10 +194,12 @@ def refresh(api_key: str, n: int) -> dict:
     listings = data.get("data") or []
     if not listings:
         raise ValueError("CoinMarketCap sent an empty ranking")
-    chosen, skipped = pick(listings, _exchange_pairs(), n)
+    dead = _dead(load_saved())
+    chosen, skipped = pick(listings, _exchange_pairs(), n, dead=dead)
     if not chosen:
         raise ValueError("no coin in the ranking has a USDT pair on Binance or MEXC")
-    result = {"updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "n": n,
+    result = {"version": FORMAT_VERSION, "dead": dead,
+              "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "n": n,
               "coins": [asdict(c) for c in chosen], "skipped": skipped}
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     TOP_FILE.write_text(json.dumps(result, indent=2), encoding="utf-8")
@@ -152,14 +211,17 @@ def resolve(settings: Settings, force: bool = False) -> list[str]:
 
     Uses the saved list while it is under 12 hours old. If CoinMarketCap can't be reached, the last
     saved list is kept; with no saved list at all, the SYMBOLS from .env are used."""
-    global _saved, _last_try, _last_problem, _note
+    global _saved, _last_try, _last_problem, _note, _force
     n = settings.top_coins
     if n <= 0:
         _note = "Coins from SYMBOLS in .env (TOP_COINS=0)"
         return settings.symbols
     with _lock:
         data = load_saved()
-        fresh = bool(data) and data.get("n") == n and _age_hours(data) < REFRESH_HOURS
+        fresh = (bool(data) and data.get("n") == n and data.get("version") == FORMAT_VERSION
+                 and _age_hours(data) < REFRESH_HOURS)
+        if _force:
+            force, _force = True, False
         problem = ""
         if force or not fresh:
             if not settings.cmc_api_key:

@@ -22,9 +22,11 @@ def _fresh_caches(monkeypatch, tmp_path):
     monkeypatch.setattr(topcoins, "_last_try", None)
 
 
-def synthetic_rows(n=3000, step_ms=300_000, seed=1, drift=0.0):
+def synthetic_rows(n=3000, step_ms=300_000, seed=1, drift=0.0, recent=False):
     rng = np.random.default_rng(seed)
     t0 = int(pd.Timestamp("2026-01-01", tz="UTC").value // 1_000_000)
+    if recent:  # ends now, like a live market
+        t0 = int(pd.Timestamp.now(tz="UTC").floor("h").value // 1_000_000) - n * step_ms
     price, rows = 60000.0, []
     for i in range(n):
         o = price
@@ -140,7 +142,7 @@ def test_full_snapshot_with_fallback(monkeypatch, tmp_path):
     monkeypatch.setattr(binance, "fetch_price", broken)
     seeds = {"BTCUSDT": 1, "ETHUSDT": 2, "SOLUSDT": 3}
     monkeypatch.setattr(mexc, "fetch_klines",
-                        lambda s, tf, n: rows_to_frame(synthetic_rows(n, steps[tf], seed=seeds[s])))
+                        lambda s, tf, n: rows_to_frame(synthetic_rows(n, steps[tf], seed=seeds[s], recent=True)))
     monkeypatch.setattr(mexc, "fetch_price", lambda s: 61000.0)
     monkeypatch.setattr(predictor.tradingview, "fetch_rating",
                         lambda s, tf, ex="BINANCE": predictor.tradingview.TVRating(recommendation="BUY"))
@@ -585,7 +587,8 @@ def test_top_coins_resolve_saves_and_reuses(monkeypatch):
         if "coinmarketcap" in url:
             return {"data": LISTINGS}
         ex = "binance" if "binance" in url else "mexc"
-        return [{"symbol": s, "price": "1"} for s in PAIRS[ex]]
+        return [{"symbol": s, "quoteVolume": "1000"} for s in PAIRS[ex]] + \
+            [{"symbol": "XMRUSDT", "quoteVolume": "0"}]  # delisted: still has a ticker, no volume
     monkeypatch.setattr("btc_bot.sources.http.get_json", fake_get)
     s = Settings(cmc_api_key="k", top_coins=10)
     assert topcoins.resolve(s)[:3] == ["BTCUSDT", "ETHUSDT", "XRPUSDT"] and len(s.symbols) == 10
@@ -619,7 +622,7 @@ def test_unlisted_exchange_is_never_asked(monkeypatch, tmp_path):
         raise AssertionError("Binance does not list HYPE")
     monkeypatch.setattr(binance, "fetch_klines", never)
     monkeypatch.setattr(binance, "fetch_price", never)
-    monkeypatch.setattr(mexc, "fetch_klines", lambda s, tf, n: rows_to_frame(synthetic_rows(n, 300_000)))
+    monkeypatch.setattr(mexc, "fetch_klines", lambda s, tf, n: rows_to_frame(synthetic_rows(n, 300_000, recent=True)))
     monkeypatch.setattr(mexc, "fetch_price", lambda s: 30.5)
     _, src = predictor.load_candles(Settings(history_candles=500), "5m", symbol="HYPEUSDT")
     assert src == "mexc"
@@ -638,3 +641,45 @@ def test_dns_failure_is_explained_plainly():
                     "(Caused by NameResolutionError(\"Failed to resolve 'api.binance.com' ([Errno 11001] getaddrinfo failed)\"))")
     msg = _explain("https://api.binance.com/api/v3/klines", err)
     assert "can't look up api.binance.com" in msg and "DNS" in msg
+
+
+def test_live_pairs_ignore_delisted_markets():
+    now = 1_800_000_000_000
+    rows = [{"symbol": "BTCUSDT", "quoteVolume": "5e9", "closeTime": now - 1000},
+            {"symbol": "XMRUSDT", "quoteVolume": "0", "closeTime": now - 1000},
+            {"symbol": "OLDUSDT", "quoteVolume": "10", "closeTime": now - 400 * 86_400_000}]
+    assert topcoins.live_pairs(rows, now) == {"BTCUSDT"}
+
+
+def test_frozen_coin_is_replaced_by_next_in_ranking(monkeypatch):
+    """XMR: Binance still answers with candles, but they stopped long ago."""
+    coins = [("BTC", ["binance", "mexc"]), ("XMR", ["binance"])]
+    topcoins.TOP_FILE.write_text(json.dumps({
+        "version": topcoins.FORMAT_VERSION, "updated": pd.Timestamp.now(tz="UTC").isoformat(), "n": 2,
+        "coins": [{"symbol": c + "USDT", "coin": c, "rank": i + 1, "exchanges": ex} for i, (c, ex) in enumerate(coins)]}))
+    steps = {"5m": 300_000, "15m": 900_000, "1h": 3_600_000}
+
+    def klines(s, tf, n):
+        rows = synthetic_rows(n, steps[tf])
+        if s == "XMRUSDT":  # frozen in 2026-01
+            return rows_to_frame(rows)
+        shift = int(pd.Timestamp.now(tz="UTC").value // 1_000_000) - rows[-1][0] - steps[tf]
+        return rows_to_frame([[r[0] + shift] + r[1:6] + [r[6] + shift] for r in rows])
+    monkeypatch.setattr(binance, "fetch_klines", klines)
+    monkeypatch.setattr(mexc, "fetch_klines", klines)
+    monkeypatch.setattr(binance, "fetch_price", lambda s: 1.0)
+    monkeypatch.setattr(mexc, "fetch_price", lambda s: 1.0)
+    monkeypatch.setattr(predictor.tradingview, "prefetch", lambda *a, **k: None)
+    monkeypatch.setattr(predictor.tradingview, "fetch_rating", lambda *a, **k: predictor.tradingview.TVRating())
+    monkeypatch.setattr(predictor, "PREDICTION_LOG", topcoins.LOG_DIR / "p.csv")
+    monkeypatch.setattr(predictor.bigmoves, "MOVES_FILE", topcoins.LOG_DIR / "big.csv")
+    monkeypatch.setattr(predictor.bigmoves, "LOG_DIR", topcoins.LOG_DIR)
+    s = Settings(cmc_api_key="", top_coins=2, history_candles=500)
+    snap = predictor.take_snapshot(s)
+    assert snap.symbols == ["BTCUSDT"] and {p.symbol for p in snap.predictions} == {"BTCUSDT"}
+    saved = json.loads(topcoins.TOP_FILE.read_text())
+    assert "XMR" in saved["dead"] and [c["coin"] for c in saved["coins"]] == ["BTC"]
+    # the next ranking leaves XMR out and takes the next coin
+    chosen, skipped = topcoins.pick([_listing(1, "BTC"), _listing(2, "XMR"), _listing(3, "LINK")],
+                                    {"binance": {"BTCUSDT", "XMRUSDT", "LINKUSDT"}}, 2, dead=saved["dead"])
+    assert [c.coin for c in chosen] == ["BTC", "LINK"] and skipped[0]["coin"] == "XMR"

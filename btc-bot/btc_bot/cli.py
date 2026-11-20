@@ -101,7 +101,73 @@ def cmd_gui(settings: Settings, args) -> None:
     run(settings)
 
 
+def _windowless() -> bool:
+    """True when started by pythonw.exe (the desktop icon): there is no console, so errors are invisible."""
+    return sys.stdout is None or sys.stderr is None
+
+
+def _show_startup_error(text: str) -> None:
+    """Write the error to logs\\startup-error.log and show it in a message box, so a failed start is never silent."""
+    from .config import LOG_DIR
+
+    log = LOG_DIR / "startup-error.log"
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        log.write_text(text, encoding="utf-8")
+    except OSError:
+        pass
+    msg = ("Crypto Movement Bot could not start.\n\n" + text[-1500:] +
+           f"\n\nThis message was saved to:\n{log}\n\n"
+           "Tip: run start-gui-debug.bat in the bot folder to see the full details, "
+           "or run setup.bat again to repair the installation.")
+    try:
+        import ctypes  # works even when tkinter itself is what failed
+
+        ctypes.windll.user32.MessageBoxW(None, msg, "Crypto Movement Bot", 0x10)
+        return
+    except Exception:  # noqa: BLE001 - not Windows
+        pass
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror("Crypto Movement Bot", msg)
+        root.destroy()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def main(argv=None) -> None:
+    if not _windowless():
+        _run(argv)
+        return
+    # Started from the desktop icon (pythonw.exe): keep a log and turn any crash into a visible message.
+    import traceback
+
+    from .config import LOG_DIR
+
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        out = open(LOG_DIR / "bot.log", "a", encoding="utf-8", buffering=1)  # noqa: SIM115
+        sys.stdout = sys.stderr = out
+    except OSError:
+        pass
+    try:
+        _run(argv)
+    except SystemExit:
+        raise
+    except BaseException:  # noqa: BLE001
+        text = traceback.format_exc()
+        try:
+            print(text)
+        except Exception:  # noqa: BLE001
+            pass
+        _show_startup_error(text)
+
+
+def _run(argv=None) -> None:
     _console_utf8()
     parser = argparse.ArgumentParser(prog="btc_bot", description="Crypto short-term movement predictor (signals only)")
     sub = parser.add_subparsers(dest="command")
@@ -112,7 +178,7 @@ def main(argv=None) -> None:
         ("backtest", cmd_backtest, "Measure past accuracy honestly (walk-forward)"),
         ("score", cmd_score, "Check how logged live predictions actually turned out"),
         ("swings", cmd_swings, "Find the daily swing windows from 5 years of data"),
-        ("bigmoves", cmd_bigmoves, "Show the hours where a coin moved 2%+ up or down"),
+        ("bigmoves", cmd_bigmoves, "Show the hours where a coin moved 2%%+ up or down"),
         ("webhook", cmd_webhook, "Receive TradingView webhook alerts"),
         ("gui", cmd_gui, "Open the desktop window"),
     ]:

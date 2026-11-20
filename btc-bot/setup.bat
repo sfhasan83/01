@@ -8,6 +8,9 @@ if not exist .venv %PY% -m venv .venv || (echo Could not create the virtual envi
 call .venv\Scripts\python.exe -m pip install --upgrade pip
 call .venv\Scripts\python.exe -m pip install -r requirements.txt || (echo Installing packages failed. & pause & exit /b 1)
 if not exist .env copy .env.example .env >nul
+echo Checking that the bot can start...
+.venv\Scripts\python.exe -c "import tkinter" 2>nul || (echo Python's window toolkit tkinter is missing. Re-run the Python installer, choose Modify and tick "tcl/tk and IDLE". & pause & exit /b 1)
+.venv\Scripts\python.exe -m btc_bot --help >nul || (echo The bot failed its start-up check, see the error above. & pause & exit /b 1)
 echo.
 echo Creating a "Crypto Movement Bot" icon on your Desktop...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0create-shortcut.ps1"

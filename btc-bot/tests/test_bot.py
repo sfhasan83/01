@@ -539,3 +539,13 @@ def test_candle_cache_only_downloads_new_candles(monkeypatch, tmp_path):
     monkeypatch.setattr(predictor, "_candles", {})
     third, _ = predictor.load_candles(st, "5m", symbol="BTCUSDT")
     assert asked[2] <= 3 and third.index[-1] == second.index[-1]
+
+
+def test_cli_help_builds_on_every_python():
+    """Python 3.14 checks every argparse help string up front; a bare '%' crashed every command, the GUI too."""
+    from btc_bot.cli import main
+
+    for argv in (["--help"], ["gui", "--help"], ["bigmoves", "--help"], ["predict", "--help"]):
+        with pytest.raises(SystemExit) as exc:
+            main(argv)
+        assert exc.value.code == 0

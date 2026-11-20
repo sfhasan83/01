@@ -54,7 +54,7 @@ BTC dominance and the Fear & Greed index.
    Open the new `.env` file in Notepad and paste it after `CMC_API_KEY=`. Save.
    (The bot still works without it; you just won't see the CoinMarketCap line.)
 5. **Double-click the "Crypto Movement Bot" icon** that setup put on your Desktop (also in the Start menu).
-   If the icon is missing, double-click `create-shortcut.bat` to make it again, or use `start-gui.bat`. The window opens straight away. The very first update downloads price history and trains 9 models (3 coins × 3 timeframes), usually within 10 to 30 seconds. After that the bot saves the prices in `logs\cache`, so later starts and refreshes only download the newest candles, and it reuses each model until a new candle closes.
+   If the icon is missing, double-click `create-shortcut.bat` to make it again, or use `start-gui.bat`. If the bot ever fails to start, it shows an error box and saves the details in `logs\startup-error.log`; `start-gui-debug.bat` starts it with a console so you can see every message. The window opens straight away. The very first update downloads price history and trains 9 models (3 coins × 3 timeframes), usually within 10 to 30 seconds. After that the bot saves the prices in `logs\cache`, so later starts and refreshes only download the newest candles, and it reuses each model until a new candle closes.
 
 Binance, MEXC and TradingView need **no account or key**: the bot only reads public market data.
 

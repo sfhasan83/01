@@ -12,6 +12,10 @@ Everything needed to launch and grow an Amazon store on Amazon.com (US), Amazon.
 
 Latest report: [daily-reports/2026-11-24.md](daily-reports/2026-11-24.md)
 
+## SEO agent for baatsaccounting.com
+
+[seo-agent/](seo-agent/) holds an AI agent that works every week to rank **baatsaccounting.com** at the top of search in all 15 regions, plus the first site audit and ready-to-paste fixes. Start with [seo-agent/README.md](seo-agent/README.md).
+
 ## Grocery shop software
 
 [grocery-app/](grocery-app/) holds **Shop Books**, an offline accounting and stock app for the Sharjah grocery shop. Open `grocery-app/shop-books.html` in a browser. Instructions are in [grocery-app/README.md](grocery-app/README.md).

@@ -1,0 +1,57 @@
+<!--
+  JSON-LD for https://baatsaccounting.com/uae/  (template for every region)
+  Put it in the <head>. For another region, change the URLs, name, currency,
+  prices and areaServed. Prices must match the visible pricing table exactly:
+  fix the EN/AR price mismatch first, then fill these in.
+  Add a FAQPage block only with questions and answers that are visible on the page.
+-->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://baatsaccounting.com/uae/#software",
+      "name": "BAATS Accounting UAE",
+      "url": "https://baatsaccounting.com/uae/",
+      "applicationCategory": "BusinessApplication",
+      "applicationSubCategory": "Accounting and VAT software",
+      "operatingSystem": "Web, Windows",
+      "inLanguage": ["en", "ar"],
+      "areaServed": {"@type": "Country", "name": "United Arab Emirates"},
+      "publisher": {"@id": "https://baatsaccounting.com/#organization"},
+      "offers": {
+        "@type": "AggregateOffer",
+        "priceCurrency": "AED",
+        "lowPrice": "83",
+        "highPrice": "1000",
+        "offerCount": "6",
+        "url": "https://baatsaccounting.com/uae/pricing.html"
+      }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "BAATS Accounting", "item": "https://baatsaccounting.com/"},
+        {"@type": "ListItem", "position": 2, "name": "United Arab Emirates", "item": "https://baatsaccounting.com/uae/"}
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "REPLACE with a question exactly as shown in the page FAQ",
+          "acceptedAnswer": {"@type": "Answer", "text": "REPLACE with the answer exactly as shown on the page"}
+        }
+      ]
+    }
+  ]
+}
+</script>
+
+<!-- hreflang block for every page in the UAE pair (check that each region page has its own full set):
+<link rel="alternate" hreflang="en-AE" href="https://baatsaccounting.com/uae/">
+<link rel="alternate" hreflang="ar-AE" href="https://baatsaccounting.com/uae/ar/">
+<link rel="alternate" hreflang="x-default" href="https://baatsaccounting.com/">
+-->

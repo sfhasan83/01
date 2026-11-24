@@ -1,0 +1,51 @@
+<!--
+  Homepage <head> changes for https://baatsaccounting.com/
+  Replace the current <title> and meta description, and add the JSON-LD block
+  if the page does not already have one (check the page source first).
+-->
+
+<!-- Current title (about 80 characters, truncated in results):
+     BAATS Accounting – accounting, VAT and tax software for 15 countries | Baats LLC -->
+<title>BAATS Accounting – VAT and Accounting Software, 15 Countries</title>
+
+<!-- Current description is about 330 characters. New one is under 160. -->
+<meta name="description" content="Online and Windows accounting software with local VAT, GST and sales tax built in for the UAE, Saudi Arabia, Pakistan, India, UK and 10 more countries. 15-day free trial.">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://baatsaccounting.com/#organization",
+      "name": "BAATS Accounting",
+      "legalName": "Baats LLC",
+      "url": "https://baatsaccounting.com/",
+      "logo": "https://baatsaccounting.com/assets/logo.png",
+      "email": "support@baatsaccounting.com",
+      "contactPoint": [{
+        "@type": "ContactPoint",
+        "contactType": "customer support",
+        "telephone": "+1-802-965-0326",
+        "email": "support@baatsaccounting.com",
+        "availableLanguage": ["English", "Arabic"]
+      }],
+      "sameAs": [
+        "https://www.instagram.com/baatsllc",
+        "https://x.com/baatsllc",
+        "https://www.youtube.com/@BAATSLLC",
+        "https://www.linkedin.com/company/baatsllc",
+        "https://www.facebook.com/baatsllc/"
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://baatsaccounting.com/#website",
+      "url": "https://baatsaccounting.com/",
+      "name": "BAATS Accounting",
+      "publisher": {"@id": "https://baatsaccounting.com/#organization"}
+    }
+  ]
+}
+</script>
+<!-- Check the logo path: /assets/logo.png is a placeholder, use the real file. -->

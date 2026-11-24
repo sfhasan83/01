@@ -5,15 +5,12 @@
 
   /* ---------------- Product data (placeholder flavours: edit freely) ---------------- */
   var FLAVOURS = [
-    { id: "classic", line: "chips", name: "Classic Salted", l1: "CLASSIC", l2: "SALTED", desc: "Thin-cut potatoes, a pinch of sea salt, nothing to hide behind. The crunch that started it all.", heat: 0, bag: ["#ffe066", "#f5a400"], band: "#1d4ed8", card: ["#ffe58a", "#ffb81c"], text: "dark", tag: "Bestseller" },
-    { id: "masala", line: "chips", name: "Masala Magic", l1: "MASALA", l2: "MAGIC", desc: "A bold desi masala blend with roasted cumin and red chilli, made for chai-time cravings.", heat: 3, bag: ["#ff8a2a", "#d9480f"], band: "#7c2d12", card: ["#ffb26b", "#f76707"], text: "dark", tag: "Lahori favourite" },
-    { id: "chilli-lemon", line: "chips", name: "Chilli Lemon", l1: "CHILLI", l2: "LEMON", desc: "Zesty lemon up front, a slow chilli kick behind. Tangy, loud and impossible to share.", heat: 2, bag: ["#c9e43b", "#6fa80c"], band: "#e5322d", card: ["#e3f38a", "#9cc91a"], text: "dark", tag: "Tangy" },
-    { id: "bbq", line: "chips", name: "Smoky BBQ", l1: "SMOKY", l2: "BBQ", desc: "Slow-smoked barbecue notes with a sweet, sticky finish, like a rooftop grill in Gulberg.", heat: 2, bag: ["#a23b1f", "#4a1309"], band: "#ffb81c", card: ["#b8502f", "#5c1a0b"], text: "light", tag: "Smoky" },
-    { id: "salt-vinegar", line: "chips", name: "Salt & Vinegar", l1: "SALT &", l2: "VINEGAR", desc: "Sharp, puckering vinegar tang balanced with crunchy sea salt. For the brave.", heat: 0, bag: ["#5bbcff", "#1c63c9"], band: "#fff7e8", card: ["#7cc8ff", "#2774d8"], text: "light", tag: "Sharp" },
-    { id: "sour-cream", line: "chips", name: "Cream & Onion", l1: "CREAM &", l2: "ONION", desc: "Cool sour cream, sweet onion and a hint of herbs. Smooth, mellow and very moreish.", heat: 0, bag: ["#7ddba9", "#1f9e6a"], band: "#0f5132", card: ["#a8ebc6", "#38b77f"], text: "dark", tag: "Mellow" },
-    { id: "cheese-pops", line: "pops", name: "Cheesy Pops", l1: "CHEESY", l2: "POPS", desc: "Light, airy corn pops coated in rich cheddar. One handful is never enough.", heat: 0, bag: ["#ffc83d", "#fb8500"], band: "#ff4f8b", card: ["#ffd86b", "#ff9f1c"], text: "dark", tag: "New · Pops" },
-    { id: "chatpata-pops", line: "pops", name: "Chatpata Pops", l1: "CHATPATA", l2: "POPS", desc: "Tangy chaat masala on crunchy pops. The taste of a Lahore street stall, in a pack.", heat: 2, bag: ["#ff5c93", "#c9184a"], band: "#ffd23f", card: ["#ff8fb3", "#e0306a"], text: "dark", tag: "New · Pops" },
-    { id: "ketchup-pops", line: "pops", name: "Ketchup Pops", l1: "KETCHUP", l2: "POPS", desc: "Sweet-tangy tomato ketchup flavour that kids (and grown-ups) can't resist.", heat: 1, bag: ["#ef3b3b", "#8d0801"], band: "#ffd23f", card: ["#ff6b6b", "#b5130c"], text: "light", tag: "New · Pops" }
+    { id: "yogurt-herbs", line: "chips", name: "Yogurt & Herbs", l1: "YOGURT &", l2: "HERBS", desc: "Cool, creamy yogurt with fresh garden herbs on crinkle-cut potato chips. Smooth, fresh and moreish.", heat: 0, bag: ["#6fd04a", "#1f6b17"], band: "#fff7e8", card: ["#5fbf3f", "#1d5e16"], text: "light", tag: "Fresh & creamy" },
+    { id: "masala", line: "chips", name: "Masala", l1: "MASALA", l2: "", desc: "A bold desi masala blend with a proper chilli kick. The flavour Pakistan grew up on, done right.", heat: 3, bag: ["#ef3a2c", "#7a0c0a"], band: "#ffb81c", card: ["#e0362b", "#6e0a08"], text: "light", tag: "Bestseller" },
+    { id: "bbq", line: "chips", name: "Barbecue", l1: "BARBECUE", l2: "", desc: "Smoky, sweet and tangy barbecue seasoning, like a rooftop grill night in Lahore.", heat: 2, bag: ["#ffa53a", "#b04a06"], band: "#e5322d", card: ["#f59a2e", "#a8460a"], text: "light", tag: "Smoky" },
+    { id: "masala-pops", line: "pops", name: "Yummy Masala Pops", l1: "YUMMY", l2: "MASALA", desc: "Light, crunchy corn puffs dusted in a yummy desi masala. Baked, not fried.", heat: 2, bag: ["#7ad44e", "#1f6b17"], band: "#ffd23f", card: ["#6cc246", "#1f6b17"], text: "light", tag: "Baked, not fried" },
+    { id: "cheese-pops", line: "pops", name: "Cheese Pops", l1: "CHEESE", l2: "POPS", desc: "Airy corn puffs coated in rich, cheesy goodness. One handful is never enough. Baked, not fried.", heat: 0, bag: ["#3a7cf0", "#0b2a78"], band: "#ffd23f", card: ["#2f6fe0", "#0b2a78"], text: "light", tag: "Kids' favourite" },
+    { id: "tomato-pops", line: "pops", name: "Tangy Tomato Pops", l1: "TANGY", l2: "TOMATO", desc: "Sweet-tangy tomato flavour on crunchy corn puffs that kids and grown-ups love. Baked, not fried.", heat: 1, bag: ["#ff5a48", "#7e0a07"], band: "#ffd23f", card: ["#ef4a3c", "#7e0a07"], text: "light", tag: "Tangy" }
   ];
 
   var uid = 0;
@@ -22,6 +19,7 @@
   function bagSVG(f) {
     var i = "b" + (++uid);
     var isPops = f.line === "pops";
+    var fs = f.l1.length > 8 ? 20 : 24;
     var art = isPops
       ? '<g>' +
           '<circle cx="78" cy="208" r="17" fill="url(#' + i + 'p)"/>' +
@@ -58,12 +56,15 @@
         '<rect x="18" y="262" width="164" height="22" rx="5" fill="' + f.bag[1] + '"/>' +
         '<path d="' + crimp(6) + crimp(262) + '" stroke="rgba(0,0,0,.18)" stroke-width="1.4"/>' +
       '</g>' +
-      '<circle cx="100" cy="64" r="25" fill="#120d08"/>' +
-      '<circle cx="100" cy="64" r="21" fill="#ffb81c"/>' +
-      '<text x="100" y="70.5" text-anchor="middle" font-family="Bricolage Grotesque, Arial Black, sans-serif" font-weight="800" font-size="16" fill="#120d08">KSF</text>' +
-      '<text x="100" y="104" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="8" letter-spacing="2.4" fill="#120d08" opacity=".75">' + (isPops ? "CORN POPS" : "POTATO CHIPS") + '</text>' +
-      '<text x="100" y="128" text-anchor="middle" font-family="Bricolage Grotesque, Arial Black, sans-serif" font-weight="800" font-size="22" fill="#fff" stroke="#120d08" stroke-width="3" paint-order="stroke">' + f.l1 + '</text>' +
-      '<text x="100" y="150" text-anchor="middle" font-family="Bricolage Grotesque, Arial Black, sans-serif" font-weight="800" font-size="22" fill="#fff" stroke="#120d08" stroke-width="3" paint-order="stroke">' + f.l2 + '</text>' +
+      '<image href="assets/ksf-logo.webp" x="52" y="32" width="96" height="74"/>' +
+      '<text x="100" y="117" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="8" letter-spacing="1.6" fill="#fff" opacity=".9">' + (isPops ? "CORN PUFFS" : "FLAVORED POTATO CHIPS") + '</text>' +
+      '<text x="100" y="' + (f.l2 ? 140 : 152) + '" text-anchor="middle" font-family="Bricolage Grotesque, Arial Black, sans-serif" font-weight="800" font-size="' + fs + '" fill="#fff" stroke="#120d08" stroke-width="3" paint-order="stroke">' + f.l1 + '</text>' +
+      '<text x="100" y="162" text-anchor="middle" font-family="Bricolage Grotesque, Arial Black, sans-serif" font-weight="800" font-size="' + fs + '" fill="#ffd23f" stroke="#120d08" stroke-width="3" paint-order="stroke">' + f.l2 + '</text>' +
+      '<circle cx="152" cy="232" r="17" fill="#120d08"/><circle cx="152" cy="232" r="14.5" fill="none" stroke="#ffb81c" stroke-width="1"/>' +
+      '<text x="152" y="230" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="5.6" fill="#ffb81c">' + (isPops ? "BAKED" : "REAL") + '</text>' +
+      '<text x="152" y="237" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="4.6" fill="#ffb81c">' + (isPops ? "NOT FRIED" : "POTATOES") + '</text>' +
+      '<rect x="30" y="226" width="11" height="11" rx="1.5" fill="#fff" stroke="#1f9e3a" stroke-width="1.4"/><circle cx="35.5" cy="231.5" r="2.6" fill="#1f9e3a"/>' +
+      '<text x="45" y="234" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="5.4" fill="#fff">100% VEG</text>' +
       '<text x="100" y="254" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="7" letter-spacing="1.5" fill="#fff" opacity=".85">MADE IN LAHORE · PAKISTAN</text>' +
       '</svg>';
   }
@@ -99,7 +100,7 @@
   // Render product grids
   document.querySelectorAll("[data-flavours]").forEach(function (grid) {
     var mode = grid.getAttribute("data-flavours");
-    var list = mode === "featured" ? FLAVOURS.filter(function (f) { return ["classic", "masala", "chilli-lemon"].indexOf(f.id) > -1; }) : FLAVOURS;
+    var list = mode === "featured" ? FLAVOURS.filter(function (f) { return ["masala", "yogurt-herbs", "cheese-pops"].indexOf(f.id) > -1; }) : FLAVOURS;
     grid.innerHTML = list.map(cardHTML).join("");
   });
 

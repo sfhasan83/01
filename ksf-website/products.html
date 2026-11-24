@@ -9,7 +9,8 @@
 <meta property="og:title" content="Flavours | KSF Foods Potato Chips & Pops">
 <meta property="og:description" content="Explore every KSF potato chip and corn pop flavour, made in Lahore, Pakistan.">
 <meta property="og:type" content="website">
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon.png" type="image/png">
+<meta property="og:image" content="assets/ksf-collection.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -19,8 +20,8 @@
 <header class="site-header">
   <nav class="nav wrap" aria-label="Main">
     <a class="brand" href="index.html" aria-label="KSF Food Industries home">
-      <span class="brand-mark">KSF</span>
-      <span class="brand-text">KSF Foods<small>Lahore · Pakistan</small></span>
+      <img class="brand-logo" src="assets/ksf-logo.webp" alt="" width="60" height="46">
+      <span class="brand-text">KSF Food Industries<small>Crunch you can trust</small></span>
     </a>
     <ul class="nav-links"><li><a href="index.html">Home</a></li><li><a href="products.html" aria-current="page">Flavours</a></li><li><a href="about.html">Our Story</a></li><li><a href="contact.html">Contact Us</a></li></ul>
     <a class="btn btn-gold nav-cta" href="contact.html#trade">Become a distributor</a>
@@ -32,16 +33,17 @@
 <section class="page-hero">
   <div class="wrap">
     <span class="eyebrow">Flavours</span>
-    <h1>Nine ways<br>to <em>crunch.</em></h1>
-    <p class="lede">Six potato chip flavours and three corn pops, each seasoned for the Pakistani palate. Filter by line, then go find your favourite.</p>
+    <h1>Six ways<br>to <em>crunch.</em></h1>
+    <p class="lede">Two collections, six flavours. Potato chips made with real potatoes, and corn pops baked, not fried. All 100% vegetarian, with no artificial colours and no preservatives.</p>
+    <img class="collection-photo reveal" src="assets/ksf-collection.jpg" alt="KSF Chips and Pops collections" width="1402" height="1122" loading="lazy">
   </div>
 </section>
 <section style="padding-bottom:clamp(90px,12vw,160px)" id="pops">
   <div class="wrap">
     <div class="filters" role="group" aria-label="Filter flavours">
       <button data-filter="all" aria-pressed="true">All flavours</button>
-      <button data-filter="chips" aria-pressed="false">Potato Chips</button>
-      <button data-filter="pops" aria-pressed="false">Corn Pops</button>
+      <button data-filter="chips" aria-pressed="false">Chips Collection</button>
+      <button data-filter="pops" aria-pressed="false">Pops Collection</button>
     </div>
     <div class="flavours" data-flavours="all"></div>
   </div>
@@ -60,8 +62,8 @@
   <div class="wrap">
     <div class="footer-top">
       <div>
-        <a class="brand" href="index.html"><span class="brand-mark">KSF</span><span class="brand-text">KSF Food Industries<small>Lahore · Pakistan</small></span></a>
-        <p class="blurb">Potato chips and corn pops, sliced, seasoned and packed in Lahore for snack lovers across Pakistan.</p>
+        <a class="brand" href="index.html"><img class="brand-logo lg" src="assets/ksf-logo.webp" alt="" width="94" height="72"><span class="brand-text">KSF Food Industries<small>Crunch you can trust</small></span></a>
+        <p class="blurb">Potato chips and baked corn pops, made in Lahore for snack lovers across Pakistan. 100% vegetarian, no artificial colours, no preservatives.</p>
       </div>
       <div>
         <h4>Explore</h4>
@@ -79,7 +81,7 @@
     <div class="footer-word" aria-hidden="true">KSF</div>
     <div class="footer-bottom">
       <span>© <span data-year>2026</span> KSF Food Industries. All rights reserved.</span>
-      <span>Made with crunch in Lahore, Pakistan</span>
+      <span>Real Taste, Real Crunch! · Lahore, Pakistan</span>
     </div>
   </div>
 </footer>

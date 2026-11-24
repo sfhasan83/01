@@ -17,12 +17,12 @@ Open `index.html` in a browser, or run `python3 -m http.server` inside this fold
 - **Custom domain (ksffood.com):** add the domain in Settings → Pages and point the DNS at GitHub Pages, or upload this folder to any web host (cPanel, Netlify, Vercel, Cloudflare Pages).
 
 ## What to send us to finish it
-1. **Logo** (SVG or high-res PNG). The "KSF" badge is a placeholder.
-2. **Product photos** of each pack. The packs are drawn in code until then.
-3. **Real flavour list**, pack sizes and prices. Current flavours are placeholders in `assets/main.js` (`FLAVOURS`).
+1. ~~Logo~~ added (`assets/ksf-logo.webp`). A high-res or vector version would look sharper.
+2. ~~Collection photo~~ added (`assets/ksf-collection.jpg`). Separate photos of each pack would replace the drawn packs on the flavour cards.
+3. **Pack sizes and prices** (flavours are now the real six, in `assets/main.js` `FLAVOURS`).
 4. **Factory address, phone and WhatsApp** for the Contact page.
 5. **Social media links** once the pages are live (Facebook, Instagram, TikTok, YouTube, LinkedIn, X).
-6. **Check the claims** in the copy (e.g. "sourced from Pakistani farms", "nitrogen-flushed packs") and correct anything that isn't accurate.
+6. Claims used come from the pack artwork: 100% vegetarian, real potatoes, quality corn, no artificial colours, no preservatives, Pops baked not fried.
 
 ## Editing tips
 - Flavours, colours and descriptions: `assets/main.js`, `FLAVOURS` list at the top.

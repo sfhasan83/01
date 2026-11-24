@@ -1,0 +1,9 @@
+# Cloud sandbox for the baats-seo agent. web_search / web_fetch run as agent
+# tools; the sandbox itself only needs to reach the live site.
+name: baats-seo-env
+config:
+  type: cloud
+  networking:
+    type: limited
+    allow_package_managers: true
+    allowed_hosts: [baatsaccounting.com]

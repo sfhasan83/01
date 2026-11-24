@@ -1,0 +1,31 @@
+name: baats-seo-weekly
+agent: ./agent.md
+environment_id: ./environment.yaml
+resources:
+  - ./memory_store-seo-history.yaml
+# Every Monday at 07:00 UAE time.
+schedule: {type: cron, expression: "0 7 * * 1", timezone: Asia/Dubai}
+# Hard cap on what one weekly run can spend (US cents, list price). Raise it if
+# reports come back incomplete with stop_reason budget_reached.
+budget: {type: limit, max_list_cost: {amount: "2500", currency: USD}}
+initial_events:
+  - type: user.define_outcome
+    description: |
+      Run this week's SEO review of baatsaccounting.com across all 15 regions
+      and write the weekly report, fixes and content briefs described in your
+      instructions, then update the memory store history.
+    max_iterations: 3
+    rubric:
+      type: text
+      content: |
+        # Weekly SEO run rubric (starter, tune as needed)
+        1. /mnt/session/outputs/ contains seo-report-<today's date>.md.
+        2. The report opens with a plain-language summary of 150 words or fewer.
+        3. The scorecard table has exactly one row for each of the 15 regions in the playbook, none missing.
+        4. Each region row names at least 3 tracked keywords (including at least one in the local language where the playbook lists one) and a top competitor.
+        5. The report lists at least 10 actions, each with the affected URL, the expected impact and the effort.
+        6. Every tax rate, deadline or rule mentioned in the report or drafts cites an official government source URL, or is flagged as unverified.
+        7. A fixes-<date>/ folder exists, and every fix shows the URL, the current text and the exact replacement.
+        8. When memory history exists, the report states what changed since the previous run; when it does not, the report says this is the baseline run.
+        9. /history/rankings.md and /history/actions.md in the memory store were updated during this run.
+        10. Nothing in the outputs recommends link buying, doorway pages, fake reviews or any other practice against Google's spam policies.

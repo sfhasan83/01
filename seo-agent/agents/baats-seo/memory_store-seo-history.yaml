@@ -1,0 +1,6 @@
+name: baats-seo-history
+description: >-
+  History of the BAATS Accounting SEO agent's weekly runs. /history/rankings.md
+  holds tracked keywords and observed positions per region per run date.
+  /history/actions.md holds every recommended action with its status
+  (new, open, done). Read both before starting a run and append to them at the end.

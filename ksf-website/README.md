@@ -28,3 +28,9 @@ Open `index.html` in a browser, or run `python3 -m http.server` inside this fold
 - Flavours, colours and descriptions: `assets/main.js`, `FLAVOURS` list at the top.
 - Colours and fonts: CSS variables at the top of `assets/style.css`.
 - The contact form opens the visitor's email app addressed to sales@ or marketing@ (no server needed). Swap in a form service such as Formspree later if you want submissions to arrive directly.
+
+## Google / search engines
+- Every page is indexable (`<meta name="robots" content="index, follow">`) with a canonical URL on `https://ksffood.com/`, a title, description, Open Graph and Twitter tags.
+- `robots.txt` allows all crawlers and points to `sitemap.xml`, which lists the four pages. Update `lastmod` when pages change.
+- The home page has Organization, LocalBusiness and WebSite structured data (JSON-LD). Add `streetAddress`, `postalCode` and `telephone` to it in `index.html` once the factory address and phone are final.
+- If the site is served from another domain, replace `https://ksffood.com/` in the HTML, `robots.txt` and `sitemap.xml`.

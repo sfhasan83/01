@@ -45,6 +45,8 @@ Accounting engine and finance (GL, AP, AR, cash and bank, fixed assets lite, per
 
 ### Phase 3: Operations
 
+**Built and tested:** projects (ledger dimension, timesheets costed from contracts, time and material and milestone billing, budget against actuals); manufacturing (work centers, BOMs with scrap and routing, cost roll-up, work orders through WIP at actual cost with backflush and overhead absorption, reorder minimums, multi-level MRP); maintenance (preventive plans by date or distance, work orders, spare parts to repairs and maintenance); fleet (vehicles linked to fixed assets, fuel with reclaimable VAT, trips, fuel economy, expiry alerts). Still open in this phase: subcontracted manufacturing, by-products and standard costing with variances; project revenue recognition over time (IFRS 15 percentage of completion) and project expenses claimed by employees; lot and serial tracking, landed costs and bin locations; logistics (shipments, carriers, routes) and GPS telematics.
+
 Manufacturing (BOM, routing, MRP, work orders, costing), projects, supply chain and logistics, assets and maintenance, fleet.
 
 ### Phase 4: Corporate functions

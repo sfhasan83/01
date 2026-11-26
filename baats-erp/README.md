@@ -4,7 +4,7 @@
 
 BAATS Enterprise ERP is a multi-tenant enterprise business operating system: one platform where every department runs as an integrated module on shared engines for organization, identity, workflow, master data, audit and rules.
 
-This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (finance built on BAATS Accounting, UAE edition, plus inventory, procurement, sales and CRM, HR and payroll), a Windows trial installer, and the foundation documents for the full programme.
+This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (finance built on BAATS Accounting, UAE edition, plus inventory, procurement, sales and CRM, HR and payroll), **Phase 3 operations** (projects, manufacturing with MRP, maintenance, fleet), a Windows trial installer, and the foundation documents for the full programme.
 
 ## Documents
 
@@ -34,6 +34,10 @@ This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (fi
 | Procurement (Phase 2) | Purchase orders approved through the workflow engine with amount limits, goods receipts into stock against 2010 GRNI, supplier bills drafted from the order with three-way match |
 | Sales and CRM (Phase 2) | Leads, qualification, conversion to customers through master-data approval, opportunities and pipeline, activities; quotations, credit-limit-checked orders, deliveries at cost (5050 COGS), invoicing from orders |
 | HR and payroll (Phase 2) | Employment contracts with WPS details, leave with manager approval and annual leave accrual, monthly payroll pro-rated for joiners, leavers and unpaid leave, posting by cost center, UAE WPS salary file, end-of-service gratuity provision and final settlement (BAATS rule) |
+| Projects (Phase 3) | Projects as a ledger dimension on every invoice and journal line; teams with bill rates; timesheets approved by someone else and costed from the employment contract (monthly gross / 30 / 8) from 5000 Salaries onto 5015 Project labour; time and material billing of approved hours, fixed price billing by milestone; budget against actual cost, revenue and margin |
+| Manufacturing (Phase 3) | Work centers with hourly rates, bills of materials with scrap and routing, standard cost roll-up, work orders released from the BOM, material issue and backflush through 1350 WIP, labour and overhead absorbed to 5060, products into stock at actual cost; reorder minimums and multi-level MRP with make and buy suggestions |
+| Maintenance (Phase 3) | Preventive plans for fixed assets and vehicles by days or kilometres, due list and automatic work orders, corrective and breakdown orders, spare parts from stock to 5250 on the asset's cost center, plans rolled forward on completion |
+| Fleet (Phase 3) | Vehicles linked to fixed assets, drivers and cost centers; fuel posted to 5610 with input VAT reclaimed in the VAT return; trips; odometer tracking, fuel economy and cost per km; registration and insurance expiry alerts |
 | API | REST `/v1` with schema validation for all of the above |
 
 ## Run it

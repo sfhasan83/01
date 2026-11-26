@@ -111,7 +111,7 @@ const pages = {
   async overview() {
     const me = await api('GET', '/v1/me');
     return `<div class="card"><h3>Welcome, ${esc(me.user.display_name)}</h3><p class="muted">Signed in to <b>${esc(S.tenant)}</b> as ${esc(me.user.email)}. MFA: ${me.user.mfa_enabled ? 'on' : 'off'}.</p>
-      <p>This console lets you try what BAATS can do today. Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
+      <p>This console lets you try what BAATS can do today. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
       <div class="card"><h3>Your approvals waiting (${me.inbox.length})</h3>${table(me.inbox)}</div>
       <div class="card"><h3>Your permissions (${me.permissions.length})</h3>${me.permissions.map((p) => `<span class="pill">${esc(typeof p === 'string' ? p : p.permission || JSON.stringify(p))}</span>`).join('')}</div>`;
   },
@@ -175,7 +175,7 @@ const pages = {
       <label style="margin-top:10px">JSON body<textarea name="body"></textarea></label><div class="row"><button class="btn">Send</button></div></form><pre id="api-out"></pre></div>`;
   },
 };
-const MENU = [['overview', 'Overview'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audit', 'Audit trail'], ['apitester', 'API tester']];
+const MENU = [['overview', 'Overview'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audit', 'Audit trail'], ['apitester', 'API tester']];
 let current = 'overview';
 const after = {};
 
@@ -256,7 +256,7 @@ Object.assign(pages, {
     const types = await api('GET', '/v1/org/unit-types');
     const legal = new Set(types.filter((t) => t.is_legal_entity).map((t) => t.code));
     const candidates = us.filter((u) => legal.has(u.type) && !cs.find((c) => c.id === u.id));
-    return `<div class="card"><h3>Try finance in one click</h3><p class="muted">Loads a small demo: sets up books for your head company (if needed), adds a second user who can approve, a customer and a supplier, invoices, a receipt, an owner's capital journal, a warehouse, a purchase order through approval, receipt and bill, a lead and a sales order delivered and invoiced, two employment contracts and this month's payroll, e-invoices, a reconciled bank statement and a depreciating asset. Takes about 30 seconds.</p>
+    return `<div class="card"><h3>Try finance in one click</h3><p class="muted">Loads a small demo: sets up books for your head company (if needed), adds a second user who can approve, a customer and a supplier, invoices, a receipt, an owner's capital journal, a warehouse, a purchase order through approval, receipt and bill, a lead and a sales order delivered and invoiced, two employment contracts and this month's payroll, e-invoices, a reconciled bank statement and a depreciating asset, then two projects with billed timesheets, a manufactured desk, and a van with fuel, trips and maintenance. Takes about 45 seconds.</p>
       <div class="row"><button class="btn" id="demo">Load demo data</button><span id="demo-out" class="muted"></span></div></div>
     ${cs.length ? companyBar(cs) + `<div class="card"><h3>Chart of accounts: ${esc(company().name)}</h3>${table(company().accounts, ['code', 'name', 'type', 'parent_code', 'is_group', 'control'])}
       <form id="f-acct"><div class="grid">${field('code', 'New account code (3-10 digits)', 'required')}${field('name', 'Name', 'required')}${pick('parentCode', 'Under group', company().accounts.filter((a) => a.is_group).map((a) => [a.code, `${a.code} ${a.name}`]))}</div><div class="row"><button class="btn sec">Add account</button></div></form></div>` : ''}
@@ -754,6 +754,260 @@ async function loadFinanceExtrasDemo(step, co) {
   }
 }
 
+// ---------- Phase 3: projects, manufacturing, maintenance, fleet ----------
+const onAct = (m, attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`), el); } catch (e) { toast(e.message, false); } });
+const empOpts = (es) => es.map((e) => [e.id, `${e.employee_no} - ${e.first_name} ${e.last_name}`]);
+const num = (b, ...keys) => { for (const k of keys) if (b[k] !== undefined && b[k] !== '') b[k] = Number(b[k]); return b; };
+const pct = (v) => (v === null || v === undefined ? '' : `${Number(v).toFixed(1)}%`);
+
+Object.assign(pages, {
+  async projects() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [list, emps, custs, us, pending] = await Promise.all([api('GET', `/v1/prj/companies/${S.company}/projects`), api('GET', '/v1/org/employees'),
+      activeParties('customer'), units(), api('GET', `/v1/prj/companies/${S.company}/timesheets?status=submitted`)]);
+    if (!list.find((p) => p.id === S.project)) S.project = list[0]?.id;
+    const st = S.project ? await api('GET', `/v1/prj/projects/${S.project}`) : null;
+    const open = list.filter((p) => p.status === 'active');
+    const detail = st ? `<div class="card"><h3>${esc(st.project.code)} ${esc(st.project.name)} <span class="pill">${esc(st.project.billing.replace('_', ' '))}</span> <span class="pill">${esc(st.project.status)}</span></h3>
+      <p>Revenue <b>${money(st.revenue)}</b> · cost <b>${money(st.cost)}</b> · margin <b>${money(st.margin)}</b>${st.marginPct !== null ? ` (${pct(st.marginPct)})` : ''}
+        · budget <b>${money(st.budgetCost)}</b>${st.budgetUsedPct !== null ? ` used ${pct(st.budgetUsedPct)}` : ''} ${st.overBudget ? '<span class="pill" style="color:var(--bad)">over budget</span>' : ''}
+        · hours approved <b>${st.hours.approved}</b>${st.hours.budget ? ` of ${st.hours.budget}` : ''}, waiting ${st.hours.submitted} · ready to bill <b>${money(st.unbilled)}</b></p>
+      <div class="row">${st.project.billing !== 'non_billable' ? act('Draft the next invoice', 'prj-invoice', st.project.id) : ''} ${st.project.status === 'active' ? act('Close project', 'prj-close', st.project.id, 1) : ''}</div>
+      <h4>Cost and revenue by account</h4>${report(st.breakdown, [['code', 'Account'], ['name', 'Name'], ['amount', 'Debit - credit', 1]])}
+      <h4>Team</h4>${report(st.team.map((x) => ({ ...x, bill_rate: x.bill_rate ?? st.project.default_bill_rate })), [['name', 'Name'], ['role', 'Role'], ['bill_rate', 'Bill rate / hour', 1]])}
+      <form id="f-member"><div class="grid">${pick('employeeId', 'Employee', empOpts(emps))}${field('role', 'Role')}${field('billRate', 'Bill rate / hour (blank = project default)', 'type="number" step="any" min="0"')}</div><div class="row"><button class="btn sec">Add to team</button></div></form>
+      ${st.project.billing !== 'non_billable' ? `<h4>Milestones</h4>${st.milestones.length ? '<div class="tbl"><table><tr><th>name</th><th>due</th><th style="text-align:right">amount</th><th>status</th><th>invoice</th><th></th></tr>' + st.milestones.map((x) => `<tr><td>${esc(x.name)}</td><td>${d10(x.due_date)}</td><td style="text-align:right">${money(x.amount)}</td><td>${esc(x.status)} ${d10(x.reached_date)}</td><td>${esc(x.invoice_no)}</td><td>${x.status === 'open' ? act('Mark reached', 'ms-reached', x.id, 1) : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No milestones.</div>'}
+      <form id="f-milestone"><div class="grid">${field('name', 'Milestone', 'required')}${field('amount', 'Amount', 'type="number" step="any" min="0.01" required')}${field('dueDate', 'Due', 'type="date"')}</div><div class="row"><button class="btn sec">Add milestone</button></div></form>` : ''}</div>` : '';
+    return companyBar(cs) + `<div class="card"><h3>Projects</h3><p class="muted">A project is a dimension in the ledger: put it on any purchase or sales line, or journal line, and the amount lands on the project. Approved time moves labour cost from 5000 Salaries to 5015 Project labour at the contract's hourly cost (monthly gross / 30 / 8).</p>
+      ${list.length ? '<div class="tbl"><table><tr><th>code</th><th>name</th><th>customer</th><th>billing</th><th>status</th><th style="text-align:right">revenue</th><th style="text-align:right">cost</th><th style="text-align:right">margin</th><th style="text-align:right">hours</th><th></th></tr>' + list.map((p) => `<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.customer_name)}</td><td>${esc(p.billing.replace('_', ' '))}</td><td>${esc(p.status)}</td><td style="text-align:right">${money(p.revenue)}</td><td style="text-align:right">${money(p.cost)}</td><td style="text-align:right">${money(p.margin)}</td><td style="text-align:right">${p.hours}</td><td>${act(p.id === S.project ? 'Showing' : 'Open', 'prj-open', p.id, 1)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No projects yet.</div>'}</div>
+    ${detail}
+    <div class="card"><h3>Timesheets waiting for approval (${pending.length})</h3><p class="muted">You cannot approve your own time. Approving posts the cost to the project.</p>
+      ${pending.length ? '<div class="tbl"><table><tr><th></th><th>date</th><th>project</th><th>employee</th><th style="text-align:right">hours</th><th>billable</th><th>description</th></tr>' + pending.map((x) => `<tr><td><input type="checkbox" data-ts="${x.id}" checked></td><td>${d10(x.date)}</td><td>${esc(x.project_code)}</td><td>${esc(x.employee_name)}</td><td style="text-align:right">${x.hours}</td><td>${x.billable ? 'yes' : ''}</td><td>${esc(x.description)}</td></tr>`).join('') + '</table></div><div class="row"><button class="btn" id="ts-approve">Approve selected</button><button class="btn sec" id="ts-reject">Reject selected</button></div>' : '<div class="empty">Nothing waiting.</div>'}
+      <h4>Log time</h4>${open.length ? `<form id="f-time"><div class="grid">${pick('projectId', 'Project', open.map((p) => [p.id, `${p.code} ${p.name}`]))}${pick('employeeId', 'Employee', empOpts(emps))}${field('date', 'Date', `type="date" required value="${today()}"`)}${field('hours', 'Hours', 'type="number" step="0.25" min="0.25" max="24" required value="8"')}${field('description', 'Work done', 'required')}${check('billable', 'Billable', true)}</div><div class="row"><button class="btn sec">Log time</button></div></form>` : '<div class="empty">Add a project first.</div>'}</div>
+    <div class="card"><h3>New project</h3><form id="f-project"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${pick('billing', 'Billing', [['time_material', 'Time and material'], ['fixed_price', 'Fixed price (milestones)'], ['non_billable', 'Internal, not billable']])}
+      ${pick('customerId', 'Customer', [['', '(none for internal)'], ...custs.map((c) => [c.id, `${c.code} ${c.name}`])])}${pick('unitId', 'Cost center', [['', '(none)'], ...unitOpts(us)])}${pick('managerEmployeeId', 'Project manager', [['', '(none)'], ...empOpts(emps)])}
+      ${field('defaultBillRate', 'Default bill rate / hour', 'type="number" step="any" min="0"')}${field('contractValue', 'Contract value', 'type="number" step="any" min="0"')}${field('budgetCost', 'Cost budget', 'type="number" step="any" min="0"')}${field('budgetHours', 'Hours budget', 'type="number" step="any" min="0"')}
+      ${field('startDate', 'Start', `type="date" required value="${yearStart()}"`)}${field('endDate', 'End', 'type="date"')}</div><div class="row"><button class="btn">Create project</button></div></form></div>`;
+  },
+
+  async manufacturing() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [wcs, boms, wos, items, whs] = await Promise.all([api('GET', `/v1/mfg/companies/${S.company}/work-centers`), api('GET', `/v1/mfg/companies/${S.company}/boms`),
+      api('GET', `/v1/mfg/companies/${S.company}/work-orders`), api('GET', '/v1/mdm/items'), api('GET', `/v1/inv/companies/${S.company}/warehouses`)]);
+    const stock = items.filter((i) => i.item_type === 'stock' && i.status === 'active');
+    if (S.mrp) S.mrp = await api('GET', `/v1/mfg/companies/${S.company}/mrp`); // keep it current after every action
+    const products = boms.filter((b) => b.status === 'active');
+    const woActs = (w) => w.status === 'draft' ? `${act('Release', 'wo-release', w.id)} ${act('Cancel', 'wo-cancel', w.id, 1)}`
+      : w.status === 'released' ? `${act('Issue materials', 'wo-issue', w.id, 1)} ${act('Complete', 'wo-complete', w.id)} ${act('Cancel', 'wo-cancel', w.id, 1)}` : act('Details', 'wo-show', w.id, 1);
+    const mrp = S.mrp ? `<div class="tbl"><table><tr><th>lvl</th><th>item</th><th style="text-align:right">on hand</th><th style="text-align:right">demand</th><th style="text-align:right">incoming</th><th style="text-align:right">minimum</th><th style="text-align:right">short</th><th>suggestion</th><th></th></tr>` +
+      S.mrp.map((r) => `<tr><td>${r.level}</td><td>${esc(r.code)} ${esc(r.name)}</td><td style="text-align:right">${+r.onHand.toFixed(2)}</td><td style="text-align:right">${+(r.salesDemand + r.productionDemand + r.plannedDemand).toFixed(2)}</td><td style="text-align:right">${+(r.incomingPurchases + r.incomingProduction).toFixed(2)}</td><td style="text-align:right">${r.minQty}</td><td style="text-align:right">${r.shortage ? +r.shortage.toFixed(2) : ''}</td><td>${r.action ? `${r.action} ${r.suggestedQty}` : 'covered'}</td><td>${r.action === 'make' ? `<button class="btn sec" data-mrp-make="${r.itemId}" data-qty="${r.suggestedQty}">Create work order</button>` : r.action === 'buy' ? '<span class="muted">raise a purchase order under Purchasing</span>' : ''}</td></tr>`).join('') + '</table></div>' : '';
+    return companyBar(cs) + `<div class="card"><h3>Work orders</h3><p class="muted">Release copies the bill of materials onto the order. Materials go to 1350 Work in progress at moving average cost; whatever was not issued by hand is backflushed on completion. Completion also absorbs labour and overhead from the routing (minutes x work center rate, credited to 5060) and puts the product into stock at the order's actual cost.</p>
+      ${wos.length ? '<div class="tbl"><table><tr><th>no</th><th>product</th><th style="text-align:right">qty</th><th>status</th><th style="text-align:right">made</th><th style="text-align:right">material</th><th style="text-align:right">labour and overhead</th><th></th></tr>' + wos.map((w) => `<tr><td>${esc(w.no)}</td><td>${esc(w.item_code)} ${esc(w.item_name)}</td><td style="text-align:right">${+w.qty}</td><td>${esc(w.status)}</td><td style="text-align:right">${w.completed_qty === null ? '' : +w.completed_qty}</td><td style="text-align:right">${money(w.material_cost)}</td><td style="text-align:right">${money(w.conversion_cost)}</td><td>${woActs(w)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No work orders yet.</div>'}
+      <pre id="mfg-out" style="display:none"></pre>
+      ${products.length && whs.length ? `<form id="f-wo"><div class="grid">${pick('itemId', 'Product', products.map((b) => [b.item_id, `${b.item_code} ${b.item_name}`]))}${field('qty', 'Quantity', 'type="number" step="any" min="0.0001" required value="1"')}${pick('warehouseId', 'Warehouse', whs.map((w) => [w.id, `${w.code} ${w.name}`]))}${field('dueDate', 'Due', 'type="date"')}</div><div class="row"><button class="btn">Create work order</button></div></form>` : '<p class="muted">Add a warehouse (Inventory) and a bill of materials first.</p>'}</div>
+    <div class="card"><h3>Material requirements (MRP)</h3><p class="muted">Looks at confirmed sales orders, released work orders and reorder minimums against stock, open purchase orders and open work orders, and works down the bill of materials levels.</p>
+      <div class="row"><button class="btn" id="mrp-run">Run MRP</button></div>${mrp}
+      <h4>Reorder minimum</h4><form id="f-reorder"><div class="grid">${pick('itemId', 'Item', stock.map((i) => [i.id, `${i.code} ${i.name}`]))}${pick('warehouseId', 'Warehouse', whs.map((w) => [w.id, w.code]))}${field('minQty', 'Minimum', 'type="number" step="any" min="0" required')}${field('reorderQty', 'Order at least', 'type="number" step="any" min="0"')}</div><div class="row"><button class="btn sec">Save</button></div></form></div>
+    <div class="card"><h3>Bills of materials</h3>${boms.length ? '<div class="tbl"><table><tr><th>code</th><th>product</th><th style="text-align:right">makes</th><th style="text-align:right">components</th><th>status</th><th></th></tr>' + boms.map((b) => `<tr><td>${esc(b.code)}</td><td>${esc(b.item_code)} ${esc(b.item_name)}</td><td style="text-align:right">${+b.output_qty}</td><td style="text-align:right">${b.components}</td><td>${esc(b.status)}</td><td>${act('Show', 'bom-show', b.id, 1)} ${b.status === 'active' ? act('Standard cost', 'bom-cost', b.item_id, 1) : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">None yet.</div>'}
+      <h4>New bill of materials</h4><p class="muted">One component per line: <code>ITEM-CODE quantity [scrap %]</code>. One operation per line: <code>sequence WORK-CENTER-CODE setup-minutes run-minutes-per-unit name</code>. A new BOM for a product replaces its active one.</p>
+      <form id="f-bom"><div class="grid">${pick('itemId', 'Product', stock.map((i) => [i.id, `${i.code} ${i.name}`]))}${field('code', 'BOM code', 'required')}${field('outputQty', 'Makes (quantity)', 'type="number" step="any" min="0.0001" value="1"')}</div>
+        <label style="margin-top:10px">Components<textarea name="lines" required placeholder="WOOD 4&#10;SCREW 10 2"></textarea></label>
+        <label style="margin-top:10px">Routing (optional)<textarea name="operations" placeholder="10 ASM 30 15 Assemble"></textarea></label><div class="row"><button class="btn sec">Save BOM</button></div></form></div>
+    <div class="card"><h3>Work centers</h3>${report(wcs, [['code', 'Code'], ['name', 'Name'], ['hourly_rate', 'Rate / hour', 1], ['status', 'Status']])}
+      <form id="f-wc"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${field('hourlyRate', 'Labour and overhead per hour', 'type="number" step="any" min="0" required')}</div><div class="row"><button class="btn sec">Add work center</button></div></form></div>`;
+  },
+
+  async maintenance() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [plans, due, wos, fas, vs, whs] = await Promise.all([api('GET', `/v1/mnt/companies/${S.company}/plans`), api('GET', `/v1/mnt/companies/${S.company}/due?asOf=${today()}`),
+      api('GET', `/v1/mnt/companies/${S.company}/work-orders`), api('GET', `/v1/fin/companies/${S.company}/assets`), api('GET', `/v1/flt/companies/${S.company}/vehicles`),
+      api('GET', `/v1/inv/companies/${S.company}/warehouses`)]);
+    const targets = [...fas.filter((a) => a.status === 'active').map((a) => [`a:${a.id}`, `Asset ${a.code} ${a.name}`]), ...vs.filter((v) => v.status === 'active').map((v) => [`v:${v.id}`, `Vehicle ${v.plate_no}`])];
+    const woActs = (w) => w.status === 'open' || w.status === 'in_progress' ? `${w.status === 'open' ? act('Start', 'mwo-start', w.id, 1) : ''} ${act('Issue parts', 'mwo-parts', w.id, 1)} ${act('Complete', 'mwo-done', w.id)} ${act('Cancel', 'mwo-cancel', w.id, 1)}` : '';
+    return companyBar(cs) + `<div class="card"><h3>Due for service (${due.length})</h3><p class="muted">Plans due within a week, or vehicles within 500 km of their service distance.</p>
+      ${report(due.map((p) => ({ ...p, next_due_date: d10(p.next_due_date), open_order: p.open_order || '' })), [['target', 'Asset or vehicle'], ['name', 'Plan'], ['next_due_date', 'Due date'], ['odometer', 'Odometer'], ['open_order', 'Work order']])}
+      ${due.some((p) => !p.open_order) ? '<div class="row"><button class="btn" id="mnt-generate">Raise work orders for these</button></div>' : ''}</div>
+    <div class="card"><h3>Maintenance work orders</h3><p class="muted">Spare parts come out of stock at average cost and are charged to 5250 Repairs and maintenance on the asset's cost center. Outside repairs are billed by the supplier as a purchase invoice.</p>
+      ${wos.length ? '<div class="tbl"><table><tr><th>no</th><th>asset or vehicle</th><th>kind</th><th>priority</th><th>description</th><th>scheduled</th><th>status</th><th style="text-align:right">parts</th><th></th></tr>' + wos.map((w) => `<tr><td>${esc(w.no)}</td><td>${esc(w.target)}</td><td>${esc(w.kind)}</td><td>${esc(w.priority)}</td><td>${esc(w.description)}${w.resolution ? `<div class="muted">${esc(w.resolution)}</div>` : ''}</td><td>${d10(w.scheduled_date)}</td><td>${esc(w.status)} ${d10(w.completed_date)}</td><td style="text-align:right">${money(w.parts_cost)}</td><td>${woActs(w)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No work orders yet.</div>'}
+      ${whs.length ? `<div class="row"><label>Parts come from<select id="mnt-wh">${whs.map((w) => `<option value="${w.id}">${esc(w.code)} ${esc(w.name)}</option>`).join('')}</select></label></div>` : ''}
+      ${targets.length ? `<h4>Report a fault or request work</h4><form id="f-mwo"><div class="grid">${pick('target', 'Asset or vehicle', targets)}${pick('kind', 'Kind', [['corrective', 'Corrective'], ['breakdown', 'Breakdown'], ['preventive', 'Preventive']])}${pick('priority', 'Priority', [['normal', 'Normal'], ['high', 'High'], ['urgent', 'Urgent'], ['low', 'Low']])}${field('description', 'What is wrong / to do', 'required')}${field('scheduledDate', 'Scheduled', `type="date" required value="${today()}"`)}</div><div class="row"><button class="btn sec">Create work order</button></div></form>` : '<p class="muted">Register a fixed asset (Finance: fixed assets) or a vehicle (Fleet) first.</p>'}</div>
+    <div class="card"><h3>Preventive plans</h3>${report(plans.map((p) => ({ ...p, next_due_date: d10(p.next_due_date), last_done_date: d10(p.last_done_date), every: [p.interval_days ? `${p.interval_days} days` : '', p.interval_km ? `${+p.interval_km} km` : ''].filter(Boolean).join(' or '), next_due_km: p.next_due_km ?? '' })), [['target', 'Asset or vehicle'], ['name', 'Plan'], ['every', 'Every'], ['last_done_date', 'Last done'], ['next_due_date', 'Next due'], ['next_due_km', 'Next due km'], ['status', 'Status']])}
+      ${targets.length ? `<form id="f-plan"><div class="grid">${pick('target', 'Asset or vehicle', targets)}${field('name', 'Plan', 'required placeholder="Quarterly service"')}${field('intervalDays', 'Every (days)', 'type="number" min="1"')}${field('intervalKm', 'Every (km, vehicles)', 'type="number" min="1"')}${field('firstDueDate', 'First due', `type="date" value="${today()}"`)}</div><div class="row"><button class="btn sec">Add plan</button></div></form>` : ''}</div>`;
+  },
+
+  async fleet() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [vs, alerts, emps, fas, us] = await Promise.all([api('GET', `/v1/flt/companies/${S.company}/vehicles`), api('GET', `/v1/flt/companies/${S.company}/alerts?asOf=${today()}`),
+      api('GET', '/v1/org/employees'), api('GET', `/v1/fin/companies/${S.company}/assets`), units()]);
+    if (!vs.find((v) => v.id === S.vehicle)) S.vehicle = vs[0]?.id;
+    const sum = S.vehicle ? await api('GET', `/v1/flt/vehicles/${S.vehicle}`) : null;
+    const active = vs.filter((v) => v.status === 'active');
+    const payFrom = leafAccounts(['asset', 'liability']).filter((a) => !a.control && ['1000', '1010'].includes(a.code) || /card/i.test(a.name));
+    return companyBar(cs) + `<div class="card"><h3>Compliance</h3>${alerts.documents.length || alerts.maintenance.length ? `<ul>${alerts.documents.map((d) => `<li><b>${esc(d.plate_no)}</b>: ${esc(d.kind)} ${d.expired ? `<span style="color:var(--bad)">expired ${d10(d.expiry)}</span>` : `expires ${d10(d.expiry)} (${d.days_left} days)`}</li>`).join('')}${alerts.maintenance.map((x) => `<li><b>${esc(x.plate_no)}</b>: ${esc(x.plan)} due${x.next_due_date ? ' ' + d10(x.next_due_date) : ''}${x.km_left !== null ? ` (${Math.round(x.km_left)} km left)` : ''}</li>`).join('')}</ul>` : '<div class="empty">Nothing expiring in the next 30 days.</div>'}</div>
+    <div class="card"><h3>Vehicles</h3>${vs.length ? '<div class="tbl"><table><tr><th>code</th><th>plate</th><th>vehicle</th><th>driver</th><th style="text-align:right">odometer</th><th>registration</th><th>insurance</th><th>status</th><th></th></tr>' + vs.map((v) => `<tr><td>${esc(v.code)}</td><td>${esc(v.plate_no)}</td><td>${esc([v.make, v.model, v.year].filter(Boolean).join(' '))}</td><td>${esc(v.driver_name)}</td><td style="text-align:right">${Number(v.odometer).toLocaleString()}</td><td>${d10(v.registration_expiry)}</td><td>${d10(v.insurance_expiry)}</td><td>${esc(v.status)}</td><td>${act(v.id === S.vehicle ? 'Showing' : 'Open', 'veh-open', v.id, 1)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No vehicles yet.</div>'}</div>
+    ${sum ? `<div class="card"><h3>${esc(sum.vehicle.plate_no)} ${esc(sum.vehicle.make || '')} ${esc(sum.vehicle.model || '')}${sum.vehicle.asset_code ? ` <span class="pill">asset ${esc(sum.vehicle.asset_code)}</span>` : ''}</h3>
+      <p>Fuel economy <b>${sum.litresPer100km ?? 'n/a'}</b> L/100 km · fuel cost <b>${money(sum.fuelCost)}</b> · maintenance parts <b>${money(sum.maintenanceCost)}</b> · cost per km <b>${sum.costPerKm ?? 'n/a'}</b></p>
+      <h4>Fuel</h4>${report(sum.fuel.map((f) => ({ ...f, date: d10(f.date) })), [['date', 'Date'], ['odometer', 'Odometer'], ['litres', 'Litres'], ['station', 'Station'], ['vat_amount', 'VAT', 1], ['amount', 'Paid', 1]])}
+      <h4>Trips</h4>${report(sum.trips.map((t) => ({ ...t, date: d10(t.date), km: +(t.end_km - t.start_km).toFixed(1) })), [['date', 'Date'], ['purpose', 'Purpose'], ['project_code', 'Project'], ['start_km', 'From km'], ['end_km', 'To km'], ['km', 'Distance']])}</div>` : ''}
+    ${active.length ? `<div class="card"><h3>Log fuel</h3><p class="muted">Posts the cost to 5610 on the vehicle's cost center and reclaims the VAT (it appears in the VAT return).</p><form id="f-fuel"><div class="grid">${pick('vehicleId', 'Vehicle', active.map((v) => [v.id, v.plate_no]))}${field('date', 'Date', `type="date" required value="${today()}"`)}${field('odometer', 'Odometer', 'type="number" step="0.1" min="0" required')}${field('litres', 'Litres', 'type="number" step="0.01" min="0.01" required')}${field('amount', 'Paid incl. VAT', 'type="number" step="0.01" min="0.01" required')}${field('vatAmount', 'VAT on the receipt', 'type="number" step="0.01" min="0"')}${field('station', 'Station')}${pick('paidFrom', 'Paid from', accountOpts(payFrom))}</div><div class="row"><button class="btn sec">Log fuel</button></div></form>
+      <h4>Log a trip</h4><form id="f-trip"><div class="grid">${pick('vehicleId', 'Vehicle', active.map((v) => [v.id, v.plate_no]))}${field('date', 'Date', `type="date" required value="${today()}"`)}${field('endKm', 'Odometer at the end', 'type="number" step="0.1" min="0" required')}${field('purpose', 'Purpose', 'required')}</div><div class="row"><button class="btn sec">Log trip</button></div></form></div>` : ''}
+    <div class="card"><h3>Add a vehicle</h3><form id="f-veh"><div class="grid">${field('code', 'Code', 'required')}${field('plateNo', 'Plate', 'required')}${field('make', 'Make')}${field('model', 'Model')}${field('year', 'Year', 'type="number" min="1950" max="2100"')}${pick('fuelType', 'Fuel', [['petrol', 'Petrol'], ['diesel', 'Diesel'], ['hybrid', 'Hybrid'], ['electric', 'Electric']])}
+      ${pick('assetId', 'Booked as fixed asset', [['', '(not linked)'], ...fas.filter((a) => a.status === 'active').map((a) => [a.id, `${a.code} ${a.name}`])])}${pick('unitId', 'Cost center', [['', '(from the asset, or none)'], ...unitOpts(us)])}${pick('driverEmployeeId', 'Driver', [['', '(none)'], ...empOpts(emps)])}
+      ${field('odometer', 'Odometer now', 'type="number" step="0.1" min="0"')}${field('registrationExpiry', 'Registration expires', 'type="date"')}${field('insuranceExpiry', 'Insurance expires', 'type="date"')}${field('insurancePolicy', 'Insurance policy')}</div><div class="row"><button class="btn">Add vehicle</button></div></form></div>`;
+  },
+});
+
+Object.assign(after, {
+  async projects(m, ok) {
+    bindCompanyPick();
+    bindForm('f-project', async (b) => { await api('POST', `/v1/prj/companies/${S.company}/projects`, num(b, 'defaultBillRate', 'contractValue', 'budgetCost', 'budgetHours')); ok('Project created'); });
+    bindForm('f-member', async (b) => { await api('POST', `/v1/prj/projects/${S.project}/members`, num(b, 'billRate')); ok('Added to the team'); });
+    bindForm('f-milestone', async (b) => { await api('POST', `/v1/prj/projects/${S.project}/milestones`, num(b, 'amount')); ok('Milestone added'); });
+    bindForm('f-time', async (b) => { await api('POST', '/v1/prj/timesheets', num(b, 'hours')); ok('Time logged'); });
+    onAct(m, 'prj-open', async (id) => { S.project = id; show('projects'); });
+    onAct(m, 'ms-reached', async (id) => { await api('POST', `/v1/prj/milestones/${id}/reached`, { date: today() }); ok('Milestone reached: it will be on the next invoice'); });
+    onAct(m, 'prj-invoice', async (id) => { const i = await api('POST', `/v1/prj/projects/${id}/invoice`, { date: today() }); ok(`Draft invoice for ${money(i.gross_total)} ${i.currency} is under Finance: sales and purchases`); });
+    onAct(m, 'prj-close', async (id) => { if (!confirm('Close the project? No more time can be logged.')) return; await api('PATCH', `/v1/prj/projects/${id}`, { status: 'closed' }); ok('Project closed'); });
+    const picked = () => [...m.querySelectorAll('[data-ts]')].filter((x) => x.checked).map((x) => x.dataset.ts);
+    const ap = $('#ts-approve'); if (ap) ap.onclick = async () => { try { const r = await api('POST', '/v1/prj/timesheets/approve', { ids: picked() }); ok(`Approved ${r.approved}; cost posted to the projects`); } catch (e) { toast(e.message, false); } };
+    const rj = $('#ts-reject'); if (rj) rj.onclick = async () => { try { const r = await api('POST', '/v1/prj/timesheets/reject', { ids: picked() }); ok(`Rejected ${r.rejected}`); } catch (e) { toast(e.message, false); } };
+  },
+  async manufacturing(m, ok) {
+    bindCompanyPick();
+    const out = $('#mfg-out');
+    const showOut = (o) => { out.style.display = 'block'; out.textContent = typeof o === 'string' ? o : JSON.stringify(o, null, 2); };
+    bindForm('f-wc', async (b) => { await api('POST', `/v1/mfg/companies/${S.company}/work-centers`, num(b, 'hourlyRate')); ok('Work center added'); });
+    bindForm('f-reorder', async (b) => { await api('PUT', `/v1/inv/companies/${S.company}/reorder-rules`, num(b, 'minQty', 'reorderQty')); ok('Saved'); });
+    bindForm('f-wo', async (b) => { await api('POST', `/v1/mfg/companies/${S.company}/work-orders`, { ...num(b, 'qty'), date: today() }); ok('Work order created'); });
+    bindForm('f-bom', async (b) => {
+      const [items, wcs] = await Promise.all([api('GET', '/v1/mdm/items'), api('GET', `/v1/mfg/companies/${S.company}/work-centers`)]);
+      const byCode = (code) => { const i = items.find((x) => x.code.toLowerCase() === code.toLowerCase()); if (!i) throw new Error(`No item with code ${code}`); return i.id; };
+      const lines = b.lines.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => { const [code, qty, scrap] = l.split(/\s+/); return { itemId: byCode(code), qty: Number(qty), ...(scrap ? { scrapPct: Number(scrap) } : {}) }; });
+      const operations = (b.operations || '').split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+        const [seq, wc, setup, run, ...name] = l.split(/\s+/); const w = wcs.find((x) => x.code.toLowerCase() === wc.toLowerCase()); if (!w) throw new Error(`No work center ${wc}`);
+        return { seq: Number(seq), workCenterId: w.id, setupMinutes: Number(setup), runMinutes: Number(run), name: name.join(' ') || 'Operation' };
+      });
+      await api('POST', `/v1/mfg/companies/${S.company}/boms`, { itemId: b.itemId, code: b.code, outputQty: Number(b.outputQty || 1), lines, ...(operations.length ? { operations } : {}) }); ok('Bill of materials saved');
+    });
+    const mr = $('#mrp-run'); if (mr) mr.onclick = async () => { try { S.mrp = await api('GET', `/v1/mfg/companies/${S.company}/mrp`); show('manufacturing'); } catch (e) { toast(e.message, false); } };
+    onAct(m, 'mrp-make', async (itemId, el) => {
+      const whs = await api('GET', `/v1/inv/companies/${S.company}/warehouses`);
+      await api('POST', `/v1/mfg/companies/${S.company}/work-orders`, { itemId, qty: Number(el.dataset.qty), warehouseId: whs[0].id, date: today() });
+      S.mrp = await api('GET', `/v1/mfg/companies/${S.company}/mrp`); ok('Work order created');
+    });
+    onAct(m, 'bom-show', async (id) => { const b = await api('GET', `/v1/mfg/boms/${id}`); showOut(`${b.code}: makes ${+b.output_qty} ${b.item_code}\n\nComponents\n` + b.lines.map((l) => `  ${l.item_code} ${+l.qty}${+l.scrap_pct ? ` (+${+l.scrap_pct}% scrap)` : ''}`).join('\n') + (b.operations.length ? '\n\nRouting\n' + b.operations.map((o) => `  ${o.seq} ${o.name} at ${o.work_center_code}: setup ${+o.setup_minutes} min, ${+o.run_minutes} min per unit`).join('\n') : '')); });
+    onAct(m, 'bom-cost', async (itemId) => { const c = await api('GET', `/v1/mfg/companies/${S.company}/items/${itemId}/cost`); showOut(`Standard cost of one unit at today's average costs\n  material ${money(c.material)}\n  labour and overhead ${money(c.conversion)}\n  total ${money(c.total)}`); });
+    onAct(m, 'wo-release', async (id) => { await api('POST', `/v1/mfg/work-orders/${id}/release`); ok('Released'); });
+    onAct(m, 'wo-cancel', async (id) => { await api('POST', `/v1/mfg/work-orders/${id}/cancel`); ok('Cancelled'); });
+    onAct(m, 'wo-issue', async (id) => { const r = await api('POST', `/v1/mfg/work-orders/${id}/issue`, { date: today() }); ok(`Materials issued: ${money(r.value)}`); });
+    onAct(m, 'wo-complete', async (id) => {
+      const wo = await api('GET', `/v1/mfg/work-orders/${id}`);
+      const q = prompt(`Good quantity made (ordered ${+wo.qty})`, String(+wo.qty)); if (q === null) return;
+      const r = await api('POST', `/v1/mfg/work-orders/${id}/complete`, { date: today(), qty: Number(q.trim() || wo.qty) }); ok(`Completed: ${+r.completed_qty} at ${money(r.unit_cost)} each`);
+    });
+    onAct(m, 'wo-show', async (id) => { const w = await api('GET', `/v1/mfg/work-orders/${id}`); showOut(`${w.no} ${w.item_code}: ${w.status}, made ${w.completed_qty ?? 0} of ${+w.qty}, unit cost ${w.unit_cost ?? 'n/a'}\n\nMaterials\n` + w.materials.map((x) => `  ${x.item_code} needed ${+x.required_qty}, issued ${+x.issued_qty} (${money(x.issued_value)})`).join('\n') + (w.operations.length ? '\n\nOperations\n' + w.operations.map((o) => `  ${o.seq} ${o.name} at ${o.work_center_code}: planned ${+o.planned_minutes} min, actual ${o.actual_minutes ?? '-'} min, ${money(o.cost)}`).join('\n') : '')); });
+  },
+  async maintenance(m, ok) {
+    bindCompanyPick();
+    const target = (b) => { const [k, id] = b.target.split(':'); delete b.target; return { ...b, ...(k === 'a' ? { assetId: id } : { vehicleId: id }) }; };
+    bindForm('f-plan', async (b) => { const body = num(target(b), 'intervalDays', 'intervalKm'); if (!body.intervalDays) delete body.firstDueDate; await api('POST', `/v1/mnt/companies/${S.company}/plans`, body); ok('Plan added'); });
+    bindForm('f-mwo', async (b) => { await api('POST', `/v1/mnt/companies/${S.company}/work-orders`, target(b)); ok('Work order created'); });
+    const g = $('#mnt-generate'); if (g) g.onclick = async () => { try { const r = await api('POST', `/v1/mnt/companies/${S.company}/generate`, { asOf: today() }); ok(`${r.length} work orders raised`); } catch (e) { toast(e.message, false); } };
+    onAct(m, 'mwo-start', async (id) => { await api('POST', `/v1/mnt/work-orders/${id}/start`); ok('Started'); });
+    onAct(m, 'mwo-cancel', async (id) => { const r = prompt('Why cancel?'); if (!r) return; await api('POST', `/v1/mnt/work-orders/${id}/cancel`, { reason: r }); ok('Cancelled'); });
+    onAct(m, 'mwo-parts', async (id) => {
+      const wh = $('#mnt-wh')?.value; if (!wh) throw new Error('Add a warehouse under Inventory first');
+      const spec = prompt('Parts used, as ITEM-CODE quantity (several separated by commas)', ''); if (!spec) return;
+      const items = await api('GET', '/v1/mdm/items');
+      const lines = spec.split(',').map((x) => x.trim()).filter(Boolean).map((x) => { const [code, qty] = x.split(/\s+/); const i = items.find((y) => y.code.toLowerCase() === code.toLowerCase()); if (!i) throw new Error(`No item ${code}`); return { itemId: i.id, qty: Number(qty || 1) }; });
+      const r = await api('POST', `/v1/mnt/work-orders/${id}/parts`, { warehouseId: wh, date: today(), lines }); ok(`Parts issued; parts so far ${money(r.parts_cost)}`);
+    });
+    onAct(m, 'mwo-done', async (id) => {
+      const res = prompt('What was done?'); if (!res) return;
+      const w = await api('GET', `/v1/mnt/work-orders/${id}`);
+      const body = { date: today(), resolution: res };
+      if (w.vehicle_id) { const km = prompt('Odometer reading now (blank to keep)'); if (km) body.odometer = Number(km); }
+      const h = prompt('Downtime in hours (optional)'); if (h) body.downtimeHours = Number(h);
+      await api('POST', `/v1/mnt/work-orders/${id}/complete`, body); ok('Done; the plan moves to its next date');
+    });
+  },
+  async fleet(m, ok) {
+    bindCompanyPick();
+    bindForm('f-veh', async (b) => { await api('POST', `/v1/flt/companies/${S.company}/vehicles`, num(b, 'year', 'odometer')); ok('Vehicle added'); });
+    bindForm('f-fuel', async (b) => { const id = b.vehicleId; delete b.vehicleId; await api('POST', `/v1/flt/vehicles/${id}/fuel`, num(b, 'odometer', 'litres', 'amount', 'vatAmount')); ok('Fuel posted'); });
+    bindForm('f-trip', async (b) => { const id = b.vehicleId; delete b.vehicleId; await api('POST', `/v1/flt/vehicles/${id}/trips`, num(b, 'endKm')); ok('Trip logged'); });
+    onAct(m, 'veh-open', async (id) => { S.vehicle = id; show('fleet'); });
+  },
+});
+
+async function loadPhase3Demo(step, co, root) {
+  const d = today();
+  const parties = await api('GET', '/v1/mdm/parties');
+  const cust = parties.find((p) => p.code === 'DEMO-C1');
+  const emps = await api('GET', '/v1/org/employees');
+  const e1 = emps.find((e) => e.employee_no === 'DEMO-001'), e2 = emps.find((e) => e.employee_no === 'DEMO-002');
+  const projects = await api('GET', `/v1/prj/companies/${co}/projects`);
+  if (!projects.find((p) => p.code === 'DEMO-P1')) {
+    step('Projects: a client project with a team, timesheets and an invoice...');
+    const p = await api('POST', `/v1/prj/companies/${co}/projects`, { code: 'DEMO-P1', name: 'Showroom fit-out', customerId: cust.id, billing: 'time_material',
+      defaultBillRate: 250, budgetCost: 20000, budgetHours: 200, startDate: yearStart(), managerEmployeeId: e1.id });
+    await api('POST', `/v1/prj/projects/${p.id}/members`, { employeeId: e1.id, role: 'Project lead', billRate: 400 });
+    await api('POST', `/v1/prj/projects/${p.id}/members`, { employeeId: e2.id, role: 'Designer' });
+    const ts = [];
+    for (const [e, h, w] of [[e1, 6, 'Client workshop'], [e2, 8, 'Layout drawings'], [e1, 4, 'Supplier meetings']]) ts.push((await api('POST', '/v1/prj/timesheets', { projectId: p.id, employeeId: e.id, date: d, hours: h, description: w })).id);
+    await api('POST', '/v1/prj/timesheets/approve', { ids: ts });
+    const inv = await api('POST', `/v1/prj/projects/${p.id}/invoice`, { date: d });
+    await api('POST', `/v1/fin/invoices/${inv.id}/post`);
+    const fp = await api('POST', `/v1/prj/companies/${co}/projects`, { code: 'DEMO-P2', name: 'ERP rollout (fixed price)', customerId: cust.id, billing: 'fixed_price', contractValue: 60000, startDate: yearStart() });
+    const m1 = await api('POST', `/v1/prj/projects/${fp.id}/milestones`, { name: 'Design signed off', amount: 20000 });
+    await api('POST', `/v1/prj/projects/${fp.id}/milestones`, { name: 'Go-live', amount: 40000 });
+    await api('POST', `/v1/prj/milestones/${m1.id}/reached`, { date: d });
+  }
+
+  const boms = await api('GET', `/v1/mfg/companies/${co}/boms`);
+  if (!boms.find((b) => b.code === 'BOM-DESK')) {
+    step('Manufacturing: a desk made from parts, a work order and MRP...');
+    const wh = (await api('GET', `/v1/inv/companies/${co}/warehouses`)).find((w) => w.code === 'MAIN');
+    let items = await api('GET', '/v1/mdm/items');
+    const item = async (code, name) => items.find((i) => i.code === code) || api('POST', '/v1/mdm/items', { code, name, itemType: 'stock', baseUom: 'EA', attributes: code === 'DEMO-DESK' ? { revenue_account: '4200' } : {} });
+    const desk = await item('DEMO-DESK', 'Office desk'), top = await item('DEMO-TOP', 'Desk top, oak'), leg = await item('DEMO-LEG', 'Steel leg'), screw = await item('DEMO-SCREW', 'Screw M8');
+    const filter = await item('DEMO-FILTER', 'Oil filter (spare part)');
+    await api('POST', `/v1/inv/companies/${co}/opening-stock`, { warehouseId: wh.id, date: yearStart(), lines: [{ itemId: top.id, qty: 10, unitCost: 180 }, { itemId: leg.id, qty: 30, unitCost: 25 }, { itemId: screw.id, qty: 500, unitCost: 0.2 }, { itemId: filter.id, qty: 12, unitCost: 35 }] });
+    const wc = await api('POST', `/v1/mfg/companies/${co}/work-centers`, { code: 'ASM', name: 'Assembly bench', hourlyRate: 90 });
+    await api('POST', `/v1/mfg/companies/${co}/boms`, { itemId: desk.id, code: 'BOM-DESK', lines: [{ itemId: top.id, qty: 1 }, { itemId: leg.id, qty: 4 }, { itemId: screw.id, qty: 16, scrapPct: 5 }],
+      operations: [{ seq: 10, name: 'Assemble and inspect', workCenterId: wc.id, setupMinutes: 20, runMinutes: 40 }] });
+    const wo = await api('POST', `/v1/mfg/companies/${co}/work-orders`, { itemId: desk.id, qty: 4, warehouseId: wh.id, date: d });
+    await api('POST', `/v1/mfg/work-orders/${wo.id}/release`);
+    await api('POST', `/v1/mfg/work-orders/${wo.id}/complete`, { date: d });
+    await api('PUT', `/v1/inv/companies/${co}/reorder-rules`, { warehouseId: wh.id, itemId: desk.id, minQty: 10 });
+    await api('PUT', `/v1/inv/companies/${co}/reorder-rules`, { warehouseId: wh.id, itemId: leg.id, minQty: 20, reorderQty: 50 });
+  }
+
+  const vs = await api('GET', `/v1/flt/companies/${co}/vehicles`);
+  if (!vs.find((v) => v.code === 'DEMO-V1')) {
+    step('Fleet and maintenance: the van, fuel, a trip and its service plan...');
+    const van = (await api('GET', `/v1/fin/companies/${co}/assets`)).find((a) => a.code === 'DEMO-VAN');
+    const exp = new Date(); exp.setUTCDate(exp.getUTCDate() + 20);
+    const v = await api('POST', `/v1/flt/companies/${co}/vehicles`, { code: 'DEMO-V1', plateNo: 'DXB K 48213', make: 'Toyota', model: 'Hiace', year: 2024, fuelType: 'diesel',
+      ...(van ? { assetId: van.id } : {}), driverEmployeeId: e1.id, odometer: 18200, registrationExpiry: `${new Date().getFullYear() + 1}-01-31`, insuranceExpiry: exp.toISOString().slice(0, 10), insurancePolicy: 'OIC-778812' });
+    await api('POST', `/v1/flt/vehicles/${v.id}/fuel`, { date: d, odometer: 18200, litres: 60, amount: 168, vatAmount: 8, station: 'ADNOC Al Quoz', paidFrom: '1010' });
+    await api('POST', `/v1/flt/vehicles/${v.id}/trips`, { date: d, endKm: 18740, purpose: 'Deliveries to Abu Dhabi' });
+    await api('POST', `/v1/flt/vehicles/${v.id}/fuel`, { date: d, odometer: 18740, litres: 54, amount: 151.2, vatAmount: 7.2, station: 'ENOC Mussafah', paidFrom: '1010' });
+    await api('POST', `/v1/mnt/companies/${co}/plans`, { vehicleId: v.id, name: 'Oil and filter change', intervalKm: 10000 });
+    await api('POST', `/v1/mnt/companies/${co}/plans`, { vehicleId: v.id, name: 'Annual inspection', intervalDays: 365, firstDueDate: d });
+    await api('POST', `/v1/mnt/companies/${co}/generate`, { asOf: d });
+    const wos = await api('GET', `/v1/mnt/companies/${co}/work-orders?status=open`);
+    const insp = wos.find((w) => w.vehicle_id === v.id);
+    const wh = (await api('GET', `/v1/inv/companies/${co}/warehouses`)).find((w) => w.code === 'MAIN');
+    const filter = (await api('GET', '/v1/mdm/items')).find((i) => i.code === 'DEMO-FILTER');
+    if (insp) {
+      await api('POST', `/v1/mnt/work-orders/${insp.id}/parts`, { warehouseId: wh.id, date: d, lines: [{ itemId: filter.id, qty: 1 }] });
+      await api('POST', `/v1/mnt/work-orders/${insp.id}/complete`, { date: d, resolution: 'Inspected, filter replaced', odometer: 18760, downtimeHours: 2 });
+    }
+    await api('POST', `/v1/mnt/companies/${co}/work-orders`, { vehicleId: v.id, kind: 'corrective', priority: 'high', description: 'Rear door does not lock', scheduledDate: d });
+  }
+}
+
 // Demo: everything through the public API, as the signed-in admin plus a second approver user.
 async function loadDemo(step) {
   const me = await api('GET', '/v1/me');
@@ -806,6 +1060,7 @@ async function loadDemo(step) {
   await asApprover(async () => { for (const t of await api('GET', '/v1/wf/inbox')) if (t.entity_type === 'fin.journal') await api('POST', `/v1/wf/tasks/${t.task_id}/approve`, { comment: 'Demo approval' }); });
   await loadOperationsDemo(step, co, asApprover, root);
   await loadFinanceExtrasDemo(step, co);
+  await loadPhase3Demo(step, co, root);
   step(`Done. Second user: ${appEmail} / ${pw}`);
   toast(`Demo loaded. The approver can sign in as ${appEmail} with password ${pw}`);
 }

@@ -144,6 +144,13 @@ describe('risk, audit and actions', () => {
     await tx(mgr, (q) => grc.testControl(q, mgr, ctl.id, { testedOn: '2026-06-01', result: 'effective', sampleSize: 25, exceptions: 0 }));
     const x = (await tx(mgr, (q) => grc.riskRegister(q, mgr))).risks.find((y: any) => y.code === 'R-FIN-01');
     assert.deepEqual([x.residual, x.overAppetite], [15, true]);
+    // A retest on the same day replaces the earlier result: the latest recorded test counts.
+    await tx(mgr, (q) => grc.testControl(q, mgr, ctl.id, { testedOn: '2026-06-01', result: 'ineffective', actionDueDate: '2026-07-01' }));
+    const c1 = (await tx(mgr, (q) => grc.riskControls(q, mgr, x.id))).find((y: any) => y.id === ctl.id);
+    assert.equal(c1.last_test.result, 'ineffective');
+    await tx(mgr, (q) => grc.testControl(q, mgr, ctl.id, { testedOn: '2026-06-01', result: 'effective' }));
+    const c2 = (await tx(mgr, (q) => grc.riskControls(q, mgr, x.id))).find((y: any) => y.id === ctl.id);
+    assert.equal(c2.last_test.result, 'effective');
   });
   it('rolls recurring compliance obligations forward', async () => {
     const o = await tx(mgr, (q) => grc.addObligation(q, mgr, { unitId: co, regulation: 'UAE VAT (Federal Decree-Law 8/2017)', requirement: 'File the VAT 201 return',

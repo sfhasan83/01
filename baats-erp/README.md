@@ -4,7 +4,7 @@
 
 BAATS Enterprise ERP is a multi-tenant enterprise business operating system: one platform where every department runs as an integrated module on shared engines for organization, identity, workflow, master data, audit and rules.
 
-This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (finance built on BAATS Accounting, UAE edition, plus inventory, procurement, sales and CRM, HR and payroll), **Phase 3 operations** (projects, manufacturing with MRP, maintenance, fleet), a Windows trial installer, and the foundation documents for the full programme.
+This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (finance built on BAATS Accounting, UAE edition, plus inventory, procurement, sales and CRM, HR and payroll), **Phase 3 operations** (projects, manufacturing with MRP, maintenance, fleet), **Phase 4 corporate functions** (documents, legal and contracts, risk, compliance and internal audit, corrective actions, service desk, quality, health and safety, facilities), a Windows trial installer, and the foundation documents for the full programme.
 
 ## Documents
 
@@ -38,6 +38,14 @@ This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (fi
 | Manufacturing (Phase 3) | Work centers with hourly rates, bills of materials with scrap and routing, standard cost roll-up, work orders released from the BOM, material issue and backflush through 1350 WIP, labour and overhead absorbed to 5060, products into stock at actual cost; reorder minimums and multi-level MRP with make and buy suggestions |
 | Maintenance (Phase 3) | Preventive plans for fixed assets and vehicles by days or kilometres, due list and automatic work orders, corrective and breakdown orders, spare parts from stock to 5250 on the asset's cost center, plans rolled forward on completion |
 | Fleet (Phase 3) | Vehicles linked to fixed assets, drivers and cost centers; fuel posted to 5610 with input VAT reclaimed in the VAT return; trips; odometer tracking, fuel economy and cost per km; registration and insurance expiry alerts |
+| Documents (Phase 4) | Versioned files up to 10 MB with SHA-256 fingerprints, attached to any record; access follows the org tree, confidential documents need dms.confidential; retention date; archiving keeps every version |
+| Legal and contracts (Phase 4) | Contracts by kind and party; the signed copy must be attached before approval by someone holding lgl.contract.approve; obligations with due dates; notice-by dates; auto-renewal or expiry; termination with reason |
+| Risk, compliance and audit (Phase 4) | Risk register with likelihood x impact, appetite and a residual heat map; controls tested by someone other than their owner, failures raise actions (and findings in an audit); recurring compliance obligations; audit engagements from planning to opinion, findings with management responses |
+| Corrective actions (Phase 4) | One action list for audit findings, control failures, NCRs and incidents; the owner marks done, someone else verifies or sends back; sources close only when their actions are verified |
+| Service desk (Phase 4) | IT, facilities, HR and finance queues; P1 to P4 response and resolution targets with breach tracking; public replies and internal notes; requester confirms or reopens; faults on assets go to a maintenance work order |
+| Quality (Phase 4) | Inspections on supplier receipts, work orders or stock; rejects raise NCRs; scrap and return dispositions post the write-off (Dr 5070, Cr 1300) and returns draft the supplier credit note at the billed price; supplier rejection rates |
+| Health and safety (Phase 4) | Anyone can report incidents and near misses; investigation with root cause and actions; closure only with verified actions; LTIFR, TRIR, days lost and days since the last lost-time injury |
+| Facilities (Phase 4) | Rooms, desks, offices and parking per site; bookings with clash, capacity and 12-hour checks; utilisation by space |
 | API | REST `/v1` with schema validation for all of the above |
 
 ## Run it

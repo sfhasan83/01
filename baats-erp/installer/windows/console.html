@@ -111,7 +111,7 @@ const pages = {
   async overview() {
     const me = await api('GET', '/v1/me');
     return `<div class="card"><h3>Welcome, ${esc(me.user.display_name)}</h3><p class="muted">Signed in to <b>${esc(S.tenant)}</b> as ${esc(me.user.email)}. MFA: ${me.user.mfa_enabled ? 'on' : 'off'}.</p>
-      <p>This console lets you try what BAATS can do today. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
+      <p>This console lets you try what BAATS can do today. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
       <div class="card"><h3>Your approvals waiting (${me.inbox.length})</h3>${table(me.inbox)}</div>
       <div class="card"><h3>Your permissions (${me.permissions.length})</h3>${me.permissions.map((p) => `<span class="pill">${esc(typeof p === 'string' ? p : p.permission || JSON.stringify(p))}</span>`).join('')}</div>`;
   },
@@ -175,7 +175,7 @@ const pages = {
       <label style="margin-top:10px">JSON body<textarea name="body"></textarea></label><div class="row"><button class="btn">Send</button></div></form><pre id="api-out"></pre></div>`;
   },
 };
-const MENU = [['overview', 'Overview'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audit', 'Audit trail'], ['apitester', 'API tester']];
+const MENU = [['overview', 'Overview'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audit', 'Audit trail'], ['apitester', 'API tester']];
 let current = 'overview';
 const after = {};
 
@@ -1008,6 +1008,333 @@ async function loadPhase3Demo(step, co, root) {
   }
 }
 
+// ---------- Corporate functions (Phase 4) ----------
+const fileB64 = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(new Error('Could not read the file')); r.readAsDataURL(f); });
+const pickedFile = (el) => { const f = el.querySelector('input[type=file]')?.files?.[0]; if (!f) throw new Error('Choose a file'); if (f.size > 10 * 1024 * 1024) throw new Error('Files are limited to 10 MB'); return f; };
+async function fileBody(el, b) { const f = pickedFile(el); delete b.file; return { ...b, fileName: f.name, contentType: f.type || 'application/octet-stream', contentBase64: await fileB64(f) }; }
+async function downloadDoc(id, version) {
+  const r = await fetch(`/v1/dms/documents/${id}/content${version ? `?version=${version}` : ''}`, { headers: { authorization: 'Bearer ' + S.token } });
+  if (!r.ok) { let m = 'HTTP ' + r.status; try { m = (await r.json()).message || m; } catch { /* binary */ } throw new Error(m); }
+  const name = (/filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '') || [])[1] || 'document';
+  const url = URL.createObjectURL(await r.blob()); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+const fileField = (label = 'File (up to 10 MB)') => `<label>${label}<input type="file" name="file" required></label>`;
+const kb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+const when = (v) => (v ? new Date(v).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const hhmm = (v) => new Date(v).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+const red = (s) => `<span style="color:var(--bad)">${s}</span>`;
+const rootUnit = (us) => us.find((u) => u.depth === 0) || us[0];
+const actionFields = (emps) => `<div class="grid">${field('actionTitle', 'Corrective action')}${pick('actionOwner', 'Owner', [['', '(choose)'], ...empOpts(emps)])}${field('actionDue', 'Due', `type="date" value="${today()}"`)}</div>`;
+const takeActions = (b) => { const a = b.actionTitle ? [{ title: b.actionTitle, ownerEmployeeId: b.actionOwner, dueDate: b.actionDue }] : []; if (a.length && !b.actionOwner) throw new Error('Choose who owns the action'); delete b.actionTitle; delete b.actionOwner; delete b.actionDue; return a; };
+const sourceLabel = { 'grc.finding': 'Audit finding', 'grc.risk': 'Risk / control test', 'qms.ncr': 'Non-conformance', 'hse.incident': 'Incident' };
+
+Object.assign(pages, {
+  async documents() {
+    const [docs, us] = await Promise.all([api('GET', '/v1/dms/documents'), units()]);
+    return `<div class="card"><h3>Documents (${docs.length})</h3><p class="muted">Every version is kept with its SHA-256 fingerprint and can be downloaded again. Nothing is ever deleted: archiving only stops new versions. Confidential documents are visible only to people holding <span class="pill">dms.confidential</span> for the unit.</p>
+      ${docs.length ? '<div class="tbl"><table><tr><th>title</th><th>category</th><th>attached to</th><th>file</th><th>version</th><th>size</th><th>uploaded</th><th>status</th><th></th></tr>' + docs.map((d) => `<tr><td>${esc(d.title)}${d.confidential ? ' <span class="pill">confidential</span>' : ''}</td><td>${esc(d.category)}</td><td>${esc(d.entity_type || '')}</td><td>${esc(d.file_name)}</td><td>${d.current_version}</td><td>${kb(d.size_bytes)}</td><td>${when(d.uploaded_at)}</td><td>${esc(d.status)}${d.retain_until ? `<div class="muted">keep until ${d10(d.retain_until)}</div>` : ''}</td><td>${act('Download', 'doc-get', d.id, 1)} ${act('History', 'doc-hist', d.id, 1)} ${d.status === 'active' ? `${act('New version', 'doc-ver', d.id, 1)} ${act('Archive', 'doc-arch', d.id, 1)}` : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No documents yet.</div>'}
+      <input type="file" id="doc-ver-file" style="display:none"><pre id="doc-out" style="display:none"></pre></div>
+    <div class="card"><h3>Upload a document</h3><form id="f-doc"><div class="grid">${pick('unitId', 'Owning unit', unitOpts(us))}${field('title', 'Title', 'required')}${pick('category', 'Category', [['general', 'General'], ['policy', 'Policy'], ['procedure', 'Procedure'], ['contract', 'Contract'], ['certificate', 'Certificate'], ['hr', 'HR'], ['finance', 'Finance'], ['quality', 'Quality'], ['hse', 'Health and safety']])}${field('retainUntil', 'Keep until', 'type="date"')}${check('confidential', 'Confidential')}${fileField()}</div><div class="row"><button class="btn">Upload</button></div></form></div>`;
+  },
+
+  async contracts() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [ks, alerts, parties, emps] = await Promise.all([api('GET', `/v1/lgl/companies/${S.company}/contracts`), api('GET', `/v1/lgl/companies/${S.company}/alerts?asOf=${today()}&days=60`), activeParties(), api('GET', '/v1/org/employees')]);
+    if (!ks.find((k) => k.id === S.contract)) S.contract = ks[0]?.id;
+    const k = S.contract ? await api('GET', `/v1/lgl/contracts/${S.contract}`) : null;
+    const kActs = (x) => `${act(x.id === S.contract ? 'Showing' : 'Open', 'k-open', x.id, 1)} ${x.status === 'draft' || x.status === 'rejected' ? act('Send for approval', 'k-submit', x.id) : ''} ${x.status === 'active' ? act('Terminate', 'k-term', x.id, 1) : ''}`;
+    return companyBar(cs) + `<div class="card"><h3>Coming up in the next 60 days</h3>
+      ${alerts.notice.length || alerts.obligations.length ? `<ul>${alerts.notice.map((a) => `<li><b>${esc(a.no || a.title)}</b> ${esc(a.party || '')}: ends ${a.endDate}; ${a.autoRenew ? 'renews automatically unless notice is given by' : 'decide on renewal by'} <b>${a.overdue ? red(a.noticeBy) : a.noticeBy}</b></li>`).join('')}${alerts.obligations.map((o) => `<li><b>${esc(o.contract_no)}</b>: ${esc(o.description)} due ${o.overdue ? red(d10(o.due_date)) : d10(o.due_date)}</li>`).join('')}</ul>` : '<div class="empty">No notice dates or obligations due.</div>'}
+      <div class="row"><button class="btn sec" id="k-renew">Run renewals for today</button></div><p class="muted">Renewals roll auto-renewing contracts that reached their end date forward by their renewal term, and mark the others expired.</p></div>
+    <div class="card"><h3>Contracts</h3><p class="muted">A contract needs its signed copy attached before it can be sent for approval. It becomes active when someone holding <span class="pill">lgl.contract.approve</span>, other than you, approves it under Approvals.</p>
+      ${ks.length ? '<div class="tbl"><table><tr><th>no</th><th>title</th><th>kind</th><th>party</th><th style="text-align:right">value</th><th>from</th><th>to</th><th>renewal</th><th>status</th><th></th></tr>' + ks.map((x) => `<tr><td>${esc(x.no || '')}</td><td>${esc(x.title)}</td><td>${esc(x.kind)}</td><td>${esc(x.party_name || '')}</td><td style="text-align:right">${money(x.value)} ${esc(x.currency || '')}</td><td>${d10(x.start_date)}</td><td>${d10(x.end_date)}</td><td>${x.auto_renew ? `auto, ${x.renewal_months} months` : 'manual'}${x.notice_days ? `<div class="muted">${x.notice_days} days notice</div>` : ''}</td><td>${esc(x.status)}${x.open_obligations ? `<div class="muted">${x.open_obligations} open obligations</div>` : ''}</td><td>${kActs(x)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No contracts yet.</div>'}</div>
+    ${k ? `<div class="card"><h3>${esc(k.no || 'Draft')}: ${esc(k.title)}</h3><p>${esc(k.kind)} with <b>${esc(k.party_name || 'no party')}</b> · ${esc(k.status)}${k.governing_law ? ` · ${esc(k.governing_law)} law` : ''}${k.termination_reason ? ` · terminated: ${esc(k.termination_reason)}` : ''}</p>
+      <h4>Signed copy and attachments</h4>${k.documents.length ? `<ul>${k.documents.map((d) => `<li>${esc(d.title)} (version ${d.current_version}) ${act('Download', 'doc-get', d.id, 1)}</li>`).join('')}</ul>` : '<div class="empty">Nothing attached yet.</div>'}
+      <form id="f-kdoc"><div class="grid">${field('title', 'Title', `required value="Signed copy"`)}${fileField()}</div><div class="row"><button class="btn sec">Attach</button></div></form>
+      <h4>Obligations</h4>${k.obligations.length ? '<div class="tbl"><table><tr><th>what</th><th>due</th><th>status</th><th></th></tr>' + k.obligations.map((o) => `<tr><td>${esc(o.description)}</td><td>${d10(o.due_date)}</td><td>${esc(o.status)} ${d10(o.done_on)}</td><td>${o.status === 'open' ? `${act('Done', 'ob-done', o.id)} ${act('Waive', 'ob-waive', o.id, 1)}` : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No obligations recorded.</div>'}
+      <form id="f-ob"><div class="grid">${field('description', 'Obligation', 'required placeholder="Deliver quarterly report"')}${field('dueDate', 'Due', `type="date" required value="${today()}"`)}${pick('responsibleEmployeeId', 'Responsible', [['', '(none)'], ...empOpts(emps)])}</div><div class="row"><button class="btn sec">Add obligation</button></div></form></div>` : ''}
+    <div class="card"><h3>New contract</h3><form id="f-k"><div class="grid">${field('title', 'Title', 'required')}${pick('kind', 'Kind', [['sales', 'Sales'], ['purchase', 'Purchase'], ['service', 'Service'], ['nda', 'NDA'], ['lease', 'Lease'], ['employment', 'Employment'], ['other', 'Other']])}${pick('partyId', 'Party', [['', '(none)'], ...parties.map((p) => [p.id, `${p.code} ${p.name}`])])}${pick('ownerEmployeeId', 'Owner', [['', '(none)'], ...empOpts(emps)])}
+      ${field('value', 'Value', 'type="number" step="0.01" min="0"')}${field('startDate', 'Starts', `type="date" required value="${today()}"`)}${field('endDate', 'Ends', 'type="date"')}${check('autoRenew', 'Renews automatically')}${field('renewalMonths', 'Renewal term (months)', 'type="number" min="1" value="12"')}${field('noticeDays', 'Notice period (days)', 'type="number" min="0" value="30"')}${field('governingLaw', 'Governing law', 'value="UAE"')}</div><div class="row"><button class="btn">Save draft</button></div></form></div>`;
+  },
+
+  async risk() {
+    const [reg, cal, us, emps] = await Promise.all([api('GET', '/v1/grc/risks'), api('GET', `/v1/grc/obligations?asOf=${today()}`), units(), api('GET', '/v1/org/employees')]);
+    const risks = reg.risks;
+    if (!risks.find((r) => r.id === S.risk)) S.risk = risks[0]?.id;
+    const [controls, engs] = await Promise.all([S.risk ? api('GET', `/v1/grc/risks/${S.risk}/controls`) : [], api('GET', '/v1/grc/engagements').catch(() => [])]);
+    const r = risks.find((x) => x.id === S.risk);
+    const shade = (l, i) => { const s = l * i; return s >= 15 ? '#c0392b' : s >= 8 ? '#e67e22' : s >= 4 ? '#f1c40f' : '#27ae60'; };
+    const heat = `<div class="tbl"><table style="width:auto"><tr><th>Likelihood \\ Impact</th>${[1, 2, 3, 4, 5].map((i) => `<th style="text-align:center">${i}</th>`).join('')}</tr>${[5, 4, 3, 2, 1].map((l) => `<tr><th style="text-align:center">${l}</th>${[1, 2, 3, 4, 5].map((i) => `<td style="text-align:center;min-width:44px;background:${shade(l, i)};color:#fff;font-weight:600">${reg.heatMap[l - 1][i - 1] || ''}</td>`).join('')}</tr>`).join('')}</table></div>`;
+    return `<div class="card"><h3>Residual risk heat map</h3><p class="muted">Open risks placed by residual likelihood (each control that passed its latest test lowers likelihood by one) and impact.</p>${heat}</div>
+    <div class="card"><h3>Risk register</h3>${risks.length ? '<div class="tbl"><table><tr><th>code</th><th>risk</th><th>category</th><th>unit</th><th>owner</th><th>inherent</th><th>controls</th><th>residual</th><th>appetite</th><th>treatment</th><th>status</th><th></th></tr>' + risks.map((x) => `<tr><td>${esc(x.code)}</td><td>${esc(x.title)}</td><td>${esc(x.category)}</td><td>${esc(x.unit_code)}</td><td>${esc(x.owner_name || '')}</td><td>${x.likelihood} x ${x.impact} = ${x.inherent}</td><td>${x.effective_controls} of ${x.controls} effective</td><td>${x.overAppetite ? red(`<b>${x.residual}</b>`) : x.residual}</td><td>${x.appetite}</td><td>${esc(x.treatment)}</td><td>${esc(x.status)}</td><td>${act(x.id === S.risk ? 'Showing' : 'Controls', 'risk-open', x.id, 1)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No risks yet.</div>'}
+      <h4>Add a risk</h4><form id="f-risk"><div class="grid">${pick('unitId', 'Unit', unitOpts(us))}${field('code', 'Code', 'required')}${field('title', 'Risk', 'required')}${pick('category', 'Category', ['operational', 'financial', 'compliance', 'strategic', 'technology', 'hse', 'reputational'].map((c) => [c, c]))}${pick('likelihood', 'Likelihood (1-5)', [1, 2, 3, 4, 5].map((n) => [n, n]))}${pick('impact', 'Impact (1-5)', [1, 2, 3, 4, 5].map((n) => [n, n]))}${pick('ownerEmployeeId', 'Owner', [['', '(none)'], ...empOpts(emps)])}${pick('treatment', 'Treatment', [['mitigate', 'Mitigate'], ['accept', 'Accept'], ['transfer', 'Transfer'], ['avoid', 'Avoid']])}${field('appetite', 'Appetite (max residual score)', 'type="number" min="1" max="25" value="8"')}</div><div class="row"><button class="btn sec">Add risk</button></div></form></div>
+    ${r ? `<div class="card"><h3>Controls for ${esc(r.code)} ${esc(r.title)}</h3><p class="muted">A control is tested by someone other than its owner. A failed test raises a corrective action, and when the test is part of an audit, an audit finding too.</p>
+      ${controls.length ? '<div class="tbl"><table><tr><th>code</th><th>control</th><th>kind</th><th>frequency</th><th>owner</th><th>last test</th></tr>' + controls.map((c) => `<tr><td>${esc(c.code)}</td><td>${esc(c.title)}</td><td>${esc(c.kind)}</td><td>${esc(c.frequency)}</td><td>${esc(c.owner_name || '')}</td><td>${c.last_test ? `${c.last_test.result === 'effective' ? 'effective' : red('ineffective')} on ${d10(c.last_test.tested_on)}${c.last_test.sample_size ? ` (${c.last_test.exceptions || 0} exceptions in ${c.last_test.sample_size})` : ''}` : 'never tested'}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No controls yet.</div>'}
+      <h4>Add a control</h4><form id="f-ctl"><div class="grid">${field('code', 'Code', 'required')}${field('title', 'Control', 'required')}${pick('kind', 'Kind', [['preventive', 'Preventive'], ['detective', 'Detective'], ['corrective', 'Corrective']])}${pick('frequency', 'Frequency', ['daily', 'weekly', 'monthly', 'quarterly', 'annual', 'continuous'].map((c) => [c, c]))}${pick('ownerEmployeeId', 'Owner', [['', '(none)'], ...empOpts(emps)])}</div><div class="row"><button class="btn sec">Add control</button></div></form>
+      ${controls.length ? `<h4>Record a test</h4><form id="f-ctest"><div class="grid">${pick('controlId', 'Control', controls.map((c) => [c.id, `${c.code} ${c.title}`]))}${field('testedOn', 'Tested on', `type="date" required value="${today()}"`)}${pick('result', 'Result', [['effective', 'Effective'], ['ineffective', 'Ineffective']])}${field('sampleSize', 'Sample size', 'type="number" min="1"')}${field('exceptions', 'Exceptions found', 'type="number" min="0"')}${pick('engagementId', 'Part of audit', [['', '(none)'], ...engs.filter((e) => e.status !== 'closed').map((e) => [e.id, e.title])])}${field('notes', 'Notes')}</div><div class="row"><button class="btn sec">Record test</button></div></form>` : ''}</div>` : ''}
+    <div class="card"><h3>Compliance calendar</h3><p class="muted">Regulatory obligations and their next due dates. Marking one met rolls it to the next period.</p>
+      ${cal.length ? '<div class="tbl"><table><tr><th>regulation</th><th>requirement</th><th>frequency</th><th>owner</th><th>next due</th><th>last met</th><th></th></tr>' + cal.map((o) => `<tr><td>${esc(o.regulation)}</td><td>${esc(o.requirement)}</td><td>${esc(o.frequency)}</td><td>${esc(o.owner_name || '')}</td><td>${o.overdue ? red(d10(o.next_due) + ' overdue') : o.dueSoon ? `<b>${d10(o.next_due)}</b>` : d10(o.next_due)}</td><td>${d10(o.last_done)}</td><td>${act('Met', 'co-met', o.id)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No obligations yet.</div>'}
+      <form id="f-comp"><div class="grid">${pick('unitId', 'Unit', unitOpts(us))}${field('regulation', 'Regulation', 'required placeholder="Federal Tax Authority"')}${field('requirement', 'Requirement', 'required placeholder="File the VAT return"')}${pick('frequency', 'Frequency', [['quarterly', 'Quarterly'], ['monthly', 'Monthly'], ['annual', 'Annual'], ['once', 'Once']])}${field('nextDue', 'Next due', `type="date" required value="${today()}"`)}${pick('ownerEmployeeId', 'Owner', [['', '(none)'], ...empOpts(emps)])}</div><div class="row"><button class="btn sec">Add obligation</button></div></form></div>`;
+  },
+
+  async audit() {
+    const [engs, us, emps] = await Promise.all([api('GET', '/v1/grc/engagements'), units(), api('GET', '/v1/org/employees')]);
+    if (!engs.find((e) => e.id === S.engagement)) S.engagement = engs[0]?.id;
+    const e = S.engagement ? await api('GET', `/v1/grc/engagements/${S.engagement}`) : null;
+    const next = { planned: 'Start fieldwork', fieldwork: 'Move to reporting', reporting: 'Close with opinion' };
+    return `<div class="card"><h3>Audit engagements</h3><p class="muted">Planned, fieldwork, reporting, closed. An engagement closes only when every finding has a management response and at least one action.</p>
+      ${engs.length ? '<div class="tbl"><table><tr><th>title</th><th>kind</th><th>unit</th><th>period</th><th>findings</th><th>status</th><th>opinion</th><th></th></tr>' + engs.map((x) => `<tr><td>${esc(x.title)}</td><td>${esc(x.kind)}</td><td>${esc(x.unit_code)}</td><td>${d10(x.period_from)} to ${d10(x.period_to)}</td><td>${x.findings} (${x.open_findings} open)</td><td>${esc(x.status)}</td><td>${esc(x.opinion || '')}</td><td>${act(x.id === S.engagement ? 'Showing' : 'Open', 'eng-open', x.id, 1)} ${next[x.status] ? act(next[x.status], 'eng-adv', x.id) : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No engagements yet.</div>'}
+      <h4>Plan an engagement</h4><form id="f-eng"><div class="grid">${pick('unitId', 'Unit audited', unitOpts(us))}${field('title', 'Title', 'required')}${pick('kind', 'Kind', [['internal', 'Internal'], ['external', 'External'], ['regulatory', 'Regulatory']])}${field('periodFrom', 'Period from', `type="date" value="${yearStart()}"`)}${field('periodTo', 'Period to', `type="date" value="${today()}"`)}</div><div class="row"><button class="btn sec">Plan</button></div></form></div>
+    ${e ? `<div class="card"><h3>${esc(e.title)} <span class="pill">${esc(e.status)}</span></h3>
+      <h4>Findings</h4>${e.findings.length ? e.findings.map((f) => `<div style="border-top:1px solid var(--line);padding:8px 0"><b>${esc(f.title)}</b> <span class="pill">${esc(f.severity)}</span> <span class="pill">${esc(f.status)}</span>
+        <div><span class="muted">Condition:</span> ${esc(f.condition)}</div><div><span class="muted">Recommendation:</span> ${esc(f.recommendation)}</div>
+        ${f.management_response ? `<div><span class="muted">Management response:</span> ${esc(f.management_response)}</div>` : ''}
+        ${(f.actions || []).length ? `<ul>${f.actions.map((a) => `<li>${esc(a.title)}: ${esc(a.status)}, due ${d10(a.due_date)}</li>`).join('')}</ul>` : ''}
+        ${f.status !== 'closed' && !f.management_response ? `<form class="f-resp" data-finding="${f.id}"><div class="grid">${field('response', 'Management response', 'required')}</div>${actionFields(emps)}<div class="row"><button class="btn sec">Respond</button></div></form>` : ''}</div>`).join('') : '<div class="empty">No findings.</div>'}
+      ${e.status === 'fieldwork' || e.status === 'reporting' ? `<h4>Raise a finding</h4><form id="f-find"><div class="grid">${field('title', 'Finding', 'required')}${pick('severity', 'Severity', [['medium', 'Medium'], ['high', 'High'], ['critical', 'Critical'], ['low', 'Low']])}${field('condition', 'What was found', 'required')}${field('recommendation', 'Recommendation', 'required')}</div><div class="row"><button class="btn sec">Raise finding</button></div></form>` : ''}
+      ${e.tests.length ? `<h4>Control tests in this audit</h4>${report(e.tests.map((t) => ({ ...t, tested_on: d10(t.tested_on) })), [['control_code', 'Control'], ['tested_on', 'Tested'], ['result', 'Result'], ['exceptions', 'Exceptions'], ['notes', 'Notes']])}` : ''}</div>` : ''}`;
+  },
+
+  async actions() {
+    const acts = await api('GET', '/v1/grc/actions');
+    const btns = (a) => a.status === 'open' ? act('Mark done', 'a-done', a.id) : a.status === 'done' ? `${act('Verify', 'a-ok', a.id)} ${act('Send back', 'a-back', a.id, 1)}` : '';
+    return `<div class="card"><h3>Corrective actions (${acts.filter((a) => a.status !== 'verified').length} open)</h3><p class="muted">One list for actions from audit findings, failed control tests, quality non-conformances and safety incidents. The owner marks an action done; someone else holding <span class="pill">grc.action.verify</span> verifies it or sends it back. The finding, NCR or incident it came from can only close once all its actions are verified.</p>
+      ${acts.length ? '<div class="tbl"><table><tr><th>action</th><th>from</th><th>owner</th><th>due</th><th>status</th><th>note</th><th></th></tr>' + acts.map((a) => `<tr><td>${esc(a.title)}</td><td>${esc(sourceLabel[a.source_type] || a.source_type)}</td><td>${esc(a.owner_name)}</td><td>${a.overdue ? red(d10(a.due_date)) : d10(a.due_date)}</td><td>${esc(a.status)}</td><td>${esc(a.completion_note || '')}</td><td>${btns(a)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No actions.</div>'}</div>`;
+  },
+
+  async servicedesk() {
+    const [ts, sla, spaces, me] = await Promise.all([api('GET', '/v1/svc/tickets'), api('GET', '/v1/svc/sla').catch(() => null), api('GET', '/v1/fac/spaces'), api('GET', '/v1/me')]);
+    let assets = []; try { const cs = await companies(); if (cs.length) assets = (await api('GET', `/v1/fin/companies/${S.company}/assets`)).filter((a) => a.status === 'active'); } catch { /* no books */ }
+    if (!ts.find((t) => t.id === S.ticket)) S.ticket = ts[0]?.id;
+    const t = S.ticket ? await api('GET', `/v1/svc/tickets/${S.ticket}`) : null;
+    const pr = { 1: 'P1 critical', 2: 'P2 high', 3: 'P3 normal', 4: 'P4 low' };
+    const mine = t && t.requester_user_id === me.user.id;
+    return `${sla && sla.length ? `<div class="card"><h3>SLA this month</h3>${report(sla.map((x) => ({ ...x, slaMetPct: x.slaMetPct === null ? '' : x.slaMetPct + '%' })), [['queue', 'Queue'], ['tickets', 'Tickets'], ['resolved', 'Resolved'], ['response_breaches', 'Late first response'], ['resolution_breaches', 'Late resolution'], ['slaMetPct', 'Resolved in time'], ['avg_resolution_hours', 'Avg hours to resolve'], ['satisfaction', 'Satisfaction (1-5)']])}</div>` : ''}
+    <div class="card"><h3>Tickets</h3><p class="muted">Anyone can raise a ticket. Agents (<span class="pill">svc.agent</span>) work the queues. Response and resolution targets: P1 1 h / 4 h, P2 4 h / 8 h, P3 8 h / 24 h, P4 24 h / 72 h. The requester confirms the fix, or reopens it.</p>
+      ${ts.length ? '<div class="tbl"><table><tr><th>no</th><th>queue</th><th>priority</th><th>title</th><th>requester</th><th>assignee</th><th>status</th><th>SLA</th><th></th></tr>' + ts.map((x) => `<tr><td>${esc(x.no)}</td><td>${esc(x.queue)}</td><td>${pr[x.priority]}</td><td>${esc(x.title)}</td><td>${esc(x.requester)}</td><td>${esc(x.assignee || '')}</td><td>${esc(x.status)}</td><td>${x.resolution_breached ? red('resolution late') : x.response_breached ? red('response late') : `due ${when(x.resolution_due)}`}</td><td>${act(x.id === S.ticket ? 'Showing' : 'Open', 't-open', x.id, 1)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No tickets.</div>'}</div>
+    ${t ? `<div class="card"><h3>${esc(t.no)}: ${esc(t.title)} <span class="pill">${esc(t.status)}</span></h3>
+      <p>${esc(t.queue)} · ${esc(t.category)} · ${pr[t.priority]} · raised by ${esc(t.requester)} ${when(t.created_at)}${t.asset_code ? ` · asset ${esc(t.asset_code)}` : ''}${t.maintenance_no ? ` · maintenance ${esc(t.maintenance_no)}` : ''}</p><p>${esc(t.description)}</p>
+      ${t.resolution ? `<p><b>Resolution:</b> ${esc(t.resolution)}</p>` : ''}${t.satisfaction ? `<p>Satisfaction ${t.satisfaction}/5</p>` : ''}
+      <h4>Conversation</h4>${t.comments.length ? t.comments.map((c) => `<div style="border-top:1px solid var(--line);padding:6px 0"><b>${esc(c.author)}</b> <span class="muted">${when(c.created_at)}${c.internal ? ' · internal note' : ''}</span><div>${esc(c.body)}</div></div>`).join('') : '<div class="empty">No comments yet.</div>'}
+      ${t.status !== 'closed' ? `<form id="f-tc"><div class="grid">${field('body', 'Comment', 'required')}${check('internal', 'Internal note (agents only)')}</div><div class="row"><button class="btn sec">Add comment</button></div></form>
+      <div class="row">${t.status !== 'resolved' ? `${act('Assign to me', 't-assign', t.id, 1)} ${act('In progress', 't-prog', t.id, 1)} ${act('Waiting on requester', 't-wait', t.id, 1)} ${act('Resolve', 't-resolve', t.id)}` : ''}
+        ${t.status === 'resolved' && mine ? `${act('Confirm fixed', 't-ok', t.id)} ${act('Not fixed, reopen', 't-reopen', t.id, 1)}` : ''}
+        ${t.asset_id && !t.maintenance_order_id && t.status !== 'resolved' ? act('Raise maintenance work order', 't-mnt', t.id, 1) : ''}</div>` : ''}</div>` : ''}
+    <div class="card"><h3>Raise a ticket</h3><form id="f-ticket"><div class="grid">${pick('queue', 'Queue', [['it', 'IT'], ['facilities', 'Facilities'], ['hr', 'HR'], ['finance', 'Finance']])}${field('category', 'Category', 'required placeholder="Laptop"')}${pick('priority', 'Priority', [[3, 'P3 normal'], [2, 'P2 high'], [1, 'P1 critical'], [4, 'P4 low']])}${field('title', 'Title', 'required')}${field('description', 'Description', 'required')}
+      ${pick('assetId', 'Asset (optional)', [['', '(none)'], ...assets.map((a) => [a.id, `${a.code} ${a.name}`])])}${pick('spaceId', 'Space (optional)', [['', '(none)'], ...spaces.map((s) => [s.id, `${s.site_code} ${s.code} ${s.name}`])])}</div><div class="row"><button class="btn">Raise ticket</button></div></form></div>`;
+  },
+
+  async quality() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [insp, ncrs, sq, recs, items, whs, wos, emps] = await Promise.all([api('GET', `/v1/qms/companies/${S.company}/inspections`), api('GET', `/v1/qms/companies/${S.company}/ncrs`),
+      api('GET', `/v1/qms/companies/${S.company}/supplier-quality`), api('GET', `/v1/qms/companies/${S.company}/receipts`), api('GET', '/v1/mdm/items'),
+      api('GET', `/v1/inv/companies/${S.company}/warehouses`), api('GET', `/v1/mfg/companies/${S.company}/work-orders`).catch(() => []), api('GET', '/v1/org/employees')]);
+    const open = ncrs.filter((n) => n.status === 'open');
+    const sources = [['inv.stock|', 'Stock on hand'], ...recs.filter((r) => r.qty_inspected < r.qty_received).map((r) => [`pur.receipt|${r.receipt_id}|${r.item_id}|${r.warehouse_id || ''}`, `Receipt ${r.receipt_no} ${d10(r.date)} ${r.supplier_name}: ${r.item_code} (${r.qty_received - r.qty_inspected} to inspect)`]),
+      ...wos.filter((w) => w.status === 'completed').slice(0, 30).map((w) => [`mfg.work_order|${w.id}|${w.item_id}|${w.warehouse_id || ''}`, `Work order ${w.no} ${w.item_code}`])];
+    return companyBar(cs) + `<div class="card"><h3>Inspect</h3><p class="muted">Inspect goods received from a supplier, a finished work order, or stock on hand. Any rejects raise a non-conformance report straight away (major when more than 10% fail).</p>
+      <form id="f-insp"><div class="grid">${pick('source', 'What', sources)}${pick('itemId', 'Item (for stock)', itemOpts(items, ['stock']))}${pick('warehouseId', 'Warehouse', whs.map((w) => [w.id, `${w.code} ${w.name}`]))}${field('inspectedOn', 'Date', `type="date" required value="${today()}"`)}${field('qtyInspected', 'Quantity inspected', 'type="number" step="any" min="0.0001" required')}${field('qtyRejected', 'Quantity rejected', 'type="number" step="any" min="0" value="0"')}${field('notes', 'Notes')}</div><div class="row"><button class="btn">Record inspection</button></div></form></div>
+    <div class="card"><h3>Non-conformance reports</h3><p class="muted">Scrap writes the stock off at average cost (Dr 5070, Cr 1300). Return to supplier does the same and drafts a supplier credit note at the billed price, so the claim offsets the write-off. Rework and use-as-is move no stock.</p>
+      ${ncrs.length ? '<div class="tbl"><table><tr><th>no</th><th>item</th><th>supplier</th><th>qty</th><th>severity</th><th>description</th><th>disposition</th><th>open actions</th><th>status</th><th></th></tr>' + ncrs.map((n) => `<tr><td>${esc(n.no)}</td><td>${esc(n.item_code || '')}</td><td>${esc(n.supplier_name || '')}</td><td>${+n.qty || ''}</td><td>${esc(n.severity)}</td><td>${esc(n.description)}${n.root_cause ? `<div class="muted">Root cause: ${esc(n.root_cause)}</div>` : ''}</td><td>${esc(n.disposition || '')}</td><td>${n.open_actions}</td><td>${esc(n.status)}</td><td>${n.status === 'dispositioned' ? act('Close', 'ncr-close', n.id) : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No NCRs.</div>'}
+      ${open.length ? `<h4>Decide a disposition</h4><form id="f-disp"><div class="grid">${pick('ncrId', 'NCR', open.map((n) => [n.id, `${n.no} ${n.item_code || ''} ${n.description}`]))}${pick('disposition', 'Disposition', [['scrap', 'Scrap'], ['return_to_supplier', 'Return to supplier'], ['rework', 'Rework'], ['use_as_is', 'Use as is']])}${field('rootCause', 'Root cause', 'required')}</div>${actionFields(emps)}<div class="row"><button class="btn sec">Record disposition</button></div></form>` : ''}
+      <h4>Raise an NCR by hand</h4><form id="f-ncr"><div class="grid">${pick('itemId', 'Item', [['', '(none)'], ...itemOpts(items, ['stock'])])}${pick('warehouseId', 'Warehouse', [['', '(none)'], ...whs.map((w) => [w.id, w.code])])}${field('qty', 'Quantity affected', 'type="number" step="any" min="0"')}${pick('severity', 'Severity', [['minor', 'Minor'], ['major', 'Major'], ['critical', 'Critical']])}${field('description', 'Description', 'required')}</div><div class="row"><button class="btn sec">Raise NCR</button></div></form></div>
+    <div class="card"><h3>Supplier quality this year</h3>${report(sq.map((s) => ({ ...s, rejectionPct: s.rejectionPct + '%' })), [['name', 'Supplier'], ['lots', 'Lots'], ['failed_lots', 'Failed lots'], ['inspected', 'Inspected'], ['rejected', 'Rejected'], ['rejectionPct', 'Rejection rate'], ['ncrs', 'NCRs']])}</div>
+    <div class="card"><h3>Inspections</h3>${report(insp.map((x) => ({ ...x, qty_inspected: +x.qty_inspected, qty_rejected: +x.qty_rejected, inspected_on: d10(x.inspected_on), source: { 'pur.receipt': 'receipt', 'mfg.work_order': 'work order', 'inv.stock': 'stock' }[x.source_type] })), [['inspected_on', 'Date'], ['source', 'Source'], ['item_code', 'Item'], ['supplier_name', 'Supplier'], ['qty_inspected', 'Inspected'], ['qty_rejected', 'Rejected'], ['result', 'Result'], ['notes', 'Notes']])}</div>`;
+  },
+
+  async safety() {
+    const [incs, us, emps] = await Promise.all([api('GET', '/v1/hse/incidents'), units(), api('GET', '/v1/org/employees')]);
+    let vs = []; try { const cs = await companies(); if (cs.length) vs = await api('GET', `/v1/flt/companies/${S.company}/vehicles`); } catch { /* none */ }
+    const root = rootUnit(us);
+    const st = await api('GET', `/v1/hse/units/${root.id}/stats?from=${yearStart()}&to=${today()}`).catch(() => null);
+    const inv = incs.filter((i) => i.status !== 'closed');
+    const local = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    return `${st ? `<div class="card"><h3>Safety this year (${esc(root.code)} and below)</h3><p><b>${st.daysSinceLastLti ?? 'No'}</b> ${st.daysSinceLastLti === null ? 'lost-time injuries on record' : 'days since the last lost-time injury'} · LTIFR <b>${st.ltifr ?? 'n/a'}</b> · TRIR <b>${st.trir ?? 'n/a'}</b> (per 1,000,000 hours; ${Number(st.hoursWorked || 0).toLocaleString()} hours worked, estimated from running contracts)</p>
+      <p>${st.incidents} incidents: ${st.injuries} injuries (${st.lost_time_injuries} lost time, ${st.lost_days} days lost), ${st.near_misses} near misses, ${st.environmental} environmental · ${st.open} not closed</p></div>` : ''}
+    <div class="card"><h3>Report an incident or near miss</h3><p class="muted">Anyone can report, whatever their permissions. Near misses are worth reporting: they are the cheapest lessons.</p><form id="f-inc"><div class="grid">${pick('unitId', 'Where (unit)', unitOpts(us))}${field('occurredAt', 'When', `type="datetime-local" required value="${local}"`)}${pick('kind', 'Kind', [['near_miss', 'Near miss'], ['injury', 'Injury'], ['property_damage', 'Property damage'], ['environmental', 'Environmental'], ['fire', 'Fire'], ['vehicle', 'Vehicle']])}${pick('severity', 'Severity', [['minor', 'Minor'], ['moderate', 'Moderate'], ['serious', 'Serious'], ['major', 'Major'], ['fatal', 'Fatal']])}${field('location', 'Exact location', 'required')}${field('description', 'What happened', 'required')}
+      ${pick('employeeId', 'Person injured', [['', '(none)'], ...empOpts(emps)])}${pick('vehicleId', 'Vehicle', [['', '(none)'], ...vs.map((v) => [v.id, v.plate_no])])}${field('lostDays', 'Days lost', 'type="number" min="0" value="0"')}</div><div class="row"><button class="btn">Report</button></div></form></div>
+    <div class="card"><h3>Incidents</h3>${incs.length ? '<div class="tbl"><table><tr><th>no</th><th>when</th><th>unit</th><th>kind</th><th>severity</th><th>where</th><th>what</th><th>person</th><th>days lost</th><th>status</th><th></th></tr>' + incs.map((i) => `<tr><td>${esc(i.no)}</td><td>${when(i.occurred_at)}</td><td>${esc(i.unit_code)}</td><td>${esc(i.kind)}</td><td>${esc(i.severity)}</td><td>${esc(i.location)}</td><td>${esc(i.description)}${i.root_cause ? `<div class="muted">Root cause: ${esc(i.root_cause)}</div>` : ''}</td><td>${esc(i.employee_name || '')}</td><td>${i.lost_days}</td><td>${esc(i.status)} ${d10(i.closed_on)}</td><td>${i.status === 'investigating' ? act('Close', 'inc-close', i.id) : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No incidents.</div>'}
+      ${inv.length ? `<h4>Investigate</h4><p class="muted">Record the root cause and the corrective actions. An incident closes once its actions are verified; serious, major and fatal ones need at least one action.</p><form id="f-invest"><div class="grid">${pick('incidentId', 'Incident', inv.map((i) => [i.id, `${i.no} ${i.kind} ${i.description}`]))}${field('rootCause', 'Root cause', 'required')}${field('lostDays', 'Days lost (update)', 'type="number" min="0"')}</div>${actionFields(emps)}<div class="row"><button class="btn sec">Save investigation</button></div></form>` : ''}</div>`;
+  },
+
+  async facilities() {
+    S.facDate = S.facDate || today();
+    const [spaces, bks, us, me] = await Promise.all([api('GET', '/v1/fac/spaces'), api('GET', `/v1/fac/bookings?date=${S.facDate}`), units(), api('GET', '/v1/me')]);
+    const util = await api('GET', `/v1/fac/units/${rootUnit(us).id}/utilisation?from=${today().slice(0, 7)}-01&to=${today()}`).catch(() => null);
+    const bookable = spaces.filter((s) => s.bookable);
+    return `<div class="card"><h3>Bookings</h3><div class="row"><label>Day<input type="date" id="fac-day" value="${S.facDate}"></label></div>
+      ${bks.length ? '<div class="tbl"><table><tr><th>space</th><th>from</th><th>to</th><th>purpose</th><th>people</th><th>booked by</th><th></th></tr>' + bks.map((b) => `<tr><td>${esc(b.space_code)} ${esc(b.space_name)}</td><td>${hhmm(b.starts_at)}</td><td>${hhmm(b.ends_at)}</td><td>${esc(b.purpose)}</td><td>${b.attendees}</td><td>${esc(b.booked_by_name)}</td><td>${act('Cancel', 'bk-cancel', b.id, 1)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">Nothing booked that day.</div>'}
+      ${bookable.length ? `<h4>Book a space</h4><form id="f-book"><div class="grid">${pick('spaceId', 'Space', bookable.map((s) => [s.id, `${s.site_code} ${s.code} ${s.name} (${s.capacity})`]))}${field('day', 'Day', `type="date" required value="${S.facDate}"`)}${field('from', 'From', 'type="time" required value="09:00"')}${field('to', 'To', 'type="time" required value="10:00"')}${field('purpose', 'Purpose', 'required')}${field('attendees', 'People', 'type="number" min="1" value="1"')}</div><div class="row"><button class="btn">Book</button></div></form>` : ''}</div>
+    ${util ? `<div class="card"><h3>Utilisation this month</h3><p class="muted">Share of bookable hours used (10 hours a day, 5 days a week).</p>${report(util.map((u) => ({ ...u, booked_hours: Math.round(u.booked_hours * 10) / 10, utilisationPct: u.utilisationPct + '%' })), [['code', 'Space'], ['name', 'Name'], ['kind', 'Kind'], ['bookings', 'Bookings'], ['booked_hours', 'Hours booked'], ['availableHours', 'Hours available'], ['utilisationPct', 'Used']])}</div>` : ''}
+    <div class="card"><h3>Spaces</h3>${report(spaces, [['site_code', 'Site'], ['code', 'Code'], ['name', 'Name'], ['kind', 'Kind'], ['capacity', 'Capacity'], ['bookable', 'Bookable']])}
+      <form id="f-space"><div class="grid">${pick('unitId', 'Site', unitOpts(us))}${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${pick('kind', 'Kind', [['meeting_room', 'Meeting room'], ['desk', 'Desk'], ['office', 'Office'], ['parking', 'Parking'], ['warehouse', 'Warehouse'], ['other', 'Other']])}${field('capacity', 'Capacity', 'type="number" min="1" value="1"')}${check('bookable', 'Bookable', true)}</div><div class="row"><button class="btn sec">Add space</button></div></form></div>`;
+  },
+});
+
+Object.assign(after, {
+  async documents(m, ok) {
+    const out = $('#doc-out');
+    bindForm('f-doc', async (b, el) => { await api('POST', '/v1/dms/documents', await fileBody(el, b)); ok('Uploaded'); });
+    onAct(m, 'doc-get', async (id) => downloadDoc(id));
+    onAct(m, 'doc-arch', async (id) => { if (!confirm('Archive this document? It stays readable but takes no new versions.')) return; await api('POST', `/v1/dms/documents/${id}/archive`); ok('Archived'); });
+    onAct(m, 'doc-hist', async (id) => { const d = await api('GET', `/v1/dms/documents/${id}`); out.style.display = 'block'; out.textContent = `${d.title}\n\n` + d.versions.map((v) => `v${v.version}  ${v.file_name}  ${kb(v.size_bytes)}  ${when(v.uploaded_at)}${v.note ? '  ' + v.note : ''}\n    sha256 ${v.sha256}`).join('\n'); });
+    const vf = $('#doc-ver-file');
+    onAct(m, 'doc-ver', async (id) => { vf.dataset.doc = id; vf.value = ''; vf.click(); });
+    if (vf) vf.onchange = async () => { try { const f = vf.files[0]; if (!f) return; if (f.size > 10 * 1024 * 1024) throw new Error('Files are limited to 10 MB');
+      const note = prompt('What changed in this version? (optional)') || undefined;
+      await api('POST', `/v1/dms/documents/${vf.dataset.doc}/versions`, { fileName: f.name, contentType: f.type || 'application/octet-stream', contentBase64: await fileB64(f), note }); ok('New version saved'); } catch (e) { toast(e.message, false); } };
+  },
+  async contracts(m, ok) {
+    bindCompanyPick();
+    bindForm('f-k', async (b) => { if (!b.autoRenew) delete b.renewalMonths; const k = await api('POST', `/v1/lgl/companies/${S.company}/contracts`, num(b, 'value', 'renewalMonths', 'noticeDays')); S.contract = k.id; ok('Draft saved: attach the signed copy, then send it for approval'); });
+    bindForm('f-ob', async (b) => { await api('POST', `/v1/lgl/contracts/${S.contract}/obligations`, b); ok('Obligation added'); });
+    bindForm('f-kdoc', async (b, el) => { await api('POST', '/v1/dms/documents', { ...(await fileBody(el, b)), unitId: S.company, category: 'contract', entityType: 'lgl.contract', entityId: S.contract, confidential: false }); ok('Attached'); });
+    onAct(m, 'k-open', async (id) => { S.contract = id; show('contracts'); });
+    onAct(m, 'k-submit', async (id) => { await api('POST', `/v1/lgl/contracts/${id}/submit`); ok('Sent for approval'); });
+    onAct(m, 'k-term', async (id) => { const r = prompt('Why is the contract being terminated?'); if (!r) return; await api('POST', `/v1/lgl/contracts/${id}/terminate`, { date: today(), reason: r }); ok('Terminated'); });
+    onAct(m, 'doc-get', async (id) => downloadDoc(id));
+    onAct(m, 'ob-done', async (id) => { await api('POST', `/v1/lgl/obligations/${id}/done`, { date: today() }); ok('Done'); });
+    onAct(m, 'ob-waive', async (id) => { await api('POST', `/v1/lgl/obligations/${id}/done`, { date: today(), waived: true }); ok('Waived'); });
+    const rn = $('#k-renew'); if (rn) rn.onclick = async () => { try { const r = await api('POST', `/v1/lgl/companies/${S.company}/renewals`, { asOf: today() }); ok(`${r.renewed?.length ?? 0} renewed, ${r.expired?.length ?? 0} expired`); } catch (e) { toast(e.message, false); } };
+  },
+  async risk(m, ok) {
+    bindForm('f-risk', async (b) => { await api('POST', '/v1/grc/risks', num(b, 'likelihood', 'impact', 'appetite')); ok('Risk added'); });
+    bindForm('f-ctl', async (b) => { await api('POST', `/v1/grc/risks/${S.risk}/controls`, b); ok('Control added'); });
+    bindForm('f-ctest', async (b) => { const id = b.controlId; delete b.controlId; const r = await api('POST', `/v1/grc/controls/${id}/tests`, num(b, 'sampleSize', 'exceptions')); ok(r.action ? `Recorded. A corrective action was raised${r.finding ? ', with an audit finding' : ''}` : 'Recorded'); });
+    bindForm('f-comp', async (b) => { await api('POST', '/v1/grc/obligations', b); ok('Obligation added'); });
+    onAct(m, 'risk-open', async (id) => { S.risk = id; show('risk'); });
+    onAct(m, 'co-met', async (id) => { const o = await api('POST', `/v1/grc/obligations/${id}/met`, { date: today() }); ok(o.status === 'active' ? `Met; next due ${d10(o.next_due)}` : 'Met'); });
+  },
+  async audit(m, ok) {
+    bindForm('f-eng', async (b) => { const e = await api('POST', '/v1/grc/engagements', b); S.engagement = e.id; ok('Engagement planned'); });
+    bindForm('f-find', async (b) => { await api('POST', `/v1/grc/engagements/${S.engagement}/findings`, b); ok('Finding raised'); });
+    m.querySelectorAll('form.f-resp').forEach((el) => el.addEventListener('submit', async (ev) => { ev.preventDefault(); try { const b = form(el); const actions = takeActions(b); if (!actions.length) throw new Error('Commit to at least one action'); await api('POST', `/v1/grc/findings/${el.dataset.finding}/response`, { response: b.response, actions }); ok('Response recorded'); } catch (e) { toast(e.message, false); } }));
+    onAct(m, 'eng-open', async (id) => { S.engagement = id; show('audit'); });
+    onAct(m, 'eng-adv', async (id, el) => {
+      let body = {};
+      if (/opinion/.test(el.textContent)) { const o = prompt('Opinion: satisfactory, needs_improvement or unsatisfactory', 'needs_improvement'); if (!o) return; body = { opinion: o.trim() }; }
+      const e = await api('POST', `/v1/grc/engagements/${id}/advance`, body); ok(`Now ${e.status}`);
+    });
+  },
+  async actions(m, ok) {
+    onAct(m, 'a-done', async (id) => { const n = prompt('What was done?'); if (!n) return; await api('POST', `/v1/grc/actions/${id}/done`, { note: n, date: today() }); ok('Marked done: someone else now verifies it'); });
+    onAct(m, 'a-ok', async (id) => { await api('POST', `/v1/grc/actions/${id}/verify`, { date: today(), accepted: true }); ok('Verified'); });
+    onAct(m, 'a-back', async (id) => { const c = prompt('Why is it not done?'); if (!c) return; await api('POST', `/v1/grc/actions/${id}/verify`, { date: today(), accepted: false, comment: c }); ok('Sent back to the owner'); });
+  },
+  async servicedesk(m, ok) {
+    bindForm('f-ticket', async (b) => { const t = await api('POST', '/v1/svc/tickets', num(b, 'priority')); S.ticket = t.id; ok(`Raised ${t.no}`); });
+    bindForm('f-tc', async (b) => { await api('POST', `/v1/svc/tickets/${S.ticket}/comments`, b); ok('Comment added'); });
+    onAct(m, 't-open', async (id) => { S.ticket = id; show('servicedesk'); });
+    onAct(m, 't-assign', async (id) => { await api('POST', `/v1/svc/tickets/${id}/assign`, {}); ok('Assigned to you'); });
+    onAct(m, 't-prog', async (id) => { await api('POST', `/v1/svc/tickets/${id}/status`, { status: 'in_progress' }); ok('In progress'); });
+    onAct(m, 't-wait', async (id) => { await api('POST', `/v1/svc/tickets/${id}/status`, { status: 'waiting' }); ok('Waiting on the requester'); });
+    onAct(m, 't-resolve', async (id) => { const r = prompt('How was it resolved?'); if (!r) return; await api('POST', `/v1/svc/tickets/${id}/status`, { status: 'resolved', resolution: r }); ok('Resolved: the requester now confirms'); });
+    onAct(m, 't-ok', async (id) => { const s = prompt('How satisfied are you, 1 to 5?', '5'); if (s === null) return; await api('POST', `/v1/svc/tickets/${id}/confirm`, { accepted: true, ...(s ? { satisfaction: Number(s) } : {}) }); ok('Closed'); });
+    onAct(m, 't-reopen', async (id) => { const c = prompt('What is still wrong?'); if (!c) return; await api('POST', `/v1/svc/tickets/${id}/confirm`, { accepted: false, comment: c }); ok('Reopened'); });
+    onAct(m, 't-mnt', async (id) => { const w = await api('POST', `/v1/svc/tickets/${id}/maintenance`, { scheduledDate: today() }); ok(`Maintenance work order ${w.no} raised; the ticket resolves once it is completed`); });
+  },
+  async quality(m, ok) {
+    bindCompanyPick();
+    bindForm('f-insp', async (b) => {
+      const [sourceType, sourceId, itemId, wh] = b.source.split('|'); delete b.source;
+      const body = num({ ...b, sourceType, ...(sourceId ? { sourceId } : {}), ...(itemId ? { itemId } : {}), ...(wh ? { warehouseId: wh } : {}) }, 'qtyInspected', 'qtyRejected');
+      const r = await api('POST', `/v1/qms/companies/${S.company}/inspections`, body); ok(r.ncr ? `Failed: ${r.ncr.no} raised (${r.ncr.severity})` : 'Passed');
+    });
+    bindForm('f-disp', async (b) => { const id = b.ncrId; delete b.ncrId; const actions = takeActions(b); const r = await api('POST', `/v1/qms/ncrs/${id}/disposition`, { ...b, date: today(), actions });
+      ok(r.creditNote ? `Stock returned; draft credit note for ${money(r.creditNote.gross_total)} is under Finance: sales and purchases` : r.journal_no ? `Disposition recorded; write-off ${r.journal_no}` : 'Disposition recorded'); });
+    bindForm('f-ncr', async (b) => { const n = await api('POST', `/v1/qms/companies/${S.company}/ncrs`, { ...num(b, 'qty'), date: today() }); ok(`${n.no} raised`); });
+    onAct(m, 'ncr-close', async (id) => { await api('POST', `/v1/qms/ncrs/${id}/close`); ok('Closed'); });
+  },
+  async safety(m, ok) {
+    bindForm('f-inc', async (b) => { const i = await api('POST', '/v1/hse/incidents', { ...num(b, 'lostDays'), occurredAt: new Date(b.occurredAt).toISOString() }); ok(`Reported as ${i.no}`); });
+    bindForm('f-invest', async (b) => { const id = b.incidentId; delete b.incidentId; const actions = takeActions(b); await api('POST', `/v1/hse/incidents/${id}/investigate`, { ...num(b, 'lostDays'), actions }); ok('Investigation saved'); });
+    onAct(m, 'inc-close', async (id) => { await api('POST', `/v1/hse/incidents/${id}/close`, { date: today() }); ok('Closed'); });
+  },
+  async facilities(m, ok) {
+    const day = $('#fac-day'); if (day) day.onchange = () => { S.facDate = day.value || today(); show('facilities'); };
+    bindForm('f-book', async (b) => { const startsAt = new Date(`${b.day}T${b.from}`).toISOString(), endsAt = new Date(`${b.day}T${b.to}`).toISOString();
+      await api('POST', '/v1/fac/bookings', { spaceId: b.spaceId, startsAt, endsAt, purpose: b.purpose, attendees: Number(b.attendees || 1) }); S.facDate = b.day; ok('Booked'); });
+    bindForm('f-space', async (b) => { await api('POST', '/v1/fac/spaces', num(b, 'capacity')); ok('Space added'); });
+    onAct(m, 'bk-cancel', async (id) => { await api('POST', `/v1/fac/bookings/${id}/cancel`); ok('Cancelled'); });
+  },
+});
+
+async function loadPhase4Demo(step, co, root, asApprover) {
+  const d = today();
+  const reg = await api('GET', '/v1/grc/risks');
+  if (reg.risks.find((r) => r.code === 'DEMO-R1')) return;
+  const emps = await api('GET', '/v1/org/employees');
+  const e1 = emps.find((e) => e.employee_no === 'DEMO-001'), e2 = emps.find((e) => e.employee_no === 'DEMO-002');
+  const parties = await api('GET', '/v1/mdm/parties'); const supp = parties.find((p) => p.code === 'DEMO-S1');
+  const in30 = (n) => { const x = new Date(); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+  const txt = (s) => btoa(unescape(encodeURIComponent(s)));
+
+  step('Documents and contracts: a policy, and a supply contract through approval...');
+  await api('POST', '/v1/dms/documents', { unitId: root.id, title: 'Delegation of authority policy', category: 'policy', fileName: 'delegation-of-authority.txt', contentType: 'text/plain',
+    contentBase64: txt('Delegation of authority\n\nPurchases above AED 50,000 need two approvals.\n') });
+  await api('POST', '/v1/dms/documents', { unitId: root.id, title: 'Board minutes (confidential)', category: 'general', confidential: true, fileName: 'board-minutes.txt', contentType: 'text/plain', contentBase64: txt('Board minutes\n') });
+  const k = await api('POST', `/v1/lgl/companies/${co}/contracts`, { title: 'Office supplies framework agreement', kind: 'purchase', partyId: supp.id, ownerEmployeeId: e1.id, value: 120000,
+    startDate: yearStart(), endDate: in30(25), autoRenew: true, renewalMonths: 12, noticeDays: 30, governingLaw: 'UAE' });
+  await api('POST', '/v1/dms/documents', { unitId: co, title: 'Signed copy', category: 'contract', entityType: 'lgl.contract', entityId: k.id, fileName: 'framework-signed.txt', contentType: 'text/plain', contentBase64: txt('Signed framework agreement\n') });
+  await api('POST', `/v1/lgl/contracts/${k.id}/submit`);
+  await asApprover(async () => { for (const t of await api('GET', '/v1/wf/inbox')) if (t.entity_type === 'lgl.contract') await api('POST', `/v1/wf/tasks/${t.task_id}/approve`, { comment: 'Demo approval' }); });
+  await api('POST', `/v1/lgl/contracts/${k.id}/obligations`, { description: 'Quarterly price review with the supplier', dueDate: in30(10), responsibleEmployeeId: e1.id });
+
+  step('Risk and compliance: a risk register, a control and its test, the compliance calendar...');
+  const r1 = await api('POST', '/v1/grc/risks', { unitId: root.id, code: 'DEMO-R1', title: 'Cash misappropriated at the showroom', category: 'financial', likelihood: 3, impact: 4, ownerEmployeeId: e1.id, appetite: 8 });
+  await api('POST', '/v1/grc/risks', { unitId: root.id, code: 'DEMO-R2', title: 'Single supplier for office supplies', category: 'operational', likelihood: 4, impact: 3, ownerEmployeeId: e2.id, treatment: 'mitigate', appetite: 9 });
+  await api('POST', '/v1/grc/risks', { unitId: root.id, code: 'DEMO-R3', title: 'Late VAT filing penalties', category: 'compliance', likelihood: 2, impact: 3, appetite: 6 });
+  const c1 = await api('POST', `/v1/grc/risks/${r1.id}/controls`, { code: 'CTL-CASH', title: 'Daily cash count signed by two people', kind: 'detective', frequency: 'daily', ownerEmployeeId: e2.id });
+  await api('POST', `/v1/grc/controls/${c1.id}/tests`, { testedOn: d, result: 'effective', sampleSize: 25, exceptions: 0, notes: 'Sample of 25 days, all signed' });
+  await api('POST', '/v1/grc/obligations', { unitId: root.id, regulation: 'Federal Tax Authority', requirement: 'File the VAT return and pay', frequency: 'quarterly', nextDue: in30(20), ownerEmployeeId: e1.id });
+  await api('POST', '/v1/grc/obligations', { unitId: root.id, regulation: 'Department of Economy and Tourism', requirement: 'Renew the trade licence', frequency: 'annual', nextDue: in30(45) });
+
+  step('Internal audit: an engagement with a finding and a management response...');
+  const eng = await api('POST', '/v1/grc/engagements', { unitId: root.id, title: 'Purchasing review', kind: 'internal', periodFrom: yearStart(), periodTo: d });
+  await api('POST', `/v1/grc/engagements/${eng.id}/advance`, {});
+  const f = await api('POST', `/v1/grc/engagements/${eng.id}/findings`, { title: 'Supplier bank details changed without a call-back', severity: 'high',
+    condition: 'Two of ten bank detail changes had no call-back to the supplier on record.', recommendation: 'Require a documented call-back before any change is approved.' });
+  await api('POST', `/v1/grc/findings/${f.id}/response`, { response: 'Agreed. The call-back becomes a required step.', actions: [{ title: 'Add call-back evidence to supplier changes', ownerEmployeeId: e2.id, dueDate: in30(30) }] });
+
+  step('Service desk: two tickets, one fixed and confirmed, one sent to maintenance...');
+  const t1 = await api('POST', '/v1/svc/tickets', { queue: 'it', category: 'Laptop', priority: 2, title: 'Laptop will not start', description: 'Black screen after the update.' });
+  await api('POST', `/v1/svc/tickets/${t1.id}/assign`, {});
+  await api('POST', `/v1/svc/tickets/${t1.id}/comments`, { body: 'Looking at it now. Please bring it to IT.' });
+  await api('POST', `/v1/svc/tickets/${t1.id}/status`, { status: 'resolved', resolution: 'Rolled back the display driver.' });
+  await api('POST', `/v1/svc/tickets/${t1.id}/confirm`, { accepted: true, satisfaction: 5 });
+  const van = (await api('GET', `/v1/fin/companies/${co}/assets`)).find((a) => a.code === 'DEMO-VAN');
+  const t2 = await api('POST', '/v1/svc/tickets', { queue: 'facilities', category: 'Vehicle', priority: 3, title: 'Van air conditioning not cooling', description: 'Warm air only since Monday.', ...(van ? { assetId: van.id } : {}) });
+  if (van) await api('POST', `/v1/svc/tickets/${t2.id}/maintenance`, { scheduledDate: d });
+
+  step('Quality: a stock inspection that fails, and its non-conformance...');
+  const wh = (await api('GET', `/v1/inv/companies/${co}/warehouses`)).find((w) => w.code === 'MAIN');
+  const top = (await api('GET', '/v1/mdm/items')).find((i) => i.code === 'DEMO-TOP');
+  if (wh && top) {
+    const r = await api('POST', `/v1/qms/companies/${co}/inspections`, { sourceType: 'inv.stock', itemId: top.id, warehouseId: wh.id, inspectedOn: d, qtyInspected: 6, qtyRejected: 1, notes: 'One desk top warped' });
+    if (r.ncr) await api('POST', `/v1/qms/ncrs/${r.ncr.id}/disposition`, { disposition: 'scrap', rootCause: 'Stored against the outside wall; humidity', date: d,
+      actions: [{ title: 'Move timber stock to the inner racks', ownerEmployeeId: e2.id, dueDate: in30(7) }] });
+  }
+
+  step('Health and safety: an injury investigated and closed, and an open near miss...');
+  const inc = await api('POST', '/v1/hse/incidents', { unitId: root.id, occurredAt: new Date(Date.now() - 3 * 86400e3).toISOString(), kind: 'injury', severity: 'moderate', location: 'Warehouse, aisle 3',
+    description: 'Hand cut while opening a carton', employeeId: e2.id, lostDays: 1 });
+  await api('POST', `/v1/hse/incidents/${inc.id}/investigate`, { rootCause: 'Box cutters without blade guards', actions: [{ title: 'Replace box cutters with safety cutters', ownerEmployeeId: e1.id, dueDate: d }] });
+  const acts = await api('GET', '/v1/grc/actions');
+  const a = acts.find((x) => x.source_type === 'hse.incident' && x.source_id === inc.id);
+  await api('POST', `/v1/grc/actions/${a.id}/done`, { note: 'Twelve safety cutters issued', date: d });
+  await asApprover(() => api('POST', `/v1/grc/actions/${a.id}/verify`, { date: d, accepted: true, comment: 'Checked on the floor' }));
+  await api('POST', `/v1/hse/incidents/${inc.id}/close`, { date: d });
+  await api('POST', '/v1/hse/incidents', { unitId: root.id, occurredAt: new Date(Date.now() - 3600e3).toISOString(), kind: 'near_miss', severity: 'minor', location: 'Loading bay',
+    description: 'Forklift reversed without a spotter; nobody hurt' });
+
+  step('Facilities: rooms, a desk and a parking bay, and a booking...');
+  const mr = await api('POST', '/v1/fac/spaces', { unitId: root.id, code: 'MR-1', name: 'Board room', kind: 'meeting_room', capacity: 10 });
+  await api('POST', '/v1/fac/spaces', { unitId: root.id, code: 'D-01', name: 'Hot desk 1', kind: 'desk', capacity: 1 });
+  await api('POST', '/v1/fac/spaces', { unitId: root.id, code: 'P-01', name: 'Visitor parking 1', kind: 'parking', capacity: 1 });
+  const at = (h) => { const x = new Date(); x.setHours(h, 0, 0, 0); return x.toISOString(); };
+  await api('POST', '/v1/fac/bookings', { spaceId: mr.id, startsAt: at(10), endsAt: at(11), purpose: 'Supplier review', attendees: 6 });
+}
+
 // Demo: everything through the public API, as the signed-in admin plus a second approver user.
 async function loadDemo(step) {
   const me = await api('GET', '/v1/me');
@@ -1061,6 +1388,7 @@ async function loadDemo(step) {
   await loadOperationsDemo(step, co, asApprover, root);
   await loadFinanceExtrasDemo(step, co);
   await loadPhase3Demo(step, co, root);
+  await loadPhase4Demo(step, co, root, asApprover);
   step(`Done. Second user: ${appEmail} / ${pw}`);
   toast(`Demo loaded. The approver can sign in as ${appEmail} with password ${pw}`);
 }

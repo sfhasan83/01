@@ -2,8 +2,8 @@ Unicode true
 SetCompressor /SOLID lzma
 !include "MUI2.nsh"
 !define APPNAME "BAATS ERP"
-!define VERSION "0.5.0"
-Name "BAATS Enterprise ERP ${VERSION} (Phase 1 and 2 trial)"
+!define VERSION "0.6.0"
+Name "BAATS Enterprise ERP ${VERSION} (trial)"
 OutFile "/home/claude/build/out/BAATS-ERP-Setup-0.5.0.exe"
 InstallDir "$LOCALAPPDATA\Programs\BAATS ERP"
 RequestExecutionLevel user

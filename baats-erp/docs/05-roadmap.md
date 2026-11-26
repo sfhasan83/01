@@ -51,6 +51,8 @@ Manufacturing (BOM, routing, MRP, work orders, costing), projects, supply chain 
 
 ### Phase 4: Corporate functions
 
+**Built and tested:** document management (versioned files with SHA-256 fingerprints, attachable to any record, confidential access, retention, archive without deletion); legal and contracts (approval workflow requiring the signed copy, obligations, notice dates, automatic renewal or expiry, termination); risk register (inherent and residual scores, appetite, 5 x 5 heat map), controls and control tests by someone other than the owner; compliance calendar with recurring obligations; internal audit engagements with findings, management responses and opinions; one corrective action list shared by audit, risk, quality and safety with maker-checker verification; IT and facilities service desk with SLA targets, breaches, requester confirmation and hand-off to maintenance; quality inspections on receipt, production or stock, non-conformance reports whose scrap or return disposition posts the write-off and drafts the supplier credit note; health and safety incidents open to everyone, investigations, LTIFR and TRIR; facilities spaces, bookings without double booking, and utilisation. Still open in this phase: learning management, customer service portal, collaboration, board and corporate secretariat, e-signature and OCR of uploaded documents.
+
 Legal and contracts, GRC, audit management, administration and facilities, IT service management, quality, HSE, document management UI, learning, customer service, collaboration, board and corporate secretariat.
 
 ### Phase 5: Intelligence

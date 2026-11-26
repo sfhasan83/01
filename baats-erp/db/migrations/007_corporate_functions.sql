@@ -148,6 +148,7 @@ CREATE TABLE grc.control_tests (
   exceptions int NOT NULL DEFAULT 0 CHECK (exceptions >= 0),
   notes text,
   tested_by uuid,
+  recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   UNIQUE (tenant_id, id),
   FOREIGN KEY (tenant_id, control_id) REFERENCES grc.controls(tenant_id, id)
 );

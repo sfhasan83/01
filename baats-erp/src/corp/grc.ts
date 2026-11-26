@@ -92,7 +92,7 @@ export async function riskRegister(tx: Tx, ctx: Ctx) {
   const risks = await many(tx, `SELECT r.*, u.code AS unit_code, e.first_name || ' ' || e.last_name AS owner_name,
         (SELECT count(*)::int FROM grc.controls c WHERE c.risk_id = r.id AND c.status = 'active') AS controls,
         (SELECT count(*)::int FROM grc.controls c WHERE c.risk_id = r.id AND c.status = 'active'
-            AND (SELECT t.result FROM grc.control_tests t WHERE t.control_id = c.id ORDER BY t.tested_on DESC, t.id DESC LIMIT 1) = 'effective') AS effective_controls,
+            AND (SELECT t.result FROM grc.control_tests t WHERE t.control_id = c.id ORDER BY t.tested_on DESC, t.recorded_at DESC LIMIT 1) = 'effective') AS effective_controls,
         (SELECT count(*)::int FROM grc.actions a WHERE a.status <> 'verified' AND ((a.source_type = 'grc.risk' AND a.source_id = r.id))) AS open_actions
       FROM grc.risks r JOIN org.units u ON u.id = r.unit_id LEFT JOIN org.employees e ON e.id = r.owner_employee_id
      WHERE ${s.sql} ORDER BY r.code`, [s.param]);
@@ -111,7 +111,7 @@ export async function riskControls(tx: Tx, ctx: Ctx, riskId: string) {
   if (!r) throw new NotFoundError('risk');
   await authorize(tx, ctx, 'grc.manage', { unitId: r.unit_id });
   return many(tx, `SELECT c.*, e.first_name || ' ' || e.last_name AS owner_name,
-      (SELECT row_to_json(t) FROM (SELECT tested_on, result, exceptions, sample_size FROM grc.control_tests WHERE control_id = c.id ORDER BY tested_on DESC, id DESC LIMIT 1) t) AS last_test
+      (SELECT row_to_json(t) FROM (SELECT tested_on, result, exceptions, sample_size FROM grc.control_tests WHERE control_id = c.id ORDER BY tested_on DESC, recorded_at DESC LIMIT 1) t) AS last_test
     FROM grc.controls c LEFT JOIN org.employees e ON e.id = c.owner_employee_id WHERE c.risk_id = $1 ORDER BY c.code`, [riskId]);
 }
 

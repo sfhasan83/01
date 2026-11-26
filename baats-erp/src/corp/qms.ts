@@ -141,3 +141,14 @@ export async function supplierQuality(tx: Tx, ctx: Ctx, companyId: string, from:
     .map((r) => ({ ...r, rejectionPct: r.inspected ? Math.round(r.rejected / r.inspected * 10000) / 100 : 0 }));
 }
 
+/** Recent goods receipt lines for stock items, newest first: what is waiting to be inspected, with what has been inspected so far. */
+export async function receiptsToInspect(tx: Tx, ctx: Ctx, companyId: string) {
+  await authorize(tx, ctx, 'qms.manage', { unitId: companyId });
+  return many(tx, `SELECT r.id AS receipt_id, r.no AS receipt_no, r.date, p.name AS supplier_name, i.id AS item_id, i.code AS item_code, i.name AS item_name,
+        sum(rl.quantity)::float AS qty_received, coalesce(r.warehouse_id, o.warehouse_id) AS warehouse_id,
+        coalesce((SELECT sum(x.qty_inspected) FROM qms.inspections x WHERE x.source_type = 'pur.receipt' AND x.source_id = r.id AND x.item_id = i.id), 0)::float AS qty_inspected
+      FROM pur.receipts r JOIN pur.orders o ON o.id = r.order_id JOIN mdm.parties p ON p.id = o.supplier_id
+      JOIN pur.receipt_lines rl ON rl.receipt_id = r.id JOIN pur.order_lines ol ON ol.id = rl.order_line_id JOIN mdm.items i ON i.id = ol.item_id
+     WHERE r.company_id = $1 AND i.item_type = 'stock'
+     GROUP BY r.id, r.no, r.date, p.name, i.id, i.code, i.name, r.warehouse_id, o.warehouse_id ORDER BY r.date DESC, r.no DESC LIMIT 100`, [companyId]);
+}

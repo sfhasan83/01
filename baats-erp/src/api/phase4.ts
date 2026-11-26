@@ -130,6 +130,7 @@ export function registerPhase4(app: FastifyInstance, run: Run): void {
   app.post<{ Params: P }>('/v1/qms/companies/:company/inspections', { schema: body(['sourceType', 'itemId', 'warehouseId', 'inspectedOn', 'qtyInspected'], {
     sourceType: { enum: ['pur.receipt', 'mfg.work_order', 'inv.stock'] }, sourceId: uuid, itemId: uuid, warehouseId: uuid, inspectedOn: date, qtyInspected: pos, qtyRejected: nonneg, notes: str }) },
   async (req, reply) => created(reply, run(req, (tx, ctx) => qms.inspect(tx, ctx, { ...(req.body as B), companyId: company(req) }))));
+  app.get<{ Params: P }>('/v1/qms/companies/:company/receipts', async (req) => run(req, (tx, ctx) => qms.receiptsToInspect(tx, ctx, company(req))));
   app.get<{ Params: P }>('/v1/qms/companies/:company/inspections', async (req) => run(req, (tx, ctx) => qms.listInspections(tx, ctx, company(req))));
   app.post<{ Params: P }>('/v1/qms/companies/:company/ncrs', { schema: body(['severity', 'description', 'date'], { itemId: uuid, warehouseId: uuid, supplierId: uuid,
     qty: nonneg, severity: { enum: ['minor', 'major', 'critical'] }, description: str, date }) },

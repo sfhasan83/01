@@ -4,7 +4,7 @@
 
 BAATS Enterprise ERP is a multi-tenant enterprise business operating system: one platform where every department runs as an integrated module on shared engines for organization, identity, workflow, master data, audit and rules.
 
-This folder holds the **Phase 1 enterprise core** and the foundation documents for the full programme.
+This folder holds the **Phase 1 enterprise core**, the **Phase 2 finance engine** (built on BAATS Accounting, UAE edition), and the foundation documents for the full programme.
 
 ## Documents
 
@@ -15,6 +15,7 @@ This folder holds the **Phase 1 enterprise core** and the foundation documents f
 | [03 Module dependency matrix](docs/03-module-dependency-matrix.md) | 30 modules × engines, build order, end-to-end processes |
 | [04 Roles and permissions](docs/04-roles-and-permissions.md) | RBAC + ABAC model, catalog, portal role templates, SoD, approval matrices |
 | [05 Roadmap](docs/05-roadmap.md) | Phases 1 to 7, deliverable status, testing and deployment strategy |
+| [06 Finance and BAATS Accounting](docs/06-finance-and-baats-accounting.md) | How BAATS Accounting (UAE) became the financial foundation, what is built, what is still to port |
 
 ## What works today
 
@@ -28,6 +29,7 @@ This folder holds the **Phase 1 enterprise core** and the foundation documents f
 | Workflow | Versioned JSON definitions; sequential, parallel (any, all, quorum) and conditional steps; approver by user, role, reporting manager or unit head; approval limits; maker-checker; distinct approvers; delegation; escalation sweep; withdrawal; full history; completion callbacks into modules |
 | Master data | Units of measure, items, customers and suppliers with duplicate detection and workflow-governed activation |
 | Audit | Database-captured before/after for every governed table, security events (logins, denials, MFA), append-only, SHA-256 hash chain per tenant with verification |
+| Finance (Phase 2) | Company books with the BAATS Accounting UAE chart of accounts; immutable, balanced, numbered journals; manual journals with maker-checker approval and limits; sales and purchase invoices, credit notes, reverse charge; receipts and payments with allocation, advances and realised FX; VAT 201 return and filing; corporate tax provision; trial balance, P&L, balance sheet, ledgers, statements, ageing; period and year-end close |
 | API | REST `/v1` with schema validation for all of the above |
 
 ## Run it
@@ -70,6 +72,7 @@ src/iam/          authentication, authorization, roles, SoD, delegation
 src/workflow/     workflow and approval engine
 src/mdm/          master data
 src/audit/        audit queries and hash-chain verification
+src/fin/          accounting engine: chart of accounts, ledger, documents, tax, reports
 src/api/          HTTP API
 test/             unit, integration (real PostgreSQL) and API tests
 ```

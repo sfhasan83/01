@@ -37,6 +37,8 @@ Indicative effort with a core team of 25 to 40 engineers plus domain specialists
 
 ### Phase 2: Core business
 
+**Started: finance.** The accounting engine, UAE tax, receivables, payables, cash and financial statements are built and tested on top of BAATS Accounting's UAE rules; see [06-finance-and-baats-accounting.md](06-finance-and-baats-accounting.md) for what is built and what is still to port. Next in this phase: e-invoicing, bank reconciliation, then HR and payroll, procurement, inventory, sales and CRM.
+
 Accounting engine and finance (GL, AP, AR, cash and bank, fixed assets lite, period close, consolidation, IFRS reports); taxation (VAT, GST, corporate tax, withholding; UAE and KSA first, e-invoicing with FTA and ZATCA); HR (positions, contracts, leave, attendance with biometric import); payroll (UAE WPS and KSA GOSI first); procurement; inventory; sales and CRM. Integrate BAATS Accounting rules once its source or specification is supplied.
 
 **Acceptance:** procure-to-pay, order-to-cash, hire-to-retire and record-to-report run end to end with automatic postings and no re-keying; trial balance always balances; tax returns reconcile to the ledger.

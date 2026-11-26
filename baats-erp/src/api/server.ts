@@ -10,6 +10,7 @@ import * as mdm from '../mdm/service.ts';
 import * as wf from '../workflow/engine.ts';
 import * as audit from '../audit/service.ts';
 import { onboardTenant } from '../platform/onboarding.ts';
+import { registerFinance } from './finance.ts';
 
 declare module 'fastify' {
   interface FastifyRequest { ctx: Ctx; token: string }
@@ -187,6 +188,8 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
     return audit.queryAudit(tx, ctx, { ...q, limit: q.limit ? Number(q.limit) : undefined, beforeSeq: q.beforeSeq ? Number(q.beforeSeq) : undefined });
   }));
   app.get('/v1/audit/verify', async (req) => run(req, (tx, ctx) => audit.verifyChain(tx, ctx)));
+
+  registerFinance(app, run);
 
   return app;
 }

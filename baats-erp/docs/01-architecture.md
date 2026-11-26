@@ -75,7 +75,7 @@ flowchart TB
 | Audit and compliance | Append-only, hash-chained audit trail of all data changes and security events, verification | **Built** (`src/audit`, `db/migrations`) |
 | Master data | Units of measure, items, customers and suppliers with governed activation and duplicate detection | **Built** (`src/mdm`), more domains each phase |
 | Business rules | Declarative conditions used by grants and workflows | **Built** (core evaluator, `src/core/rules.ts`). Rule builder UI later |
-| Accounting | Multi-company general ledger, journals, periods, multi-currency | Phase 2 (see section 7) |
+| Accounting | Multi-company general ledger, journals, periods, multi-currency | **Built** (`src/fin`, Phase 2) |
 | Notification and escalation | In-app inbox (built as workflow tasks); email, SMS, WhatsApp, push | Escalation built; channels Phase 1b |
 | Document management | Storage, versions, retention, e-signature | Phase 1b |
 | Reporting and analytics | Operational reports, dashboards, warehouse | Phase 5 (operational lists exist per module) |
@@ -115,14 +115,7 @@ See [02-data-architecture.md](02-data-architecture.md) for the data model.
 
 ## 7. Financial foundation and BAATS Accounting
 
-The prompt asks for existing BAATS Accounting functionality to become the financial foundation. **No BAATS Accounting code is in this repository.** The repository's `grocery-app/` (Shop Books) is a single-file browser app for one shop; it is useful as a reference for UAE VAT handling but is not architecturally compatible with a multi-tenant server ledger.
-
-The Phase 2 accounting engine will be designed as follows, and will absorb BAATS Accounting rules once its source or specification is available:
-
-* Multi-company, multi-currency double-entry ledger; chart of accounts per company with group mapping for consolidation; fiscal calendars and period close.
-* Every module posts through one posting API, which validates balance, period status, dimensions (company, cost center, profit center, project) and approval, so no module writes ledger tables directly.
-* Sub-ledgers (AP, AR, assets, inventory, payroll) reconcile to control accounts automatically.
-* Tax determination is a rules-driven service with country packs (see roadmap Phase 2 and 6).
+BAATS Accounting v10.86 (UAE edition) is the financial foundation. Its chart of accounts, posting rules, VAT treatment and corporate tax rules are carried over; its architecture is not, because it derives the ledger in the browser from editable documents, while an enterprise ledger must be stored, validated by the database and immutable. The Phase 2 accounting engine (`src/fin`) is the single posting API for every module. Details, mapping and the porting backlog: [06-finance-and-baats-accounting.md](06-finance-and-baats-accounting.md).
 
 ## 8. Integration architecture
 

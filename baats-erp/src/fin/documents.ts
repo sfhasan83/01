@@ -21,6 +21,8 @@ const DOC_PREFIX: Record<InvoiceKind, string> = { sales_invoice: 'SI', sales_cre
 export interface InvoiceLineInput {
   itemId?: string; description: string; quantity: number; unitPrice: number; discount?: number;
   account?: string; taxCode: string; unitId?: string;
+  /** Project the line is revenue or cost of. */
+  projectId?: string;
   /** The order line this document line bills (procurement and sales). */
   sourceLineId?: string;
 }
@@ -89,14 +91,19 @@ export async function createInvoice(tx: Tx, ctx: Ctx, input: InvoiceInput) {
       accountRef = SALES.has(input.kind) ? item?.attributes?.revenue_account : item?.attributes?.expense_account;
     }
     const acc = await resolveAccount(tx, input.companyId, accountRef ?? (SALES.has(input.kind) ? 'role:default_revenue' : 'role:default_expense'));
+    if (l.projectId) {
+      const p = await one(tx, 'SELECT company_id, code, status FROM prj.projects WHERE id = $1', [l.projectId]);
+      if (!p || p.company_id !== input.companyId) throw new ValidationError(`line ${i + 1}: the project does not belong to this company`);
+      if (p.status === 'closed') throw new ValidationError(`line ${i + 1}: project ${p.code} is closed`);
+    }
     const lineNet = round2(l.quantity * l.unitPrice - (l.discount ?? 0));
     if (lineNet < 0) throw new ValidationError(`line ${i + 1}: discount is larger than the line amount`);
     const lineTax = round2(lineNet * Number(tc.rate) / 100);
     await tx.query(`INSERT INTO fin.invoice_lines (tenant_id, invoice_id, line_no, item_id, description, quantity, unit_price, discount,
-                      account_id, tax_code_id, unit_id, net_amount, tax_amount, source_line_id)
-      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+                      account_id, tax_code_id, unit_id, net_amount, tax_amount, source_line_id, project_id)
+      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [inv.id, i + 1, l.itemId ?? null, l.description, l.quantity, l.unitPrice, l.discount ?? 0, acc.id, tc.id, l.unitId ?? null, lineNet, lineTax,
-        l.sourceLineId ?? null]);
+        l.sourceLineId ?? null, l.projectId ?? null]);
     net += lineNet; tax += lineTax;
   }
   // Reverse-charge VAT is self-assessed: it is not part of what the supplier is owed.
@@ -141,7 +148,7 @@ export async function postInvoice(tx: Tx, ctx: Ctx, invoiceId: string) {
   for (const l of lines) {
     const net = Number(l.net_amount);
     if (net > 0) {
-      postLines.push({ account: l.account_id, ...sideOf(net, sales ? -1 : 1), unitId: l.unit_id, taxCodeId: l.tax_code_id, description: l.description });
+      postLines.push({ account: l.account_id, ...sideOf(net, sales ? -1 : 1), unitId: l.unit_id, projectId: l.project_id, taxCodeId: l.tax_code_id, description: l.description });
     }
     const t = taxByCode.get(l.tax_code_id) ?? { codeId: l.tax_code_id, category: l.category, tax: 0, base: 0 };
     t.tax += Number(l.tax_amount); t.base += net;

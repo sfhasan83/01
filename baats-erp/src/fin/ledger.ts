@@ -20,6 +20,7 @@ export interface PostingLine {
   credit?: number;
   partyId?: string | null;
   unitId?: string | null;
+  projectId?: string | null;
   taxCodeId?: string | null;
   taxBase?: number | null;  // base currency
   description?: string;
@@ -68,7 +69,7 @@ const PREFIX: Record<string, string> = {
   manual: 'JV', opening: 'OB', sales_invoice: 'SJ', sales_credit: 'SCJ', purchase_invoice: 'PJ', purchase_credit: 'PCJ',
   receipt: 'RJ', payment: 'PYJ', write_off: 'WO', vat_return: 'VAT', tax_provision: 'CT', closing: 'CL', reversal: 'REV',
   inventory: 'IJ', goods_receipt: 'GRJ', delivery: 'DJ', payroll: 'PRJ', payroll_payment: 'PRP', gratuity: 'EOS',
-  bank: 'BK', depreciation: 'DEP', asset_disposal: 'AD',
+  bank: 'BK', depreciation: 'DEP', asset_disposal: 'AD', timesheet: 'TS', production: 'MFJ', maintenance: 'MNJ', fuel: 'FJ',
 };
 
 /** Write a draft journal with its lines, converted to base currency and balanced to the cent. */
@@ -87,6 +88,10 @@ async function writeDraft(tx: Tx, ctx: Ctx, input: PostingInput, status: 'draft'
     const baseOnly = l.baseAmount !== undefined && dr === 0 && cr === 0;
     if (dr < 0 || cr < 0 || (!baseOnly && (dr > 0) === (cr > 0))) throw new ValidationError(`line ${i + 1}: enter either a debit or a credit`);
     const acc = await resolveAccount(tx, input.companyId, l.account);
+    if (l.projectId) {
+      const p = await one(tx, 'SELECT company_id FROM prj.projects WHERE id = $1', [l.projectId]);
+      if (!p || p.company_id !== input.companyId) throw new ValidationError(`line ${i + 1}: the project does not belong to this company`);
+    }
     const txn = dr - cr;
     const base = l.baseAmount !== undefined ? round2(l.baseAmount) : round2(txn * fx);
     lines.push({ ...l, accountId: acc.id, txn, base });
@@ -109,10 +114,10 @@ async function writeDraft(tx: Tx, ctx: Ctx, input: PostingInput, status: 'draft'
   for (const [i, l] of lines.entries()) {
     if (l.base === 0) continue;
     await tx.query(`INSERT INTO fin.journal_lines (tenant_id, journal_id, line_no, account_id, debit, credit, txn_amount,
-                      party_id, unit_id, tax_code_id, tax_base, description)
-      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                      party_id, unit_id, tax_code_id, tax_base, description, project_id)
+      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [j.id, i + 1, l.accountId, l.base > 0 ? l.base : 0, l.base < 0 ? -l.base : 0, round2(l.txn),
-        l.partyId ?? null, l.unitId ?? null, l.taxCodeId ?? null, l.taxBase ?? null, l.description ?? null]);
+        l.partyId ?? null, l.unitId ?? null, l.taxCodeId ?? null, l.taxBase ?? null, l.description ?? null, l.projectId ?? null]);
   }
   return j;
 }

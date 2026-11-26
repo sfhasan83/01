@@ -22,12 +22,12 @@ const body = (required: string[], properties: Record<string, object>) =>
 
 const journalLine = {
   type: 'object', required: ['account'], additionalProperties: false,
-  properties: { account: str, debit: { type: 'number', minimum: 0 }, credit: { type: 'number', minimum: 0 }, partyId: uuid, unitId: uuid, description: str },
+  properties: { account: str, debit: { type: 'number', minimum: 0 }, credit: { type: 'number', minimum: 0 }, partyId: uuid, unitId: uuid, projectId: uuid, description: str },
 };
 const invoiceLine = {
   type: 'object', required: ['description', 'quantity', 'unitPrice', 'taxCode'], additionalProperties: false,
   properties: { itemId: uuid, description: str, quantity: { type: 'number', exclusiveMinimum: 0 }, unitPrice: { type: 'number', minimum: 0 },
-    discount: { type: 'number', minimum: 0 }, account: str, taxCode: str, unitId: uuid },
+    discount: { type: 'number', minimum: 0 }, account: str, taxCode: str, unitId: uuid, projectId: uuid },
 };
 
 /** Finance API (v1). Every company-scoped route takes the company's org unit id. */

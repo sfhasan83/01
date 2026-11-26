@@ -16,7 +16,7 @@ import { company, post, round2, type PostingLine } from '../fin/ledger.ts';
 
 export interface MoveInput {
   companyId: string; warehouseId: string; itemId: string; date: string;
-  kind: 'opening' | 'receipt' | 'delivery' | 'adjustment' | 'transfer_in' | 'transfer_out';
+  kind: 'opening' | 'receipt' | 'delivery' | 'adjustment' | 'transfer_in' | 'transfer_out' | 'production_issue' | 'production_receipt' | 'maintenance_issue';
   qty: number; value: number; source?: { type: string; id: string }; journalId?: string | null; reason?: string;
 }
 

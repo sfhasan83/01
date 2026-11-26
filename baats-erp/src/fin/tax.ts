@@ -12,7 +12,8 @@ import { fiscalYear } from './reports.ts';
  */
 
 const SALES_TYPES = ['sales_invoice', 'sales_credit'];
-const PURCHASE_TYPES = ['purchase_invoice', 'purchase_credit'];
+// Fuel receipts logged in fleet carry input VAT like a purchase invoice.
+const PURCHASE_TYPES = ['purchase_invoice', 'purchase_credit', 'fuel'];
 
 export interface VatBox { amount: number; vat: number }
 export interface VatReturn {

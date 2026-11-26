@@ -1,6 +1,11 @@
 import pg from 'pg';
 import { ForbiddenError, fromPg } from './errors.ts';
 
+// Ledger dates are calendar dates. node-postgres turns a date column into a
+// Date at local midnight, so on a computer east of UTC (Dubai is UTC+4) the
+// ISO string of it would be the day before. The server works in UTC.
+process.env.TZ = 'UTC';
+
 export type Tx = pg.PoolClient;
 
 /** Who is acting, and for which tenant. userId is null for system work such as login. */

@@ -1,0 +1,14 @@
+# Local development: PostgreSQL 16 plus the API.
+#   docker compose up -d db
+#   MIGRATION_DATABASE_URL=postgres://postgres:postgres@localhost:5432/baats APP_DB_PASSWORD=dev-app-password npm run migrate
+#   DATABASE_URL=postgres://baats_app:dev-app-password@localhost:5432/baats PLATFORM_ADMIN_KEY=dev-platform-key npm start
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: baats
+    ports: ['5432:5432']
+    volumes: ['pgdata:/var/lib/postgresql/data']
+volumes:
+  pgdata: {}

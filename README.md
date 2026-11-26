@@ -15,3 +15,7 @@ Latest report: [daily-reports/2026-11-25.md](daily-reports/2026-11-25.md)
 ## Grocery shop software
 
 [grocery-app/](grocery-app/) holds **Shop Books**, an offline accounting and stock app for the Sharjah grocery shop. Open `grocery-app/shop-books.html` in a browser. Instructions are in [grocery-app/README.md](grocery-app/README.md).
+
+## BAATS Enterprise ERP
+
+[baats-erp/](baats-erp/) holds **BAATS Enterprise ERP**, the multi-tenant enterprise platform: the Phase 1 core (organization, identity and access, workflow and approvals, master data, audit) and the architecture, data model, permissions and roadmap documents. Start with [baats-erp/README.md](baats-erp/README.md).

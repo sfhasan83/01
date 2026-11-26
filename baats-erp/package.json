@@ -1,0 +1,26 @@
+{
+  "name": "baats-erp",
+  "version": "0.1.0",
+  "description": "BAATS Enterprise ERP: Phase 1 enterprise core",
+  "scripts": {
+    "start": "node src/main.ts",
+    "migrate": "node src/core/migrate.ts",
+    "typecheck": "tsc -p .",
+    "test": "node --test --test-concurrency=1 test/*.test.ts"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "fastify": "^5.12.8",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.7",
+    "@types/pg": "^8.23.1",
+    "typescript": "^5.9.3"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  }
+}

@@ -5,6 +5,9 @@ import * as setup from '../fin/setup.ts';
 import * as docs from '../fin/documents.ts';
 import * as tax from '../fin/tax.ts';
 import * as reports from '../fin/reports.ts';
+import * as einv from '../fin/einvoice.ts';
+import * as bank from '../fin/bank.ts';
+import * as assets from '../fin/assets.ts';
 
 type Run = <T>(req: FastifyRequest, fn: (tx: Tx, ctx: Ctx) => Promise<T>) => Promise<T>;
 type B = any; // bodies are validated by the route schemas
@@ -104,4 +107,50 @@ export function registerFinance(app: FastifyInstance, run: Run): void {
     run(req, (tx, ctx) => reports.partyStatement(tx, ctx, req.params.company, req.params.party, q(req).from ?? '0001-01-01', q(req).to ?? today())));
   app.get<{ Params: P & { side: 'receivable' | 'payable' } }>('/v1/fin/companies/:company/ageing/:side', async (req) =>
     run(req, (tx, ctx) => reports.ageing(tx, ctx, req.params.company, req.params.side, q(req).asOf ?? today())));
+
+  // Company details used by e-invoices
+  app.patch<{ Params: P }>('/v1/fin/companies/:company', {
+    schema: body([], { street: str, city: str, emirate: { enum: ['AUH', 'DXB', 'SHJ', 'UAQ', 'FUJ', 'AJM', 'RAK'] }, email: str, phone: str, iban: str,
+      tradeLicenceNo: str, licenceAuthority: str, taxRegistrationNo: str }),
+  }, async (req) => run(req, (tx, ctx) => einv.updateCompanyDetails(tx, ctx, req.params.company, req.body as B)));
+
+  // E-invoicing (PINT AE)
+  app.get<{ Params: P }>('/v1/fin/companies/:company/einvoices', async (req) => run(req, (tx, ctx) => einv.listEinvoices(tx, ctx, req.params.company)));
+  app.get<{ Params: P }>('/v1/fin/invoices/:id/einvoice-check', async (req) => run(req, (tx, ctx) => einv.preview(tx, ctx, req.params.id)));
+  app.post<{ Params: P }>('/v1/fin/invoices/:id/einvoice', async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => einv.issue(tx, ctx, req.params.id)); });
+  app.get<{ Params: P }>('/v1/fin/einvoices/:id/xml', async (req, reply) => {
+    const e = await run(req, (tx, ctx) => einv.getEinvoice(tx, ctx, req.params.id));
+    reply.header('content-type', 'application/xml; charset=utf-8');
+    return e.xml;
+  });
+  app.post<{ Params: P }>('/v1/fin/einvoices/:id/asp-response', { schema: body(['status'], { status: { enum: ['submitted', 'accepted', 'rejected'] }, reference: str, message: str }) },
+    async (req) => run(req, (tx, ctx) => einv.recordAspResponse(tx, ctx, req.params.id, req.body as B)));
+
+  // Bank statements and reconciliation
+  app.post<{ Params: P }>('/v1/fin/companies/:company/bank-statements', {
+    bodyLimit: 5 * 1024 * 1024,
+    schema: body(['bankAccount', 'csv'], { bankAccount: str, csv: str, fileName: str, closingBalance: num }),
+  }, async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => bank.importStatement(tx, ctx, { ...(req.body as B), companyId: req.params.company })); });
+  app.get<{ Params: P }>('/v1/fin/companies/:company/bank-lines', async (req) =>
+    run(req, (tx, ctx) => bank.listStatementLines(tx, ctx, req.params.company, q(req).bankAccount ?? 'role:bank', q(req).status)));
+  app.post<{ Params: P }>('/v1/fin/bank-lines/:id/match', { schema: body(['journalLineId'], { journalLineId: uuid }) },
+    async (req) => run(req, (tx, ctx) => bank.matchLine(tx, ctx, req.params.id, (req.body as B).journalLineId)));
+  app.post<{ Params: P }>('/v1/fin/bank-lines/:id/unmatch', async (req) => run(req, (tx, ctx) => bank.unmatchLine(tx, ctx, req.params.id)));
+  app.post<{ Params: P }>('/v1/fin/bank-lines/:id/post', { schema: body([], { account: str, memo: str }) },
+    async (req) => run(req, (tx, ctx) => bank.postStatementLine(tx, ctx, req.params.id, req.body as B)));
+  app.get<{ Params: P }>('/v1/fin/companies/:company/bank-reconciliation', async (req) =>
+    run(req, (tx, ctx) => bank.reconciliation(tx, ctx, req.params.company, q(req).bankAccount ?? 'role:bank', q(req).asOf ?? today())));
+
+  // Fixed assets
+  app.post<{ Params: P }>('/v1/fin/companies/:company/assets', {
+    schema: body(['code', 'name', 'category', 'acquisitionDate', 'usefulLifeMonths'], { code: str, name: str, category: str, unitId: uuid,
+      acquisitionDate: date, depreciationStart: date, usefulLifeMonths: { type: 'integer', minimum: 1 }, residualValue: { type: 'number', minimum: 0 },
+      invoiceLineId: uuid, cost: { type: 'number', exclusiveMinimum: 0 }, openingAccumulated: { type: 'number', minimum: 0 }, openingDate: date }),
+  }, async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => assets.registerAsset(tx, ctx, { ...(req.body as B), companyId: req.params.company })); });
+  app.get<{ Params: P }>('/v1/fin/companies/:company/assets', async (req) => run(req, (tx, ctx) => assets.listAssets(tx, ctx, req.params.company)));
+  app.get<{ Params: P }>('/v1/fin/assets/:id', async (req) => run(req, (tx, ctx) => assets.getAsset(tx, ctx, req.params.id)));
+  app.post<{ Params: P }>('/v1/fin/companies/:company/depreciation', { schema: body(['period'], { period: { type: 'string', pattern: '^\\d{4}-\\d{2}$' } }) },
+    async (req) => run(req, (tx, ctx) => assets.runDepreciation(tx, ctx, req.params.company, (req.body as B).period)));
+  app.post<{ Params: P }>('/v1/fin/assets/:id/dispose', { schema: body(['date'], { date, proceeds: { type: 'number', minimum: 0 }, bankAccount: str }) },
+    async (req) => run(req, (tx, ctx) => assets.disposeAsset(tx, ctx, req.params.id, req.body as B)));
 }

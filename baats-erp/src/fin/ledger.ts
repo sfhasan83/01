@@ -68,6 +68,7 @@ const PREFIX: Record<string, string> = {
   manual: 'JV', opening: 'OB', sales_invoice: 'SJ', sales_credit: 'SCJ', purchase_invoice: 'PJ', purchase_credit: 'PCJ',
   receipt: 'RJ', payment: 'PYJ', write_off: 'WO', vat_return: 'VAT', tax_provision: 'CT', closing: 'CL', reversal: 'REV',
   inventory: 'IJ', goods_receipt: 'GRJ', delivery: 'DJ', payroll: 'PRJ', payroll_payment: 'PRP', gratuity: 'EOS',
+  bank: 'BK', depreciation: 'DEP', asset_disposal: 'AD',
 };
 
 /** Write a draft journal with its lines, converted to base currency and balanced to the cent. */

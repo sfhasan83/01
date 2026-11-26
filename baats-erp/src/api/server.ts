@@ -11,6 +11,7 @@ import * as wf from '../workflow/engine.ts';
 import * as audit from '../audit/service.ts';
 import { onboardTenant } from '../platform/onboarding.ts';
 import { registerFinance } from './finance.ts';
+import { registerOperations } from './operations.ts';
 
 declare module 'fastify' {
   interface FastifyRequest { ctx: Ctx; token: string }
@@ -190,6 +191,7 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
   app.get('/v1/audit/verify', async (req) => run(req, (tx, ctx) => audit.verifyChain(tx, ctx)));
 
   registerFinance(app, run);
+  registerOperations(app, run);
 
   return app;
 }

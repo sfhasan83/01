@@ -21,12 +21,15 @@ const DOC_PREFIX: Record<InvoiceKind, string> = { sales_invoice: 'SI', sales_cre
 export interface InvoiceLineInput {
   itemId?: string; description: string; quantity: number; unitPrice: number; discount?: number;
   account?: string; taxCode: string; unitId?: string;
+  /** The order line this document line bills (procurement and sales). */
+  sourceLineId?: string;
 }
 
 export interface InvoiceInput {
   companyId: string; kind: InvoiceKind; partyId: string; date: string; dueDate?: string; taxDate?: string;
   currency?: string; fxRate?: number; supplierRef?: string; creditOf?: string; notes?: string;
   lines: InvoiceLineInput[];
+  source?: { type: string; id: string };
 }
 
 async function activeParty(tx: Tx, partyId: string, kind: string) {
@@ -68,10 +71,11 @@ export async function createInvoice(tx: Tx, ctx: Ctx, input: InvoiceInput) {
 
   const terms = Number(party.attributes?.payment_terms_days ?? 30);
   const inv = await one(tx, `INSERT INTO fin.invoices (tenant_id, company_id, kind, supplier_ref, party_id, date, due_date, tax_date,
-      currency, fx_rate, credit_of, notes, created_by)
-    VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+      currency, fx_rate, credit_of, notes, created_by, source_type, source_id)
+    VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
     [input.companyId, input.kind, input.supplierRef ?? null, input.partyId, input.date, input.dueDate ?? addDays(input.date, terms),
-      input.taxDate ?? input.date, currency, fx, input.creditOf ?? null, input.notes ?? null, ctx.userId]);
+      input.taxDate ?? input.date, currency, fx, input.creditOf ?? null, input.notes ?? null, ctx.userId,
+      input.source?.type ?? null, input.source?.id ?? null]);
 
   let net = 0, tax = 0;
   for (const [i, l] of input.lines.entries()) {
@@ -89,9 +93,10 @@ export async function createInvoice(tx: Tx, ctx: Ctx, input: InvoiceInput) {
     if (lineNet < 0) throw new ValidationError(`line ${i + 1}: discount is larger than the line amount`);
     const lineTax = round2(lineNet * Number(tc.rate) / 100);
     await tx.query(`INSERT INTO fin.invoice_lines (tenant_id, invoice_id, line_no, item_id, description, quantity, unit_price, discount,
-                      account_id, tax_code_id, unit_id, net_amount, tax_amount)
-      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-      [inv.id, i + 1, l.itemId ?? null, l.description, l.quantity, l.unitPrice, l.discount ?? 0, acc.id, tc.id, l.unitId ?? null, lineNet, lineTax]);
+                      account_id, tax_code_id, unit_id, net_amount, tax_amount, source_line_id)
+      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      [inv.id, i + 1, l.itemId ?? null, l.description, l.quantity, l.unitPrice, l.discount ?? 0, acc.id, tc.id, l.unitId ?? null, lineNet, lineTax,
+        l.sourceLineId ?? null]);
     net += lineNet; tax += lineTax;
   }
   // Reverse-charge VAT is self-assessed: it is not part of what the supplier is owed.

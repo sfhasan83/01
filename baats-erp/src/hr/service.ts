@@ -1,0 +1,324 @@
+import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
+import { many, one, type Ctx, type Tx } from '../core/db.ts';
+import { authorize } from '../iam/authz.ts';
+import { insertDefinition, onWorkflowComplete, submit } from '../workflow/engine.ts';
+import { company, post, resolveAccount, round2, type PostingLine } from '../fin/ledger.ts';
+
+/**
+ * HR and payroll, UAE first (BAATS Accounting rules):
+ *   contracts      basic + housing + transport + other allowances, WPS details
+ *   leave          requests approved by the line manager (or HR) through the workflow engine;
+ *                  annual leave accrues monthly; unpaid leave reduces pay
+ *   payroll        monthly run, pro-rated for joiners, leavers and unpaid leave;
+ *                  Dr 5000 Salaries (per cost center) | Cr 2210 Salaries payable | Cr 1260 advance recovery
+ *   gratuity       end-of-service benefit per UAE labour law, as BAATS eosb(): 21 days' basic per
+ *                  year for the first 5 years, 30 days after, none before 1 year, capped at 24 months'
+ *                  basic; daily wage = basic / 30. The provision is trued up with each payroll:
+ *                  Dr 5920 | Cr 2500 for the change
+ *   payment        Dr 2210 | Cr bank, with the WPS salary information file (SIF)
+ */
+
+export const LEAVE_WORKFLOW = 'hr.leave.approval';
+const DAY = 86_400_000;
+const toDate = (s: string) => new Date(`${s}T00:00:00Z`);
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+const days = (from: string, to: string) => Math.round((toDate(to).getTime() - toDate(from).getTime()) / DAY);
+const dstr = (v: Date | string | null) => (v === null ? null : typeof v === 'string' ? v : iso(v));
+
+/** BAATS eosb(): gratuity accrued at a date, from the join date and basic salary. */
+export function gratuity(basic: number, joined: string, at: string): number {
+  if (at <= joined) return 0;
+  const years = days(joined, at) / 365.25;
+  if (years < 1) return 0;
+  const dayCount = Math.min(years, 5) * 21 + Math.max(0, years - 5) * 30;
+  return round2(Math.min(dayCount * basic / 30, basic * 24));
+}
+
+export interface ContractInput {
+  employeeId: string; companyId: string; startDate: string; endDate?: string; contractType?: 'limited' | 'unlimited';
+  basic: number; housing?: number; transport?: number; otherAllowances?: number; currency?: string; annualLeaveDays?: number;
+  wpsPersonId?: string; bankRoutingCode?: string; iban?: string;
+}
+
+export async function createContract(tx: Tx, ctx: Ctx, input: ContractInput) {
+  const emp = await one(tx, 'SELECT * FROM org.employees WHERE id = $1', [input.employeeId]);
+  if (!emp) throw new ValidationError('unknown employee');
+  await authorize(tx, ctx, 'hr.manage', { unitId: emp.unit_id });
+  const c = await company(tx, input.companyId);
+  if (input.wpsPersonId && !/^\d{14}$/.test(input.wpsPersonId)) throw new ValidationError('the WPS personal number has 14 digits');
+  if (input.bankRoutingCode && !/^\d{9}$/.test(input.bankRoutingCode)) throw new ValidationError('the bank routing code has 9 digits');
+  if (input.iban && !/^AE\d{21}$/.test(input.iban.replace(/\s/g, ''))) throw new ValidationError('a UAE IBAN is AE followed by 21 digits');
+  if (await one(tx, `SELECT 1 FROM hr.contracts WHERE employee_id = $1 AND status = 'active'`, [input.employeeId])) {
+    throw new ConflictError('the employee already has an active contract; end it first');
+  }
+  const row = await one(tx, `INSERT INTO hr.contracts (tenant_id, employee_id, company_id, start_date, end_date, contract_type, basic, housing, transport,
+      other_allowances, currency, annual_leave_days, wps_person_id, bank_routing_code, iban)
+    VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+    [input.employeeId, input.companyId, input.startDate, input.endDate ?? null, input.contractType ?? 'unlimited', input.basic,
+      input.housing ?? 0, input.transport ?? 0, input.otherAllowances ?? 0, input.currency ?? c.base_currency, input.annualLeaveDays ?? 30,
+      input.wpsPersonId ?? null, input.bankRoutingCode ?? null, input.iban?.replace(/\s/g, '') ?? null]);
+  if (!emp.hire_date) await tx.query('UPDATE org.employees SET hire_date = $2 WHERE id = $1', [emp.id, input.startDate]);
+  return row;
+}
+
+/** End employment: the last payroll pro-rates to this date and the final gratuity is shown. */
+export async function endContract(tx: Tx, ctx: Ctx, contractId: string, endDate: string) {
+  const k = await one(tx, 'SELECT k.*, e.unit_id FROM hr.contracts k JOIN org.employees e ON e.id = k.employee_id WHERE k.id = $1', [contractId]);
+  if (!k) throw new NotFoundError('contract');
+  await authorize(tx, ctx, 'hr.manage', { unitId: k.unit_id });
+  if (k.status !== 'active') throw new ConflictError('the contract has already ended');
+  if (endDate < dstr(k.start_date)!) throw new ValidationError('the end date is before the start date');
+  await tx.query(`UPDATE hr.contracts SET status = 'ended', end_date = $2 WHERE id = $1`, [contractId, endDate]);
+  await tx.query(`UPDATE org.employees SET status = 'terminated' WHERE id = $1`, [k.employee_id]);
+  return { contractId, endDate, finalGratuity: gratuity(Number(k.basic), dstr(k.start_date)!, endDate) };
+}
+
+export async function listContracts(tx: Tx, ctx: Ctx, companyId: string) {
+  await authorize(tx, ctx, 'hr.manage', { unitId: companyId });
+  return many(tx, `SELECT k.*, e.employee_no, e.first_name || ' ' || e.last_name AS employee_name, u.name AS unit_name,
+                          (k.basic + k.housing + k.transport + k.other_allowances)::float AS monthly_total
+                     FROM hr.contracts k JOIN org.employees e ON e.id = k.employee_id JOIN org.units u ON u.id = e.unit_id
+                    WHERE k.company_id = $1 ORDER BY k.status, e.employee_no`, [companyId]);
+}
+
+// --- Leave ---------------------------------------------------------------------------
+
+async function ensureLeaveWorkflow(tx: Tx) {
+  if (!(await one(tx, 'SELECT 1 FROM iam.roles WHERE code = $1', ['HR_MANAGER']))) {
+    await tx.query(`INSERT INTO iam.roles (tenant_id, code, name, is_system) VALUES (app.tenant(), 'HR_MANAGER', 'HR manager', true)`);
+  }
+  if (!(await one(tx, 'SELECT 1 FROM wf.definitions WHERE code = $1', [LEAVE_WORKFLOW]))) {
+    await insertDefinition(tx, {
+      code: LEAVE_WORKFLOW, name: 'Leave approval', entityType: 'hr.leave',
+      definition: { steps: [{ key: 'manager', name: 'Line manager or HR', dueHours: 48,
+        approvers: [{ type: 'reporting_manager' }, { type: 'role', role: 'HR_MANAGER' }, { type: 'role', role: 'TENANT_ADMIN' }],
+        escalateTo: [{ type: 'role', role: 'HR_MANAGER' }] }] },
+    });
+  }
+}
+
+/** Annual leave earned to a date (monthly accrual from the contract start) less leave approved or pending. */
+export async function leaveBalance(tx: Tx, ctx: Ctx, employeeId: string, asOf: string) {
+  const emp = await one(tx, 'SELECT * FROM org.employees WHERE id = $1', [employeeId]);
+  if (!emp) throw new NotFoundError('employee');
+  const self = await one(tx, 'SELECT 1 FROM iam.users WHERE id = $1 AND employee_id = $2', [ctx.userId, employeeId]);
+  if (!self) await authorize(tx, ctx, 'hr.manage', { unitId: emp.unit_id });
+  const k = await one(tx, `SELECT * FROM hr.contracts WHERE employee_id = $1 AND status = 'active'`, [employeeId]);
+  if (!k) return { employeeId, entitled: 0, taken: 0, balance: 0, note: 'no active contract' };
+  const start = dstr(k.start_date)!;
+  const months = asOf < start ? 0 : (toDate(asOf).getUTCFullYear() - toDate(start).getUTCFullYear()) * 12
+    + toDate(asOf).getUTCMonth() - toDate(start).getUTCMonth() - (toDate(asOf).getUTCDate() < toDate(start).getUTCDate() ? 1 : 0);
+  const entitled = Math.round(months * k.annual_leave_days / 12 * 10) / 10;
+  const t = await one(tx, `SELECT coalesce(sum(days), 0)::float AS d FROM hr.leave_requests
+                            WHERE employee_id = $1 AND leave_type = 'annual' AND status IN ('approved','pending_approval') AND date_from >= $2`, [employeeId, start]);
+  return { employeeId, entitled, taken: t.d, balance: Math.round((entitled - t.d) * 10) / 10 };
+}
+
+export async function requestLeave(tx: Tx, ctx: Ctx, input: { employeeId: string; leaveType: string; dateFrom: string; dateTo: string; reason?: string }) {
+  const emp = await one(tx, 'SELECT * FROM org.employees WHERE id = $1', [input.employeeId]);
+  if (!emp) throw new ValidationError('unknown employee');
+  const self = await one(tx, 'SELECT 1 FROM iam.users WHERE id = $1 AND employee_id = $2', [ctx.userId, input.employeeId]);
+  if (!self) await authorize(tx, ctx, 'hr.manage', { unitId: emp.unit_id });
+  if (input.dateTo < input.dateFrom) throw new ValidationError('the leave ends before it starts');
+  const n = days(input.dateFrom, input.dateTo) + 1;
+  const overlap = await one(tx, `SELECT 1 FROM hr.leave_requests WHERE employee_id = $1 AND status IN ('approved','pending_approval')
+                                   AND date_from <= $3 AND date_to >= $2`, [input.employeeId, input.dateFrom, input.dateTo]);
+  if (overlap) throw new ConflictError('the employee already has leave in these dates');
+  if (input.leaveType === 'annual') {
+    const b = await leaveBalance(tx, ctx, input.employeeId, input.dateTo);
+    if (n > b.balance + 1e-9) throw new ValidationError(`not enough annual leave: ${n} days asked, ${b.balance} available`);
+  }
+  await ensureLeaveWorkflow(tx);
+  const r = await one(tx, `INSERT INTO hr.leave_requests (tenant_id, employee_id, leave_type, date_from, date_to, days, reason, requested_by)
+    VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [input.employeeId, input.leaveType, input.dateFrom, input.dateTo, n, input.reason ?? null, ctx.userId]);
+  const inst = await submit(tx, ctx, { code: LEAVE_WORKFLOW, entityType: 'hr.leave', entityId: r.id, subjectUnitId: emp.unit_id,
+    payload: { leave_type: input.leaveType, days: n, employee: `${emp.first_name} ${emp.last_name}` } });
+  return { ...r, workflowInstanceId: inst.id };
+}
+
+onWorkflowComplete('hr.leave', async (tx, inst) => {
+  const approved = inst.status === 'approved';
+  await tx.query(`UPDATE hr.leave_requests SET status = $2 WHERE id = $1 AND status = 'pending_approval'`, [inst.entity_id, approved ? 'approved' : 'rejected']);
+});
+
+export async function listLeave(tx: Tx, ctx: Ctx, companyId: string) {
+  await authorize(tx, ctx, 'hr.manage', { unitId: companyId });
+  return many(tx, `SELECT r.*, e.employee_no, e.first_name || ' ' || e.last_name AS employee_name FROM hr.leave_requests r
+                     JOIN org.employees e ON e.id = r.employee_id
+                    WHERE EXISTS (SELECT 1 FROM hr.contracts k WHERE k.employee_id = e.id AND k.company_id = $1)
+                    ORDER BY r.date_from DESC`, [companyId]);
+}
+
+// --- Payroll -------------------------------------------------------------------------
+
+function periodBounds(period: string) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new ValidationError('the payroll period is YYYY-MM');
+  const [y, m] = period.split('-').map(Number);
+  const from = `${period}-01`;
+  const to = iso(new Date(Date.UTC(y, m, 0)));
+  return { from, to, daysInPeriod: Number(to.slice(8)) };
+}
+
+/** Prepare (or recalculate) the draft payroll for a month. inputs add variable pay or deductions. */
+export async function runPayroll(tx: Tx, ctx: Ctx, input: { companyId: string; period: string; inputs?: { employeeId: string; additions?: number; deductions?: number }[] }) {
+  await authorize(tx, ctx, 'hr.payroll.run', { unitId: input.companyId });
+  await company(tx, input.companyId);
+  const { from, to, daysInPeriod } = periodBounds(input.period);
+  const existing = await one(tx, 'SELECT * FROM hr.payroll_runs WHERE company_id = $1 AND period = $2 FOR UPDATE', [input.companyId, input.period]);
+  if (existing && existing.status !== 'draft') throw new ConflictError(`payroll for ${input.period} is already ${existing.status}`);
+  if (existing) await tx.query('DELETE FROM hr.payroll_runs WHERE id = $1', [existing.id]);
+  const run = await one(tx, `INSERT INTO hr.payroll_runs (tenant_id, company_id, period, created_by) VALUES (app.tenant(), $1, $2, $3) RETURNING *`,
+    [input.companyId, input.period, ctx.userId]);
+
+  const contracts = await many(tx, `SELECT k.*, e.unit_id FROM hr.contracts k JOIN org.employees e ON e.id = k.employee_id
+                                     WHERE k.company_id = $1 AND k.start_date <= $3 AND (k.end_date IS NULL OR k.end_date >= $2)
+                                     ORDER BY e.employee_no`, [input.companyId, from, to]);
+  if (!contracts.length) throw new ValidationError('no employment contracts in this company for the period');
+  const extras = new Map((input.inputs ?? []).map((i) => [i.employeeId, i]));
+  let gross = 0, ded = 0, net = 0;
+  for (const k of contracts) {
+    const start = dstr(k.start_date)! > from ? dstr(k.start_date)! : from;
+    const end = k.end_date && dstr(k.end_date)! < to ? dstr(k.end_date)! : to;
+    const employed = days(start, end) + 1;
+    const unpaid = await one(tx, `SELECT coalesce(sum(greatest(0, least(date_to, $3::date) - greatest(date_from, $2::date) + 1)), 0)::float AS d
+                                    FROM hr.leave_requests WHERE employee_id = $1 AND leave_type = 'unpaid' AND status = 'approved'
+                                     AND date_from <= $3 AND date_to >= $2`, [k.employee_id, start, end]);
+    const paidDays = Math.max(0, employed - unpaid.d);
+    const share = paidDays / daysInPeriod;
+    const basic = round2(Number(k.basic) * share);
+    const allowances = round2((Number(k.housing) + Number(k.transport) + Number(k.other_allowances)) * share);
+    const x = extras.get(k.employee_id);
+    const additions = round2(x?.additions ?? 0), deductions = round2(x?.deductions ?? 0);
+    const g = round2(basic + allowances + additions);
+    const n = round2(g - deductions);
+    if (n < 0) throw new ValidationError(`deductions for employee ${k.employee_id} exceed the month's pay`);
+    const grat = gratuity(Number(k.basic), dstr(k.start_date)!, end);
+    await tx.query(`INSERT INTO hr.payslips (tenant_id, run_id, employee_id, contract_id, unit_id, days_in_period, paid_days, unpaid_leave_days,
+        basic, allowances, additions, deductions, gross, net, gratuity_balance)
+      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      [run.id, k.employee_id, k.id, k.unit_id, daysInPeriod, paidDays, unpaid.d, basic, allowances, additions, deductions, g, n, grat]);
+    gross += g; ded += deductions; net += n;
+  }
+  for (const id of extras.keys()) {
+    if (!contracts.some((k) => k.employee_id === id)) throw new ValidationError(`employee ${id} has no contract in this payroll`);
+  }
+  await tx.query('UPDATE hr.payroll_runs SET gross_total = $2, deductions_total = $3, net_total = $4 WHERE id = $1',
+    [run.id, round2(gross), round2(ded), round2(net)]);
+  return getPayroll(tx, ctx, run.id);
+}
+
+export async function getPayroll(tx: Tx, ctx: Ctx, runId: string) {
+  const run = await one(tx, 'SELECT * FROM hr.payroll_runs WHERE id = $1', [runId]);
+  if (!run) throw new NotFoundError('payroll run');
+  await authorize(tx, ctx, 'hr.payroll.run', { unitId: run.company_id });
+  const payslips = await many(tx, `SELECT s.*, e.employee_no, e.first_name || ' ' || e.last_name AS employee_name, u.name AS unit_name
+                                     FROM hr.payslips s JOIN org.employees e ON e.id = s.employee_id JOIN org.units u ON u.id = s.unit_id
+                                    WHERE s.run_id = $1 ORDER BY e.employee_no`, [runId]);
+  return { ...run, payslips };
+}
+
+export async function listPayrolls(tx: Tx, ctx: Ctx, companyId: string) {
+  await authorize(tx, ctx, 'hr.payroll.run', { unitId: companyId });
+  return many(tx, 'SELECT * FROM hr.payroll_runs WHERE company_id = $1 ORDER BY period DESC', [companyId]);
+}
+
+async function provisionBalance(tx: Tx, companyId: string): Promise<number> {
+  const r = await one(tx, `SELECT coalesce(sum(l.credit - l.debit), 0)::float AS b FROM fin.journal_lines l
+                             JOIN fin.journals j ON j.id = l.journal_id JOIN fin.accounts a ON a.id = l.account_id
+                            WHERE j.company_id = $1 AND j.status = 'posted' AND a.system_role = 'eosb_provision'`, [companyId]);
+  return round2(r.b);
+}
+
+/** Post the payroll and true up the gratuity provision to what the payslips show. */
+export async function postPayroll(tx: Tx, ctx: Ctx, runId: string, date?: string) {
+  const run = await one(tx, 'SELECT * FROM hr.payroll_runs WHERE id = $1 FOR UPDATE', [runId]);
+  if (!run) throw new NotFoundError('payroll run');
+  await authorize(tx, ctx, 'hr.payroll.run', { unitId: run.company_id, attrs: { amount: Number(run.gross_total) } });
+  if (run.status !== 'draft') throw new ConflictError(`the payroll is already ${run.status}`);
+  const on = date ?? periodBounds(run.period).to;
+  const byUnit = await many(tx, `SELECT unit_id, sum(gross)::float AS gross FROM hr.payslips WHERE run_id = $1 GROUP BY unit_id`, [runId]);
+  const lines: PostingLine[] = byUnit.filter((u) => u.gross > 0).map((u) => ({ account: 'role:salaries', debit: round2(u.gross), unitId: u.unit_id, description: `Payroll ${run.period}` }));
+  lines.push({ account: 'role:salaries_payable', credit: Number(run.net_total), description: `Net pay ${run.period}` });
+  if (Number(run.deductions_total) > 0) lines.push({ account: 'role:employee_advances', credit: Number(run.deductions_total), description: 'Recovered from salaries' });
+  const j = await post(tx, ctx, { companyId: run.company_id, type: 'payroll', date: on, memo: `Payroll ${run.period}`, source: { type: 'hr.payroll', id: runId }, lines });
+
+  // Gratuity: the provision equals what everyone on this payroll has accrued (a leaver's to the last day).
+  // Leavers are paid from the provision with paySettlement, before they drop off the next payroll.
+  const target = await one(tx, `SELECT coalesce(sum(gratuity_balance), 0)::float AS t FROM hr.payslips WHERE run_id = $1`, [runId]);
+  const change = round2(target.t - await provisionBalance(tx, run.company_id));
+  let gj = null;
+  if (change !== 0) {
+    gj = await post(tx, ctx, { companyId: run.company_id, type: 'gratuity', date: on, memo: `End-of-service provision ${run.period}`,
+      source: { type: 'hr.gratuity', id: runId },
+      lines: change > 0
+        ? [{ account: 'role:eosb_expense', debit: change }, { account: 'role:eosb_provision', credit: change }]
+        : [{ account: 'role:eosb_provision', debit: -change }, { account: 'role:eosb_expense', credit: -change }] });
+  }
+  await tx.query(`UPDATE hr.payroll_runs SET status = 'posted', journal_id = $2, gratuity_journal_id = $3, gratuity_change = $4 WHERE id = $1`,
+    [runId, j.id, gj?.id ?? null, change]);
+  return getPayroll(tx, ctx, runId);
+}
+
+/** Final settlement for a leaver: the end-of-service gratuity is paid out of the 2500 provision. */
+export async function paySettlement(tx: Tx, ctx: Ctx, contractId: string, input: { date: string; bankAccount?: string }) {
+  const k = await one(tx, `SELECT k.*, e.employee_no, e.first_name || ' ' || e.last_name AS name FROM hr.contracts k
+                             JOIN org.employees e ON e.id = k.employee_id WHERE k.id = $1`, [contractId]);
+  if (!k) throw new NotFoundError('contract');
+  await authorize(tx, ctx, 'hr.payroll.run', { unitId: k.company_id });
+  if (k.status !== 'ended') throw new ConflictError('end the contract first');
+  if (await one(tx, `SELECT 1 FROM fin.journals WHERE source_type = 'hr.settlement' AND source_id = $1 AND status = 'posted'`, [contractId])) {
+    throw new ConflictError('the settlement is already paid');
+  }
+  const amount = gratuity(Number(k.basic), dstr(k.start_date)!, dstr(k.end_date)!);
+  if (amount === 0) return { amount: 0, journalId: null, note: 'no gratuity is due for less than one year of service' };
+  const bank = await resolveAccount(tx, k.company_id, input.bankAccount ?? 'role:bank');
+  const j = await post(tx, ctx, { companyId: k.company_id, type: 'payroll_payment', date: input.date,
+    memo: `End-of-service gratuity ${k.employee_no} ${k.name}`, source: { type: 'hr.settlement', id: contractId },
+    lines: [{ account: 'role:eosb_provision', debit: amount }, { account: bank.id, credit: amount }] });
+  return { amount, journalId: j.id };
+}
+
+/** Pay net salaries from a bank account and produce the WPS salary information file. */
+export async function payPayroll(tx: Tx, ctx: Ctx, runId: string, input: { date: string; bankAccount?: string; employerId: string; employerBankCode: string }) {
+  const run = await one(tx, 'SELECT * FROM hr.payroll_runs WHERE id = $1 FOR UPDATE', [runId]);
+  if (!run) throw new NotFoundError('payroll run');
+  await authorize(tx, ctx, 'hr.payroll.run', { unitId: run.company_id, attrs: { amount: Number(run.net_total) } });
+  if (run.status !== 'posted') throw new ConflictError(run.status === 'paid' ? 'the payroll is already paid' : 'post the payroll first');
+  const bank = await resolveAccount(tx, run.company_id, input.bankAccount ?? 'role:bank');
+  const sif = await wpsFile(tx, runId, input.employerId, input.employerBankCode, new Date());
+  const j = await post(tx, ctx, { companyId: run.company_id, type: 'payroll_payment', date: input.date, memo: `Salaries paid ${run.period} (WPS)`,
+    source: { type: 'hr.payroll', id: runId },
+    lines: [{ account: 'role:salaries_payable', debit: Number(run.net_total) }, { account: bank.id, credit: Number(run.net_total) }] });
+  await tx.query(`UPDATE hr.payroll_runs SET status = 'paid', payment_journal_id = $2 WHERE id = $1`, [runId, j.id]);
+  return { journalId: j.id, ...sif };
+}
+
+/**
+ * UAE WPS salary information file: one EDR record per employee and an SCR control record.
+ * EDR, person id (14), agent routing code (9), IBAN, pay start, pay end, days, fixed pay, variable pay, days on leave
+ * SCR, employer id (13), bank code (9), file date, file time (HHMM), salary month (MMYYYY), records, total, AED, reference
+ */
+export async function wpsFile(tx: Tx, runId: string, employerId: string, employerBankCode: string, now: Date) {
+  if (!/^\d{13}$/.test(employerId)) throw new ValidationError('the MOHRE employer (establishment) id has 13 digits');
+  if (!/^\d{9}$/.test(employerBankCode)) throw new ValidationError('the employer bank routing code has 9 digits');
+  const run = await one(tx, 'SELECT * FROM hr.payroll_runs WHERE id = $1', [runId]);
+  const { from, to } = periodBounds(run.period);
+  const slips = await many(tx, `SELECT s.*, k.wps_person_id, k.bank_routing_code, k.iban, e.employee_no FROM hr.payslips s
+                                  JOIN hr.contracts k ON k.id = s.contract_id JOIN org.employees e ON e.id = s.employee_id
+                                 WHERE s.run_id = $1 AND s.net > 0 ORDER BY e.employee_no`, [runId]);
+  const missing = slips.filter((s) => !s.wps_person_id || !s.bank_routing_code || !s.iban).map((s) => s.employee_no);
+  if (missing.length) throw new ValidationError(`WPS details (person id, routing code, IBAN) are missing for ${missing.join(', ')}`);
+  const m2 = (n: number) => n.toFixed(2);
+  let total = 0;
+  const edr = slips.map((s) => {
+    const net = Number(s.net), variable = Math.min(Number(s.additions), net), fixed = round2(net - variable);
+    total += net;
+    return ['EDR', s.wps_person_id, s.bank_routing_code, s.iban, from, to, Math.round(Number(s.paid_days)), m2(fixed), m2(variable), Math.round(Number(s.unpaid_leave_days))].join(',');
+  });
+  const stamp = iso(now);
+  const hhmm = now.toISOString().slice(11, 16).replace(':', '');
+  const scr = ['SCR', employerId, employerBankCode, stamp, hhmm, run.period.slice(5) + run.period.slice(0, 4), edr.length, m2(round2(total)), 'AED', `PAYROLL-${run.period}`].join(',');
+  const fileName = `${employerId}${now.toISOString().replace(/[-:T]/g, '').slice(2, 14)}.SIF`;
+  return { fileName, content: [...edr, scr].join('\r\n') + '\r\n', records: edr.length, total: round2(total) };
+}

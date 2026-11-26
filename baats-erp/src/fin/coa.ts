@@ -42,6 +42,7 @@ export const UAE_CHART: AccountTemplate[] = [
   G('2', 'Liabilities', 'liability'),
   G('21', 'Current Liabilities', 'liability', '2'),
   L('2000', 'Accounts Payable (suppliers control)', 'liability', '21', { role: 'payable', control: 'payable', manual: false }),
+  L('2010', 'Goods Received Not Invoiced (GRNI)', 'liability', '21', { role: 'grni', manual: false }),
   L('2050', 'Post-Dated Cheques Issued (PDC)', 'liability', '21', { role: 'pdc_issued' }),
   L('2100', 'Output VAT Payable', 'liability', '21', { role: 'vat_output', manual: false }),
   L('2105', 'Output VAT – Declared in a Later Return', 'liability', '21', { role: 'vat_output_deferred', manual: false }),

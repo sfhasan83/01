@@ -73,6 +73,22 @@ export async function setupCompany(tx: Tx, ctx: Ctx, input: CompanySetup) {
   return company;
 }
 
+/**
+ * Like BAATS Accounting's ensureAcc(): an account a newer module needs is added to
+ * books created before that module existed, from the same chart template.
+ */
+export async function ensureRoleAccount(tx: Tx, companyId: string, role: string): Promise<string> {
+  const found = await one(tx, 'SELECT id FROM fin.accounts WHERE company_id = $1 AND system_role = $2', [companyId, role]);
+  if (found) return found.id;
+  const t = UAE_CHART.find((a) => a.role === role);
+  if (!t) throw new ValidationError(`no chart template for ${role}`);
+  const parent = t.parent ? await one(tx, 'SELECT id FROM fin.accounts WHERE company_id = $1 AND code = $2', [companyId, t.parent]) : null;
+  const row = await one(tx, `INSERT INTO fin.accounts (tenant_id, company_id, code, name, type, parent_id, is_group, control, system_role, allow_manual)
+    VALUES (app.tenant(), $1, $2, $3, $4, $5, false, $6, $7, $8) RETURNING id`,
+    [companyId, t.code, t.name, t.type, parent?.id ?? null, t.control ?? null, role, t.manual ?? true]);
+  return row.id;
+}
+
 export async function listAccounts(tx: Tx, ctx: Ctx, companyId: string) {
   await authorize(tx, ctx, 'fin.report.read', { unitId: companyId });
   return many(tx, `SELECT a.id, a.code, a.name, a.type, p.code AS parent_code, a.is_group, a.control, a.system_role, a.allow_manual, a.status

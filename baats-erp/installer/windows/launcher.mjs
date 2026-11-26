@@ -143,17 +143,32 @@ async function main() {
     await c.connect();
     try {
       await c.query(`CREATE TABLE IF NOT EXISTS public.schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`);
+      let appliedNow = false;
       const done = new Set((await c.query('SELECT name FROM public.schema_migrations')).rows.map((x) => x.name));
       const dir = join(APP_DIR, 'db', 'migrations');
       for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) {
         if (done.has(f)) continue;
         say(`Preparing database: ${f}`);
+        appliedNow = true;
         await c.query('BEGIN');
         try {
           await c.query(readFileSync(join(dir, f), 'utf8'));
           await c.query('INSERT INTO public.schema_migrations (name) VALUES ($1)', [f]);
           await c.query('COMMIT');
         } catch (err) { await c.query('ROLLBACK'); throw new Error(`database update ${f} failed: ${err.message}`); }
+      }
+      if (appliedNow) {
+        // Companies created by an older version: give their administrator role the new permissions.
+        const tenants = (await c.query(`SELECT DISTINCT tenant_id FROM iam.roles WHERE code = 'TENANT_ADMIN'`)).rows;
+        for (const { tenant_id: tid } of tenants) {
+          await c.query('BEGIN');
+          await c.query(`SELECT set_config('app.tenant_id', $1, true), set_config('app.user_id', '', true)`, [tid]);
+          await c.query(`INSERT INTO iam.role_permissions (tenant_id, role_id, permission_code)
+            SELECT r.tenant_id, r.id, p.code FROM iam.roles r CROSS JOIN ref.permissions p
+             WHERE r.code = 'TENANT_ADMIN' AND r.tenant_id = $1
+               AND NOT EXISTS (SELECT 1 FROM iam.role_permissions x WHERE x.role_id = r.id AND x.permission_code = p.code)`, [tid]);
+          await c.query('COMMIT');
+        }
       }
       await c.query(`ALTER ROLE baats_app LOGIN PASSWORD ${c.escapeLiteral(cfg.appDbPassword)}`);
     } finally { await c.end(); }

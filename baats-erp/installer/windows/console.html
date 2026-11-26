@@ -111,7 +111,7 @@ const pages = {
   async overview() {
     const me = await api('GET', '/v1/me');
     return `<div class="card"><h3>Welcome, ${esc(me.user.display_name)}</h3><p class="muted">Signed in to <b>${esc(S.tenant)}</b> as ${esc(me.user.email)}. MFA: ${me.user.mfa_enabled ? 'on' : 'off'}.</p>
-      <p>This console lets you try what BAATS can do today. Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
+      <p>This console lets you try what BAATS can do today. Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
       <div class="card"><h3>Your approvals waiting (${me.inbox.length})</h3>${table(me.inbox)}</div>
       <div class="card"><h3>Your permissions (${me.permissions.length})</h3>${me.permissions.map((p) => `<span class="pill">${esc(typeof p === 'string' ? p : p.permission || JSON.stringify(p))}</span>`).join('')}</div>`;
   },
@@ -151,7 +151,7 @@ const pages = {
     return `<div class="card"><h3>Customers and suppliers</h3><p class="muted">New records start as drafts. "Submit" sends one for approval, and someone other than you must approve it. So before submitting, add a second user under Users and roles and give them the Tenant administrator role.</p>
       ${parties.length ? '<div class="tbl"><table><tr><th>code</th><th>name</th><th>customer</th><th>supplier</th><th>country</th><th>credit limit</th><th>status</th><th></th></tr>' + parties.map((p) => `<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${p.is_customer ? 'yes' : ''}</td><td>${p.is_supplier ? 'yes' : ''}</td><td>${esc(p.country_code)}</td><td>${esc(p.credit_limit)}</td><td>${esc(p.status)}${p.blocked ? ' (blocked)' : ''}</td><td>${p.status === 'draft' ? `<button class="btn sec" data-submit="${p.id}">Submit</button>` : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">Nothing here yet.</div>'}
       <form id="f-party"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${check('isCustomer', 'Customer', true)}${check('isSupplier', 'Supplier')}
-      ${field('countryCode', 'Country', 'required value="AE" maxlength="2"')}${field('currencyCode', 'Currency', 'maxlength="3"')}${field('taxRegistrationNo', 'Tax reg. no.')}${field('creditLimit', 'Credit limit', 'type="number" min="0"')}${pick('ownerUnitId', 'Owning unit', unitOpts(us))}
+      ${field('countryCode', 'Country', 'required value="AE" maxlength="2"')}${field('currencyCode', 'Currency', 'maxlength="3"')}${field('taxRegistrationNo', 'Tax reg. no.')}${field('creditLimit', 'Credit limit', 'type="number" min="0"')}${pick('ownerUnitId', 'Owning unit', unitOpts(us))}${field('street', 'Street (for e-invoices)')}${field('city', 'City')}${field('emirate', 'Emirate code (DXB, AUH...)', 'maxlength="3"')}
       </div><div class="row"><button class="btn">Add customer / supplier</button></div></form></div>
     <div class="card"><h3>Items</h3>${table(items, ['code', 'name', 'item_type', 'base_uom', 'barcode', 'status'].filter((c) => !items[0] || c in items[0]))}
       <form id="f-item"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${pick('itemType', 'Type', [['stock', 'Stock'], ['service', 'Service'], ['non_stock', 'Non-stock'], ['asset', 'Asset']])}${uoms.length ? pick('baseUom', 'Unit of measure', uoms.map((u) => [u.code, `${u.code} - ${u.name}`])) : '<label>Unit of measure<input disabled placeholder="Add one below first"></label>'}${field('barcode', 'Barcode')}</div><div class="row"><button class="btn">Add item</button></div></form></div>
@@ -175,7 +175,7 @@ const pages = {
       <label style="margin-top:10px">JSON body<textarea name="body"></textarea></label><div class="row"><button class="btn">Send</button></div></form><pre id="api-out"></pre></div>`;
   },
 };
-const MENU = [['overview', 'Overview'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audit', 'Audit trail'], ['apitester', 'API tester']];
+const MENU = [['overview', 'Overview'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audit', 'Audit trail'], ['apitester', 'API tester']];
 let current = 'overview';
 const after = {};
 
@@ -195,7 +195,11 @@ async function show(page) {
   bindForm('f-perm', async (b) => { await api('PUT', `/v1/iam/roles/${b.roleId}/permissions/${encodeURIComponent(b.perm)}`, {}); ok('Permission granted'); });
   bindForm('f-assign', async (b) => { await api('POST', '/v1/iam/assignments', b); ok('Role assigned'); });
   bindForm('f-check', async (b) => { const r = await api('POST', '/v1/iam/check', b); const o = $('#check-out'); o.style.display = 'block'; o.textContent = JSON.stringify(r, null, 2); });
-  bindForm('f-party', async (b) => { if (b.creditLimit) b.creditLimit = Number(b.creditLimit); await api('POST', '/v1/mdm/parties', b); ok('Saved as draft'); });
+  bindForm('f-party', async (b) => {
+    if (b.creditLimit) b.creditLimit = Number(b.creditLimit);
+    const attributes = {}; for (const k of ['street', 'city', 'emirate']) if (b[k]) { attributes[k] = k === 'emirate' ? b[k].toUpperCase() : b[k]; delete b[k]; }
+    await api('POST', '/v1/mdm/parties', { ...b, attributes }); ok('Saved as draft');
+  });
   bindForm('f-item', async (b) => { await api('POST', '/v1/mdm/items', b); ok('Item added'); });
   bindForm('f-uom', async (b) => { await api('POST', '/v1/mdm/uoms', b); ok('Unit of measure added'); });
   bindForm('f-api', async (b) => {
@@ -252,7 +256,7 @@ Object.assign(pages, {
     const types = await api('GET', '/v1/org/unit-types');
     const legal = new Set(types.filter((t) => t.is_legal_entity).map((t) => t.code));
     const candidates = us.filter((u) => legal.has(u.type) && !cs.find((c) => c.id === u.id));
-    return `<div class="card"><h3>Try finance in one click</h3><p class="muted">Loads a small demo: sets up books for your head company (if needed), adds a second user who can approve, a customer and a supplier, invoices, a receipt, an owner's capital journal, a warehouse, a purchase order through approval, receipt and bill, a lead and a sales order delivered and invoiced, two employment contracts and this month's payroll. Takes about 20 seconds.</p>
+    return `<div class="card"><h3>Try finance in one click</h3><p class="muted">Loads a small demo: sets up books for your head company (if needed), adds a second user who can approve, a customer and a supplier, invoices, a receipt, an owner's capital journal, a warehouse, a purchase order through approval, receipt and bill, a lead and a sales order delivered and invoiced, two employment contracts and this month's payroll, e-invoices, a reconciled bank statement and a depreciating asset. Takes about 30 seconds.</p>
       <div class="row"><button class="btn" id="demo">Load demo data</button><span id="demo-out" class="muted"></span></div></div>
     ${cs.length ? companyBar(cs) + `<div class="card"><h3>Chart of accounts: ${esc(company().name)}</h3>${table(company().accounts, ['code', 'name', 'type', 'parent_code', 'is_group', 'control'])}
       <form id="f-acct"><div class="grid">${field('code', 'New account code (3-10 digits)', 'required')}${field('name', 'Name', 'required')}${pick('parentCode', 'Under group', company().accounts.filter((a) => a.is_group).map((a) => [a.code, `${a.code} ${a.name}`]))}</div><div class="row"><button class="btn sec">Add account</button></div></form></div>` : ''}
@@ -620,6 +624,136 @@ async function loadOperationsDemo(step, co, asApprover, root) {
   if (run && run.status === 'draft') await api('POST', `/v1/hr/payroll/${run.id}/post`);
 }
 
+// ---------- Finance: e-invoicing, bank, fixed assets ----------
+Object.assign(pages, {
+  async einvoicing() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const rows = await api('GET', `/v1/fin/companies/${S.company}/einvoices`);
+    return companyBar(cs) + `<div class="card"><h3>Seller details for e-invoices</h3><p class="muted">PINT AE needs the company's address, emirate, trade licence and IBAN. These are checked before every e-invoice is issued.</p>
+      <form id="f-seller"><div class="grid">${field('street', 'Street')}${field('city', 'City')}${pick('emirate', 'Emirate', [['', '(choose)'], ['AUH', 'Abu Dhabi'], ['DXB', 'Dubai'], ['SHJ', 'Sharjah'], ['AJM', 'Ajman'], ['UAQ', 'Umm Al Quwain'], ['RAK', 'Ras Al Khaimah'], ['FUJ', 'Fujairah']])}
+      ${field('tradeLicenceNo', 'Trade licence no.')}${field('licenceAuthority', 'Licence authority')}${field('iban', 'IBAN (AE...)')}${field('taxRegistrationNo', 'TRN (15 digits)')}${field('email', 'Email')}${field('phone', 'Phone')}</div>
+      <div class="row"><button class="btn sec">Save details</button></div></form></div>
+    <div class="card"><h3>Sales documents</h3><p class="muted">"Check" lists anything that must be fixed (customer addresses are customer attributes street, city and emirate). "Issue" writes the UBL XML once and keeps it. Sending to the FTA goes through your accredited service provider (ASP); record its answer here.</p>
+      ${rows.length ? '<div class="tbl"><table><tr><th>no</th><th>kind</th><th>customer</th><th>date</th><th style="text-align:right">total</th><th>e-invoice</th><th></th></tr>' + rows.map((r) => `<tr><td>${esc(r.no)}</td><td>${esc(r.kind.replace('_', ' '))}</td><td>${esc(r.party_name)}</td><td>${d10(r.date)}</td><td style="text-align:right">${money(r.gross_total)} ${esc(r.currency)}</td><td>${esc(r.status || 'not issued')}${r.asp_reference ? ' · ' + esc(r.asp_reference) : ''}</td><td>${r.einvoice_id ? `${act('Download XML', 'ei-xml', r.einvoice_id, 1)} ${r.status !== 'accepted' ? act('Record ASP answer', 'ei-asp', r.einvoice_id, 1) : ''}` : `${act('Check', 'ei-check', r.invoice_id, 1)} ${act('Issue', 'ei-issue', r.invoice_id)}`}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No posted sales documents yet.</div>'}
+      <pre id="ei-out" style="display:none"></pre></div>`;
+  },
+  async bank() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const banks = company().accounts.filter((a) => ['1000', '1010'].includes(a.code) || (!a.is_group && a.code.startsWith('10')));
+    S.bankAcc = S.bankAcc && banks.find((b) => b.code === S.bankAcc) ? S.bankAcc : '1010';
+    const [rec, lines] = await Promise.all([api('GET', `/v1/fin/companies/${S.company}/bank-reconciliation?bankAccount=${S.bankAcc}&asOf=${today()}`),
+      api('GET', `/v1/fin/companies/${S.company}/bank-lines?bankAccount=${S.bankAcc}`)]);
+    const expense = leafAccounts(['expense', 'revenue', 'liability', 'equity', 'asset']).filter((a) => !a.control && a.code !== S.bankAcc);
+    return companyBar(cs) + `<div class="card"><label>Bank account<select id="bank-pick">${banks.map((b) => `<option value="${b.code}" ${b.code === S.bankAcc ? 'selected' : ''}>${esc(b.code)} ${esc(b.name)}</option>`).join('')}</select></label></div>
+    <div class="card"><h3>Reconciliation as of ${esc(rec.asOf)}</h3>
+      <p>Ledger balance <b>${money(rec.ledgerBalance)}</b> · plus items only on the statement <b>${money(rec.notYetInLedger)}</b> · less items only in the ledger <b>${money(rec.outstandingInLedger)}</b> · = <b>${money(rec.adjustedBalance)}</b>${rec.statementClosingBalance !== null ? ` · bank's closing balance <b>${money(rec.statementClosingBalance)}</b> ${rec.statementClosingBalance === rec.adjustedBalance ? '<span class="pill">reconciled</span>' : '<span class="pill" style="color:var(--bad)">difference ' + money(rec.adjustedBalance - rec.statementClosingBalance) + '</span>'}` : ''}</p>
+      <h4>On the statement, not in the ledger</h4>${rec.onStatementOnly.length ? '<div class="tbl"><table><tr><th>date</th><th>description</th><th style="text-align:right">amount</th><th>post to</th><th></th></tr>' + rec.onStatementOnly.map((l) => `<tr><td>${d10(l.date)}</td><td>${esc(l.description)}</td><td style="text-align:right">${money(l.amount)}</td><td><select data-acc="${l.id}">${accountOpts(expense).map(([v, t]) => `<option value="${v}" ${v === (l.amount < 0 ? '5900' : '2900') ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></td><td>${act('Post and match', 'bl-post', l.id)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">None.</div>'}
+      <h4>In the ledger, not yet on a statement</h4>${report(rec.inLedgerOnly.map((l) => ({ ...l, date: d10(l.date) })), [['date', 'Date'], ['no', 'Journal'], ['memo', 'Memo'], ['amount', 'Amount', 1]])}</div>
+    <div class="card"><h3>Import a statement (CSV)</h3><p class="muted">The first row must name the columns: Date, Description and either Amount or Debit and Credit (Reference optional). Dates like 05/02/2026 are read day first. Lines already imported are skipped, and lines that match the ledger by amount within 5 days are matched straight away.</p>
+      <form id="f-stmt"><div class="grid"><label>CSV file<input type="file" name="file" accept=".csv,text/csv" required></label>${field('closingBalance', "Bank's closing balance (optional)", 'type="number" step="any"')}</div><div class="row"><button class="btn">Import</button></div></form></div>
+    <div class="card"><h3>Statement lines</h3>${lines.length ? '<div class="tbl"><table><tr><th>date</th><th>description</th><th>reference</th><th style="text-align:right">amount</th><th>status</th><th>journal</th><th></th></tr>' + lines.map((l) => `<tr><td>${d10(l.date)}</td><td>${esc(l.description)}</td><td>${esc(l.reference)}</td><td style="text-align:right">${money(l.amount)}</td><td>${esc(l.status)}</td><td>${esc(l.matched_journal)}</td><td>${l.status === 'matched' ? act('Unmatch', 'bl-unmatch', l.id, 1) : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No statements imported yet.</div>'}</div>`;
+  },
+  async assets() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [list, us, bills] = await Promise.all([api('GET', `/v1/fin/companies/${S.company}/assets`), units(), api('GET', `/v1/fin/companies/${S.company}/invoices?kind=purchase_invoice&status=posted`)]);
+    const ym = today().slice(0, 7);
+    return companyBar(cs) + `<div class="card"><h3>Fixed asset register</h3>${report(list.map((a) => ({ ...a, acquisition_date: d10(a.acquisition_date) })), [['code', 'Code'], ['name', 'Name'], ['category', 'Category'], ['acquisition_date', 'Acquired'], ['useful_life_months', 'Life (months)'], ['status', 'Status'], ['cost', 'Cost', 1], ['accumulated', 'Depreciation', 1], ['net_book_value', 'Net book value', 1]])}
+      ${list.filter((a) => a.status === 'active').length ? `<div class="row">${list.filter((a) => a.status === 'active').map((a) => act(`Dispose ${esc(a.code)}`, 'fa-dispose', a.id, 1)).join(' ')}</div>` : ''}</div>
+    <div class="card"><h3>Run monthly depreciation</h3><p class="muted">Straight line, (cost - residual) / useful life, charged to 5800 by cost center against 1590. Run the months in order; a month is never charged twice.</p>
+      <form id="f-dep"><div class="grid">${field('period', 'Month', `type="month" required value="${ym}"`)}</div><div class="row"><button class="btn">Run depreciation</button></div></form></div>
+    <div class="card"><h3>Register an asset</h3><p class="muted">Either pick the purchase bill line it was bought on (charged to account 1500), or enter it as an opening balance with the depreciation charged before these books.</p>
+      <form id="f-fa"><div class="grid">${field('code', 'Asset code', 'required')}${field('name', 'Name', 'required')}${field('category', 'Category', 'required value="Equipment"')}${pick('unitId', 'Cost center', [['', '(none)'], ...unitOpts(us)])}
+        ${field('acquisitionDate', 'Acquired on', `type="date" required value="${today()}"`)}${field('usefulLifeMonths', 'Useful life (months)', 'type="number" required min="1" value="36"')}${field('residualValue', 'Residual value', 'type="number" step="any" min="0"')}
+        <label>Bought on bill<select name="billId"><option value="">(opening balance instead)</option>${bills.map((b) => `<option value="${b.id}">${esc(b.no)} ${esc(b.party_name)}</option>`).join('')}</select></label>
+        ${field('cost', 'Cost (opening balance)', 'type="number" step="any" min="0"')}${field('openingAccumulated', 'Depreciation to date (opening balance)', 'type="number" step="any" min="0"')}</div>
+        <div class="row"><button class="btn sec">Register</button></div></form></div>`;
+  },
+});
+
+Object.assign(after, {
+  async einvoicing(m, ok) {
+    bindCompanyPick();
+    bindForm('f-seller', async (b) => { await api('PATCH', `/v1/fin/companies/${S.company}`, b); ok('Details saved'); });
+    const out = $('#ei-out');
+    const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
+    on('ei-check', async (id) => { const r = await api('GET', `/v1/fin/invoices/${id}/einvoice-check`); out.style.display = 'block'; out.textContent = r.ready ? 'Ready to issue. Preview:\n\n' + r.xml : 'Fix these first:\n' + r.problems.map((p) => `- ${p.message} [${p.rule}]`).join('\n'); });
+    on('ei-issue', async (id) => { await api('POST', `/v1/fin/invoices/${id}/einvoice`); ok('E-invoice issued'); });
+    on('ei-xml', async (id) => { const r = await fetch(`/v1/fin/einvoices/${id}/xml`, { headers: { authorization: 'Bearer ' + S.token } }); if (!r.ok) throw new Error('Could not download'); download(`einvoice-${id}.xml`, await r.text()); });
+    on('ei-asp', async (id) => {
+      const status = prompt('What did the service provider say? Type submitted, accepted or rejected', 'accepted'); if (!status) return;
+      const reference = prompt('Their reference (optional)') || undefined;
+      await api('POST', `/v1/fin/einvoices/${id}/asp-response`, { status: status.trim().toLowerCase(), ...(reference ? { reference } : {}) }); ok('Recorded');
+    });
+  },
+  async bank(m, ok) {
+    bindCompanyPick();
+    const bp = $('#bank-pick'); if (bp) bp.onchange = () => { S.bankAcc = bp.value; show('bank'); };
+    const f = $('#f-stmt');
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const file = f.file.files[0]; const csv = await file.text();
+        const body = { bankAccount: S.bankAcc, csv, fileName: file.name, ...(f.closingBalance.value ? { closingBalance: Number(f.closingBalance.value) } : {}) };
+        const r = await api('POST', `/v1/fin/companies/${S.company}/bank-statements`, body);
+        ok(`Imported ${r.added} lines (${r.skipped} already there), ${r.autoMatched} matched automatically`);
+      } catch (err) { toast(err.message, false); }
+    });
+    const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
+    on('bl-post', async (id) => { const acc = m.querySelector(`[data-acc="${id}"]`).value; const r = await api('POST', `/v1/fin/bank-lines/${id}/post`, { account: acc }); ok(`Posted ${r.no} and matched`); });
+    on('bl-unmatch', async (id) => { await api('POST', `/v1/fin/bank-lines/${id}/unmatch`); ok('Unmatched'); });
+  },
+  async assets(m, ok) {
+    bindCompanyPick();
+    bindForm('f-dep', async (b) => { const r = await api('POST', `/v1/fin/companies/${S.company}/depreciation`, { period: b.period }); ok(r.total ? `Depreciation ${r.period}: ${money(r.total)} on ${r.assets} assets (${r.no})` : `Nothing to depreciate for ${r.period}`); });
+    bindForm('f-fa', async (b) => {
+      const body = { code: b.code, name: b.name, category: b.category, acquisitionDate: b.acquisitionDate, usefulLifeMonths: Number(b.usefulLifeMonths) };
+      if (b.unitId) body.unitId = b.unitId; if (b.residualValue) body.residualValue = Number(b.residualValue);
+      if (b.billId) {
+        const inv = await api('GET', `/v1/fin/invoices/${b.billId}`);
+        const line = inv.lines.find((l) => l.account_code === '1500');
+        if (!line) throw new Error('That bill has no line charged to 1500 Fixed assets. Post the purchase to account 1500 first.');
+        body.invoiceLineId = line.id;
+      } else { body.cost = Number(b.cost); if (b.openingAccumulated) body.openingAccumulated = Number(b.openingAccumulated); }
+      await api('POST', `/v1/fin/companies/${S.company}/assets`, body); ok('Asset registered');
+    });
+    m.querySelectorAll('[data-fa-dispose]').forEach((el) => el.onclick = async () => {
+      try {
+        const p = prompt('Sale proceeds (0 if scrapped)', '0'); if (p === null) return;
+        const r = await api('POST', `/v1/fin/assets/${el.dataset.faDispose}/dispose`, { date: today(), proceeds: Number(p), bankAccount: '1010' });
+        ok(`Disposed. ${r.gain >= 0 ? 'Gain' : 'Loss'} ${money(Math.abs(r.gain))}`);
+      } catch (e) { toast(e.message, false); }
+    });
+  },
+});
+
+async function loadFinanceExtrasDemo(step, co) {
+  step('E-invoicing: seller details and the first e-invoice...');
+  await api('PATCH', `/v1/fin/companies/${co}`, { street: 'Sheikh Zayed Road, Tower 1', city: 'Dubai', emirate: 'DXB', tradeLicenceNo: 'DED-123456', licenceAuthority: 'Dubai DET', iban: 'AE070331234567890123456' });
+  const parties = await api('GET', '/v1/mdm/parties');
+  const cust = parties.find((p) => p.code === 'DEMO-C1');
+  await api('PATCH', `/v1/mdm/parties/${cust.id}`, { attributes: { street: 'Al Wasl Road 12', city: 'Dubai', emirate: 'DXB', email: 'accounts@gulfretail.example' } });
+  const docs = await api('GET', `/v1/fin/companies/${co}/einvoices`);
+  for (const d of docs.filter((x) => !x.einvoice_id)) {
+    const chk = await api('GET', `/v1/fin/invoices/${d.invoice_id}/einvoice-check`);
+    if (chk.ready) await api('POST', `/v1/fin/invoices/${d.invoice_id}/einvoice`);
+  }
+  step('Bank: importing a statement and reconciling...');
+  const rec = await api('GET', `/v1/fin/companies/${co}/bank-reconciliation?bankAccount=1010&asOf=${today()}`);
+  const dmy = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+  const rows = rec.inLedgerOnly.map((l) => `${dmy(d10(l.date))},"${String(l.memo).replace(/"/g, "'")}",${l.amount.toFixed(2)},`);
+  rows.push(`${dmy(today())},Monthly account fee,-26.25,FEE`);
+  if (rows.length > 1) await api('POST', `/v1/fin/companies/${co}/bank-statements`, { bankAccount: '1010', fileName: 'demo-statement.csv', csv: 'Date,Description,Amount,Reference\n' + rows.join('\n') + '\n' });
+  const after = await api('GET', `/v1/fin/companies/${co}/bank-reconciliation?bankAccount=1010&asOf=${today()}`);
+  for (const l of after.onStatementOnly) if (/fee/i.test(l.description)) await api('POST', `/v1/fin/bank-lines/${l.id}/post`, { account: '5900', memo: 'Bank charges' });
+  step('Fixed assets: registering a vehicle and running depreciation...');
+  const list = await api('GET', `/v1/fin/companies/${co}/assets`);
+  if (!list.find((a) => a.code === 'DEMO-VAN')) {
+    await api('POST', `/v1/fin/companies/${co}/assets`, { code: 'DEMO-VAN', name: 'Delivery van', category: 'Vehicles', acquisitionDate: yearStart(), usefulLifeMonths: 60, cost: 90000, residualValue: 15000 });
+    const now = new Date();
+    for (let mth = 1; mth <= now.getMonth() + 1; mth++) await api('POST', `/v1/fin/companies/${co}/depreciation`, { period: `${now.getFullYear()}-${String(mth).padStart(2, '0')}` }).catch(() => {});
+  }
+}
+
 // Demo: everything through the public API, as the signed-in admin plus a second approver user.
 async function loadDemo(step) {
   const me = await api('GET', '/v1/me');
@@ -648,13 +782,13 @@ async function loadDemo(step) {
   };
   step('Adding a customer and a supplier...');
   const existing = await api('GET', '/v1/mdm/parties');
-  const mk = async (code, name, isCustomer, isSupplier) => {
+  const mk = async (code, name, isCustomer, isSupplier, extra = {}) => {
     let p = existing.find((x) => x.code === code);
-    if (!p) p = (await api('POST', '/v1/mdm/parties', { code, name, isCustomer, isSupplier, countryCode: 'AE', currencyCode: 'AED', ownerUnitId: co })).party;
+    if (!p) p = (await api('POST', '/v1/mdm/parties', { code, name, isCustomer, isSupplier, countryCode: 'AE', currencyCode: 'AED', ownerUnitId: co, ...extra })).party;
     if (p.status === 'draft') await api('POST', `/v1/mdm/parties/${p.id}/submit`);
     return p;
   };
-  const cust = await mk('DEMO-C1', 'Gulf Retail LLC', true, false);
+  const cust = await mk('DEMO-C1', 'Gulf Retail LLC', true, false, { taxRegistrationNo: '100000000000103' });
   const supp = await mk('DEMO-S1', 'Dubai Office Supplies', false, true);
   step('Approving them as the second user...');
   await asApprover(async () => { for (const t of await api('GET', '/v1/wf/inbox')) if (t.entity_type === 'mdm.party') await api('POST', `/v1/wf/tasks/${t.task_id}/approve`, { comment: 'Demo approval' }); });
@@ -671,6 +805,7 @@ async function loadDemo(step) {
   await api('POST', `/v1/fin/companies/${co}/journals`, { date: d, memo: "Owner's capital introduced", lines: [{ account: '1010', debit: 50000 }, { account: '3000', credit: 50000 }] });
   await asApprover(async () => { for (const t of await api('GET', '/v1/wf/inbox')) if (t.entity_type === 'fin.journal') await api('POST', `/v1/wf/tasks/${t.task_id}/approve`, { comment: 'Demo approval' }); });
   await loadOperationsDemo(step, co, asApprover, root);
+  await loadFinanceExtrasDemo(step, co);
   step(`Done. Second user: ${appEmail} / ${pw}`);
   toast(`Demo loaded. The approver can sign in as ${appEmail} with password ${pw}`);
 }

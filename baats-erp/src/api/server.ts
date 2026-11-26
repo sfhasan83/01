@@ -159,7 +159,7 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
       taxRegistrationNo: str, creditLimit: { type: 'number', minimum: 0 }, ownerUnitId: uuid, attributes: { type: 'object' },
     }),
   }, async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => mdm.createParty(tx, ctx, req.body as B)); });
-  app.patch<{ Params: P }>('/v1/mdm/parties/:id', { schema: obj([], { name: str, creditLimit: { type: 'number', minimum: 0 }, taxRegistrationNo: str }) },
+  app.patch<{ Params: P }>('/v1/mdm/parties/:id', { schema: obj([], { name: str, creditLimit: { type: 'number', minimum: 0 }, taxRegistrationNo: str, attributes: { type: 'object' } }) },
     async (req) => run(req, (tx, ctx) => mdm.updateParty(tx, ctx, req.params.id, req.body as B)));
   app.post<{ Params: P }>('/v1/mdm/parties/:id/submit', async (req) => run(req, (tx, ctx) => mdm.submitParty(tx, ctx, req.params.id)));
   app.post<{ Params: P }>('/v1/mdm/parties/:id/block', { schema: obj(['blocked'], { blocked: { type: 'boolean' } }) },

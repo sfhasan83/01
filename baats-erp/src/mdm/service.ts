@@ -91,7 +91,7 @@ onWorkflowComplete('mdm.party', async (tx, inst) => {
   await tx.query('UPDATE mdm.parties SET status = $2 WHERE id = $1', [inst.entity_id, status]);
 });
 
-export async function updateParty(tx: Tx, ctx: Ctx, partyId: string, patch: { name?: string; creditLimit?: number; taxRegistrationNo?: string }) {
+export async function updateParty(tx: Tx, ctx: Ctx, partyId: string, patch: { name?: string; creditLimit?: number; taxRegistrationNo?: string; attributes?: Record<string, unknown> }) {
   const p = await one(tx, 'SELECT * FROM mdm.parties WHERE id = $1 FOR UPDATE', [partyId]);
   if (!p) throw new NotFoundError('party');
   await authorize(tx, ctx, 'mdm.party.manage', { unitId: p.owner_unit_id });
@@ -100,10 +100,11 @@ export async function updateParty(tx: Tx, ctx: Ctx, partyId: string, patch: { na
   const governed = patch.creditLimit !== undefined || patch.taxRegistrationNo !== undefined;
   const status = p.status === 'active' && governed ? 'draft' : p.status;
   return one(tx, `UPDATE mdm.parties SET name = coalesce($2, name), normalized_name = coalesce($3, normalized_name),
-                    credit_limit = coalesce($4, credit_limit), tax_registration_no = coalesce($5, tax_registration_no), status = $6
+                    credit_limit = coalesce($4, credit_limit), tax_registration_no = coalesce($5, tax_registration_no), status = $6,
+                    attributes = attributes || $7::jsonb
                    WHERE id = $1 RETURNING *`,
     [partyId, patch.name ?? null, patch.name ? normalizeName(patch.name) : null, patch.creditLimit ?? null,
-      patch.taxRegistrationNo ?? null, status]);
+      patch.taxRegistrationNo ?? null, status, JSON.stringify(patch.attributes ?? {})]);
 }
 
 export async function setPartyBlocked(tx: Tx, ctx: Ctx, partyId: string, blocked: boolean) {

@@ -49,8 +49,8 @@ In priority order. Each one reuses the posting API, so it is mostly business rul
 4. **Bank statement import and reconciliation** (`bankparse.js`).
 5. **Fixed assets and IFRS 16 leases** (1500/1590/5800, 1600/1690/2600/5810/5820).
 6. **Prepayments, accruals with auto-reversal, deferred revenue** (1250, 2200, 2300) and revenue recognised over time.
-7. **Payroll, WPS and end-of-service gratuity** (2210, 2500/5920): part of the HR and payroll module.
-8. **Inventory** (1300, 5050, 5060, 5070): part of the inventory module.
+7. ~~Payroll, WPS and end-of-service gratuity~~: done in `src/hr` (2210, 2500/5920, 1260). Gratuity uses BAATS `eosb()` exactly; the ERP trues up the provision monthly with payroll instead of every 31 December.
+8. ~~Inventory~~: done in `src/inv`, with procurement (`src/pur`, new account 2010 GRNI added to older books on first use, like `ensureAcc()`) and sales (`src/sal`, 5050 COGS).
 9. Budgets, locations as dimensions, excise tax, payment gateways, customer portal.
 10. **Data migration**: an importer that reads a BAATS book (`bk_rec` JSON documents) and replays it through the posting API, so existing customers move with full history.
 

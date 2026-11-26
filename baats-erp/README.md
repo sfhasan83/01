@@ -4,7 +4,7 @@
 
 BAATS Enterprise ERP is a multi-tenant enterprise business operating system: one platform where every department runs as an integrated module on shared engines for organization, identity, workflow, master data, audit and rules.
 
-This folder holds the **Phase 1 enterprise core**, the **Phase 2 finance engine** (built on BAATS Accounting, UAE edition), and the foundation documents for the full programme.
+This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (finance built on BAATS Accounting, UAE edition, plus inventory, procurement, sales and CRM, HR and payroll), a Windows trial installer, and the foundation documents for the full programme.
 
 ## Documents
 
@@ -30,6 +30,10 @@ This folder holds the **Phase 1 enterprise core**, the **Phase 2 finance engine*
 | Master data | Units of measure, items, customers and suppliers with duplicate detection and workflow-governed activation |
 | Audit | Database-captured before/after for every governed table, security events (logins, denials, MFA), append-only, SHA-256 hash chain per tenant with verification |
 | Finance (Phase 2) | Company books with the BAATS Accounting UAE chart of accounts; immutable, balanced, numbered journals; manual journals with maker-checker approval and limits; sales and purchase invoices, credit notes, reverse charge; receipts and payments with allocation, advances and realised FX; VAT 201 return and filing; corporate tax provision; trial balance, P&L, balance sheet, ledgers, statements, ageing; period and year-end close |
+| Inventory (Phase 2) | Warehouses, perpetual stock at moving average, opening stock, adjustments, transfers, item movement history, stock value reconciled to the 1300 Inventory account |
+| Procurement (Phase 2) | Purchase orders approved through the workflow engine with amount limits, goods receipts into stock against 2010 GRNI, supplier bills drafted from the order with three-way match |
+| Sales and CRM (Phase 2) | Leads, qualification, conversion to customers through master-data approval, opportunities and pipeline, activities; quotations, credit-limit-checked orders, deliveries at cost (5050 COGS), invoicing from orders |
+| HR and payroll (Phase 2) | Employment contracts with WPS details, leave with manager approval and annual leave accrual, monthly payroll pro-rated for joiners, leavers and unpaid leave, posting by cost center, UAE WPS salary file, end-of-service gratuity provision and final settlement (BAATS rule) |
 | API | REST `/v1` with schema validation for all of the above |
 
 ## Run it
@@ -73,6 +77,12 @@ src/workflow/     workflow and approval engine
 src/mdm/          master data
 src/audit/        audit queries and hash-chain verification
 src/fin/          accounting engine: chart of accounts, ledger, documents, tax, reports
+src/inv/          inventory
+src/pur/          procurement
+src/crm/          leads, opportunities, activities
+src/sal/          quotations, orders, deliveries, invoicing from orders
+src/hr/           contracts, leave, payroll, WPS, gratuity
+installer/windows Windows trial installer (NSIS), launcher and trial console
 src/api/          HTTP API
 test/             unit, integration (real PostgreSQL) and API tests
 ```

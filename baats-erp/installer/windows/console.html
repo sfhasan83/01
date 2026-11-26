@@ -111,7 +111,7 @@ const pages = {
   async overview() {
     const me = await api('GET', '/v1/me');
     return `<div class="card"><h3>Welcome, ${esc(me.user.display_name)}</h3><p class="muted">Signed in to <b>${esc(S.tenant)}</b> as ${esc(me.user.email)}. MFA: ${me.user.mfa_enabled ? 'on' : 'off'}.</p>
-      <p>This console lets you try what BAATS can do today. Phase 2 finance: books with the BAATS UAE chart of accounts, sales and purchase invoices, receipts and payments, journals with approval, the UAE VAT return and financial reports. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
+      <p>This console lets you try what BAATS can do today. Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
       <div class="card"><h3>Your approvals waiting (${me.inbox.length})</h3>${table(me.inbox)}</div>
       <div class="card"><h3>Your permissions (${me.permissions.length})</h3>${me.permissions.map((p) => `<span class="pill">${esc(typeof p === 'string' ? p : p.permission || JSON.stringify(p))}</span>`).join('')}</div>`;
   },
@@ -175,7 +175,7 @@ const pages = {
       <label style="margin-top:10px">JSON body<textarea name="body"></textarea></label><div class="row"><button class="btn">Send</button></div></form><pre id="api-out"></pre></div>`;
   },
 };
-const MENU = [['overview', 'Overview'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audit', 'Audit trail'], ['apitester', 'API tester']];
+const MENU = [['overview', 'Overview'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audit', 'Audit trail'], ['apitester', 'API tester']];
 let current = 'overview';
 const after = {};
 
@@ -252,7 +252,7 @@ Object.assign(pages, {
     const types = await api('GET', '/v1/org/unit-types');
     const legal = new Set(types.filter((t) => t.is_legal_entity).map((t) => t.code));
     const candidates = us.filter((u) => legal.has(u.type) && !cs.find((c) => c.id === u.id));
-    return `<div class="card"><h3>Try finance in one click</h3><p class="muted">Loads a small demo: sets up books for your head company (if needed), adds a second user who can approve, a customer and a supplier, two invoices, a receipt and an owner's capital journal. Takes about 10 seconds.</p>
+    return `<div class="card"><h3>Try finance in one click</h3><p class="muted">Loads a small demo: sets up books for your head company (if needed), adds a second user who can approve, a customer and a supplier, invoices, a receipt, an owner's capital journal, a warehouse, a purchase order through approval, receipt and bill, a lead and a sales order delivered and invoiced, two employment contracts and this month's payroll. Takes about 20 seconds.</p>
       <div class="row"><button class="btn" id="demo">Load demo data</button><span id="demo-out" class="muted"></span></div></div>
     ${cs.length ? companyBar(cs) + `<div class="card"><h3>Chart of accounts: ${esc(company().name)}</h3>${table(company().accounts, ['code', 'name', 'type', 'parent_code', 'is_group', 'control'])}
       <form id="f-acct"><div class="grid">${field('code', 'New account code (3-10 digits)', 'required')}${field('name', 'Name', 'required')}${pick('parentCode', 'Under group', company().accounts.filter((a) => a.is_group).map((a) => [a.code, `${a.code} ${a.name}`]))}</div><div class="row"><button class="btn sec">Add account</button></div></form></div>` : ''}
@@ -405,6 +405,221 @@ Object.assign(after, {
   },
 });
 
+// ---------- Operations (Phase 2): inventory, purchasing, sales and CRM, HR and payroll ----------
+const itemOpts = (items, types) => items.filter((i) => i.status === 'active' && (!types || types.includes(i.item_type))).map((i) => [i.id, `${i.code} - ${i.name}`]);
+const d10 = (v) => String(v ?? '').slice(0, 10);
+const act = (label, attr, id, sec) => `<button class="btn${sec ? ' sec' : ''}" data-${attr}="${id}">${label}</button>`;
+function opLines(n, items, taxOpts, withDiscount) {
+  let h = '';
+  for (let i = 0; i < n; i++) {
+    h += `<div class="grid" style="margin-top:6px">${pick(`i${i}`, `Line ${i + 1}: item`, [['', '(no item / free text)'], ...itemOpts(items)])}${field(`d${i}`, 'Description', i ? '' : 'required')}
+      ${field(`q${i}`, 'Quantity', `type="number" step="any" ${i ? '' : 'required value="1"'}`)}${field(`p${i}`, 'Unit price', `type="number" step="any" ${i ? '' : 'required'}`)}
+      ${withDiscount ? field(`x${i}`, 'Discount (amount)', 'type="number" step="any" min="0"') : ''}${pick(`t${i}`, 'VAT', taxOpts)}</div>`;
+  }
+  return h;
+}
+function readLines(b, n, items) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    if (!b[`d${i}`] && !b[`i${i}`]) continue;
+    const item = items.find((x) => x.id === b[`i${i}`]);
+    out.push({ ...(item ? { itemId: item.id } : {}), description: b[`d${i}`] || item.name, quantity: Number(b[`q${i}`] || 1), unitPrice: Number(b[`p${i}`] || 0),
+      taxCode: b[`t${i}`] || 'SR', ...(b[`x${i}`] ? { discount: Number(b[`x${i}`]) } : {}) });
+  }
+  return out;
+}
+const taxCodes = async () => (cache.tax ||= (await api('GET', '/v1/fin/tax-codes')).map((t) => [t.code, `${t.code} - ${t.name}`]));
+function download(name, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' })); a.download = name; a.click(); }
+
+Object.assign(pages, {
+  async inventory() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [whs, stock, val, items] = await Promise.all([api('GET', `/v1/inv/companies/${S.company}/warehouses`), api('GET', `/v1/inv/companies/${S.company}/stock`),
+      api('GET', `/v1/inv/companies/${S.company}/valuation`), api('GET', '/v1/mdm/items')]);
+    const wo = whs.filter((w) => w.status === 'active').map((w) => [w.id, `${w.code} - ${w.name}`]);
+    const so = itemOpts(items, ['stock']);
+    return companyBar(cs) + `<div class="card"><h3>Stock on hand</h3><p class="muted">Stock value ${money(val.stockValue)} · Inventory account 1300 ${money(val.ledgerBalance)} ${val.difference === 0 ? '<span class="pill">agrees</span>' : `<span class="pill" style="color:var(--bad)">difference ${money(val.difference)}</span>`}</p>
+      ${report(stock, [['item_code', 'Item'], ['item_name', 'Name'], ['warehouse', 'Warehouse'], ['qty', 'Quantity', 1], ['average_cost', 'Average cost', 1], ['value', 'Value', 1]])}</div>
+    <div class="card"><h3>Warehouses</h3>${table(whs, ['code', 'name', 'status'])}<form id="f-wh"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}</div><div class="row"><button class="btn sec">Add warehouse</button></div></form></div>
+    ${wo.length && so.length ? `<div class="card"><h3>Opening stock</h3><form id="f-open"><div class="grid">${pick('warehouseId', 'Warehouse', wo)}${pick('itemId', 'Item', so)}${field('qty', 'Quantity', 'type="number" step="any" required min="0.0001"')}${field('unitCost', 'Unit cost', 'type="number" step="any" required min="0"')}${field('date', 'Date', `type="date" required value="${today()}"`)}</div><div class="row"><button class="btn">Record opening stock</button></div></form></div>
+    <div class="card"><h3>Stock adjustment</h3><p class="muted">Negative to write off (damage, count differences), positive to add found stock. Posts against 5070 Inventory adjustments.</p><form id="f-adj"><div class="grid">${pick('warehouseId', 'Warehouse', wo)}${pick('itemId', 'Item', so)}${field('qty', 'Quantity (+/-)', 'type="number" step="any" required')}${field('unitCost', 'Unit cost (for increases, optional)', 'type="number" step="any" min="0"')}${field('reason', 'Reason', 'required')}${field('date', 'Date', `type="date" required value="${today()}"`)}</div><div class="row"><button class="btn sec">Adjust</button></div></form></div>
+    <div class="card"><h3>Transfer between warehouses</h3><form id="f-xfer"><div class="grid">${pick('fromWarehouseId', 'From', wo)}${pick('toWarehouseId', 'To', wo)}${pick('itemId', 'Item', so)}${field('qty', 'Quantity', 'type="number" step="any" required min="0.0001"')}${field('date', 'Date', `type="date" required value="${today()}"`)}</div><div class="row"><button class="btn sec">Transfer</button></div></form></div>`
+    : '<div class="card"><p class="muted">Add a warehouse here and a stock item under Master data to record stock.</p></div>'}`;
+  },
+  async purchasing() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [orders, supps, whs, items, taxOpts] = await Promise.all([api('GET', `/v1/pur/companies/${S.company}/orders`), activeParties('supplier'),
+      api('GET', `/v1/inv/companies/${S.company}/warehouses`), api('GET', '/v1/mdm/items'), taxCodes()]);
+    cache.items = items;
+    const actions = (o) => o.status === 'draft' || o.status === 'rejected' ? act('Submit for approval', 'po-submit', o.id)
+      : o.status === 'approved' ? `${act('Receive remaining', 'po-receive', o.id)} ${act('Bill received', 'po-bill', o.id, 1)} ${act('Close', 'po-close', o.id, 1)}` : '';
+    return companyBar(cs) + `<div class="card"><h3>Purchase orders</h3><p class="muted">Orders are approved by someone else (Procurement manager or Tenant administrator, see Approvals). Receiving puts stock into the warehouse against 2010 GRNI; the bill takes only what was received (three-way match) and posts to payables.</p>
+      ${orders.length ? '<div class="tbl"><table><tr><th>no</th><th>supplier</th><th>date</th><th style="text-align:right">total</th><th>status</th><th></th></tr>' + orders.map((o) => `<tr><td>${esc(o.no || '(draft)')}</td><td>${esc(o.supplier_name)}</td><td>${d10(o.date)}</td><td style="text-align:right">${money(o.gross_total)} ${esc(o.currency)}</td><td>${esc(o.status.replace('_', ' '))}</td><td>${actions(o)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No purchase orders yet.</div>'}</div>
+    <div class="card"><h3>New purchase order</h3>${supps.length ? '' : '<p class="muted">You need an approved supplier first (Master data, then Approvals), or use Load demo data under Finance: setup.</p>'}
+      <form id="f-po"><div class="grid">${pick('supplierId', 'Supplier', supps.map((p) => [p.id, `${p.code} - ${p.name}`]))}${pick('warehouseId', 'Deliver to warehouse', [['', '(no stock items)'], ...whs.map((w) => [w.id, w.code])])}${field('date', 'Date', `type="date" required value="${today()}"`)}${field('expectedDate', 'Expected', 'type="date"')}</div>
+      ${opLines(3, items, taxOpts)}<div class="row"><button class="btn">Save and submit for approval</button></div></form></div>`;
+  },
+  async sales() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [orders, custs, whs, items, taxOpts, leads, pipe, us] = await Promise.all([api('GET', `/v1/sal/companies/${S.company}/orders`), api('GET', '/v1/mdm/parties'),
+      api('GET', `/v1/inv/companies/${S.company}/warehouses`), api('GET', '/v1/mdm/items'), taxCodes(), api('GET', '/v1/crm/leads'), api('GET', '/v1/crm/pipeline'), units()]);
+    cache.items = items;
+    const customers = custs.filter((p) => p.is_customer && !['blocked', 'rejected'].includes(p.status));
+    const actions = (o) => o.status === 'quotation' ? `${act('Confirm order', 'so-confirm', o.id)} ${act('Cancel', 'so-cancel', o.id, 1)}`
+      : o.status === 'confirmed' ? `${act('Deliver', 'so-deliver', o.id)} ${act('Invoice', 'so-invoice', o.id, 1)}` : '';
+    const leadAct = (l) => l.status === 'new' ? `${act('Qualify', 'lead-q', l.id)} ${act('Disqualify', 'lead-dq', l.id, 1)}` : l.status === 'qualified' ? act('Convert to customer', 'lead-conv', l.id) : '';
+    return companyBar(cs) + `<div class="card"><h3>Pipeline</h3>${report(pipe.stages, [['stage', 'Stage'], ['currency', 'Cur.'], ['count', 'Deals'], ['amount', 'Value', 1], ['weighted', 'Weighted', 1]])}
+      ${report(pipe.opportunities.map((o) => ({ ...o, expected_close: d10(o.expected_close) })), [['title', 'Opportunity'], ['customer', 'Customer'], ['stage', 'Stage'], ['probability', '%'], ['expected_close', 'Close'], ['amount', 'Value', 1]])}</div>
+    <div class="card"><h3>Leads</h3>${leads.length ? '<div class="tbl"><table><tr><th>name</th><th>company</th><th>email</th><th>source</th><th>status</th><th></th></tr>' + leads.map((l) => `<tr><td>${esc(l.name)}</td><td>${esc(l.company_name)}</td><td>${esc(l.email)}</td><td>${esc(l.source)}</td><td>${esc(l.status)}</td><td>${leadAct(l)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No leads yet.</div>'}
+      <form id="f-lead"><div class="grid">${field('name', 'Contact name', 'required')}${field('companyName', 'Company')}${field('email', 'Email', 'type="email"')}${field('phone', 'Phone')}${field('countryCode', 'Country', 'value="AE" maxlength="2"')}${field('source', 'Source')}${pick('ownerUnitId', 'Sales team', unitOpts(us))}</div><div class="row"><button class="btn sec">Add lead</button></div></form></div>
+    <div class="card"><h3>Quotations and orders</h3><p class="muted">Confirming checks the customer is approved and within the credit limit. Delivering takes stock out at average cost (Dr 5050 COGS). Invoicing drafts and posts the invoice for what was delivered (goods) or ordered (services).</p>
+      ${orders.length ? '<div class="tbl"><table><tr><th>quote</th><th>order</th><th>customer</th><th>date</th><th style="text-align:right">total</th><th>status</th><th></th></tr>' + orders.map((o) => `<tr><td>${esc(o.quote_no)}</td><td>${esc(o.no)}</td><td>${esc(o.customer_name)}</td><td>${d10(o.date)}</td><td style="text-align:right">${money(o.gross_total)} ${esc(o.currency)}</td><td>${esc(o.status)}</td><td>${actions(o)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No quotations yet.</div>'}</div>
+    <div class="card"><h3>New quotation</h3><form id="f-qt"><div class="grid">${pick('customerId', 'Customer', customers.map((p) => [p.id, `${p.code} - ${p.name} (${p.status})`]))}${pick('warehouseId', 'Ship from', [['', '(services only)'], ...whs.map((w) => [w.id, w.code])])}${field('date', 'Date', `type="date" required value="${today()}"`)}${field('validUntil', 'Valid until', 'type="date"')}</div>
+      ${opLines(3, items, taxOpts, true)}<div class="row"><button class="btn">Save quotation</button></div></form></div>`;
+  },
+  async hr() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [contracts, leave, runs, emps] = await Promise.all([api('GET', `/v1/hr/companies/${S.company}/contracts`), api('GET', `/v1/hr/companies/${S.company}/leave`),
+      api('GET', `/v1/hr/companies/${S.company}/payroll`), api('GET', '/v1/org/employees')]);
+    const withK = contracts.filter((k) => k.status === 'active');
+    const runAct = (r) => r.status === 'draft' ? `${act('View', 'pr-view', r.id, 1)} ${act('Post to ledger', 'pr-post', r.id)}` : r.status === 'posted' ? `${act('View', 'pr-view', r.id, 1)} ${act('Pay and make WPS file', 'pr-pay', r.id)}` : act('View', 'pr-view', r.id, 1);
+    const ym = today().slice(0, 7);
+    return companyBar(cs) + `<div class="card"><h3>Payroll</h3><p class="muted">Monthly pay is pro-rated for joiners, leavers and approved unpaid leave. Posting charges 5000 Salaries by cost center, and trues up the end-of-service gratuity provision (2500) using BAATS's rule: 21 days' basic a year for 5 years, 30 after, none under 1 year, capped at 24 months. Paying creates the UAE WPS salary file (SIF).</p>
+      ${runs.length ? '<div class="tbl"><table><tr><th>period</th><th style="text-align:right">gross</th><th style="text-align:right">deductions</th><th style="text-align:right">net</th><th style="text-align:right">gratuity change</th><th>status</th><th></th></tr>' + runs.map((r) => `<tr><td>${esc(r.period)}</td><td style="text-align:right">${money(r.gross_total)}</td><td style="text-align:right">${money(r.deductions_total)}</td><td style="text-align:right">${money(r.net_total)}</td><td style="text-align:right">${money(r.gratuity_change)}</td><td>${esc(r.status)}</td><td>${runAct(r)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No payroll yet.</div>'}
+      <form id="f-pr"><div class="grid">${field('period', 'Month', `type="month" required value="${ym}"`)}</div><div class="row"><button class="btn">Calculate payroll</button></div></form><div id="pr-out"></div></div>
+    <div class="card"><h3>Employment contracts</h3>${report(contracts.map((k) => ({ ...k, start_date: d10(k.start_date), end_date: d10(k.end_date) })), [['employee_no', 'No.'], ['employee_name', 'Employee'], ['unit_name', 'Unit'], ['start_date', 'Start'], ['end_date', 'End'], ['status', 'Status'], ['basic', 'Basic', 1], ['monthly_total', 'Monthly total', 1]])}
+      <form id="f-k"><div class="grid">${pick('employeeId', 'Employee', emps.filter((e) => !withK.find((k) => k.employee_id === e.id)).map((e) => [e.id, `${e.employee_no} ${e.first_name} ${e.last_name}`]))}${field('startDate', 'Start date', `type="date" required value="${today()}"`)}
+        ${field('basic', 'Basic salary', 'type="number" step="any" required min="1"')}${field('housing', 'Housing', 'type="number" step="any" min="0"')}${field('transport', 'Transport', 'type="number" step="any" min="0"')}${field('otherAllowances', 'Other allowances', 'type="number" step="any" min="0"')}
+        ${field('wpsPersonId', 'WPS personal no. (14 digits)', 'pattern="[0-9]{14}"')}${field('bankRoutingCode', 'Bank routing code (9 digits)', 'pattern="[0-9]{9}"')}${field('iban', 'IBAN (AE...)')}</div><div class="row"><button class="btn sec">Add contract</button></div></form></div>
+    <div class="card"><h3>Leave</h3>${report(leave.map((l) => ({ ...l, date_from: d10(l.date_from), date_to: d10(l.date_to) })), [['employee_name', 'Employee'], ['leave_type', 'Type'], ['date_from', 'From'], ['date_to', 'To'], ['days', 'Days'], ['status', 'Status']])}
+      <p class="muted">The employee's line manager (or an HR manager) approves under Approvals. Annual leave accrues monthly from the contract start.</p>
+      <form id="f-leave"><div class="grid">${pick('employeeId', 'Employee', withK.map((k) => [k.employee_id, `${k.employee_no} ${k.employee_name}`]))}${pick('leaveType', 'Type', [['annual', 'Annual'], ['sick', 'Sick'], ['unpaid', 'Unpaid'], ['maternity', 'Maternity'], ['parental', 'Parental'], ['compassionate', 'Compassionate'], ['hajj', 'Hajj']])}
+        ${field('dateFrom', 'From', `type="date" required value="${today()}"`)}${field('dateTo', 'To', `type="date" required value="${today()}"`)}${field('reason', 'Reason')}</div><div class="row"><button class="btn sec">Request leave</button></div></form></div>`;
+  },
+});
+
+Object.assign(after, {
+  async inventory(m, ok) {
+    bindCompanyPick();
+    const c = S.company;
+    bindForm('f-wh', async (b) => { await api('POST', `/v1/inv/companies/${c}/warehouses`, b); ok('Warehouse added'); });
+    bindForm('f-open', async (b) => { await api('POST', `/v1/inv/companies/${c}/opening-stock`, { warehouseId: b.warehouseId, date: b.date, lines: [{ itemId: b.itemId, qty: Number(b.qty), unitCost: Number(b.unitCost) }] }); ok('Opening stock recorded'); });
+    bindForm('f-adj', async (b) => { await api('POST', `/v1/inv/companies/${c}/adjustments`, { ...b, qty: Number(b.qty), ...(b.unitCost ? { unitCost: Number(b.unitCost) } : {}) }); ok('Stock adjusted'); });
+    bindForm('f-xfer', async (b) => { await api('POST', `/v1/inv/companies/${c}/transfers`, { ...b, qty: Number(b.qty) }); ok('Transferred'); });
+  },
+  async purchasing(m, ok) {
+    bindCompanyPick();
+    const c = S.company; const f = $('#f-po');
+    f.querySelectorAll('select[name^="t"]').forEach((s) => { s.value = 'SR'; });
+    bindForm('f-po', async (b) => {
+      const body = { supplierId: b.supplierId, date: b.date, lines: readLines(b, 3, cache.items) };
+      if (b.warehouseId) body.warehouseId = b.warehouseId; if (b.expectedDate) body.expectedDate = b.expectedDate;
+      const o = await api('POST', `/v1/pur/companies/${c}/orders`, body);
+      const s = await api('POST', `/v1/pur/orders/${o.id}/submit`); ok(`${s.no} sent for approval`);
+    });
+    const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.dataset[attr.replace(/-(\w)/g, (_, x) => x.toUpperCase())]); } catch (e) { toast(e.message, false); } });
+    on('po-submit', async (id) => { const s = await api('POST', `/v1/pur/orders/${id}/submit`); ok(`${s.no} sent for approval`); });
+    on('po-receive', async (id) => {
+      const o = await api('GET', `/v1/pur/orders/${id}`);
+      const lines = o.lines.map((l) => ({ orderLineId: l.id, quantity: Number(l.quantity) - l.received_qty })).filter((l) => l.quantity > 0);
+      if (!lines.length) throw new Error('Everything on this order has been received.');
+      const r = await api('POST', `/v1/pur/orders/${id}/receipts`, { date: today(), lines }); ok(`Received: ${r.no}`);
+    });
+    on('po-bill', async (id) => {
+      const ref = prompt("Supplier's invoice number?"); if (!ref) return;
+      const d = await api('POST', `/v1/pur/orders/${id}/bill`, { date: today(), supplierRef: ref });
+      const p = await api('POST', `/v1/fin/invoices/${d.id}/post`); ok(`Bill posted: ${p.no}`);
+    });
+    on('po-close', async (id) => { const o = await api('POST', `/v1/pur/orders/${id}/close`); ok(`Order ${o.status}`); });
+  },
+  async sales(m, ok) {
+    bindCompanyPick();
+    const c = S.company; const f = $('#f-qt');
+    f.querySelectorAll('select[name^="t"]').forEach((s) => { s.value = 'SR'; });
+    bindForm('f-lead', async (b) => { await api('POST', '/v1/crm/leads', { ...b, ...(b.countryCode ? { countryCode: b.countryCode.toUpperCase() } : {}) }); ok('Lead added'); });
+    bindForm('f-qt', async (b) => {
+      const body = { customerId: b.customerId, date: b.date, lines: readLines(b, 3, cache.items) };
+      if (b.warehouseId) body.warehouseId = b.warehouseId; if (b.validUntil) body.validUntil = b.validUntil;
+      const q = await api('POST', `/v1/sal/companies/${c}/quotations`, body); ok(`Quotation ${q.quote_no} saved`);
+    });
+    const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
+    on('lead-q', async (id) => { await api('POST', `/v1/crm/leads/${id}/status`, { status: 'qualified' }); ok('Qualified'); });
+    on('lead-dq', async (id) => { await api('POST', `/v1/crm/leads/${id}/status`, { status: 'disqualified' }); ok('Disqualified'); });
+    on('lead-conv', async (id) => {
+      const code = prompt('Customer code for the new customer?'); if (!code) return;
+      const amt = prompt('Expected deal value in AED (leave empty for no opportunity)');
+      const body = { customerCode: code, ...(amt ? { opportunity: { title: `Deal with ${code}`, amount: Number(amt), currency: 'AED' } } : {}) };
+      await api('POST', `/v1/crm/leads/${id}/convert`, body); ok('Converted. Submit the customer for approval under Master data.');
+    });
+    on('so-confirm', async (id) => { const o = await api('POST', `/v1/sal/orders/${id}/confirm`); ok(`Order ${o.no} confirmed`); });
+    on('so-cancel', async (id) => { const o = await api('POST', `/v1/sal/orders/${id}/cancel`); ok(`Order ${o.status}`); });
+    on('so-deliver', async (id) => { const d = await api('POST', `/v1/sal/orders/${id}/deliveries`, { date: today() }); ok(`Delivered: ${d.no}, cost ${money(d.cost)}`); });
+    on('so-invoice', async (id) => { const d = await api('POST', `/v1/sal/orders/${id}/invoice`, { date: today() }); const p = await api('POST', `/v1/fin/invoices/${d.id}/post`); ok(`Invoice posted: ${p.no}`); });
+  },
+  async hr(m, ok) {
+    bindCompanyPick();
+    const c = S.company;
+    bindForm('f-k', async (b) => {
+      const body = { ...b, companyId: c, basic: Number(b.basic) };
+      for (const k of ['housing', 'transport', 'otherAllowances']) if (b[k]) body[k] = Number(b[k]);
+      await api('POST', '/v1/hr/contracts', body); ok('Contract added');
+    });
+    bindForm('f-leave', async (b) => { await api('POST', '/v1/hr/leave', b); ok('Leave requested; it now waits for approval'); });
+    bindForm('f-pr', async (b) => { const r = await api('POST', `/v1/hr/companies/${c}/payroll`, { period: b.period }); toast(`Payroll ${r.period} calculated`); await show('hr'); showRun(r); });
+    const showRun = (r) => { $('#pr-out').innerHTML = `<h4>Payslips ${esc(r.period)}</h4>` + report(r.payslips, [['employee_no', 'No.'], ['employee_name', 'Employee'], ['unit_name', 'Cost center'], ['paid_days', 'Paid days'], ['basic', 'Basic', 1], ['allowances', 'Allowances', 1], ['additions', 'Additions', 1], ['deductions', 'Deductions', 1], ['net', 'Net', 1], ['gratuity_balance', 'Gratuity accrued', 1]]); };
+    const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
+    on('pr-view', async (id) => showRun(await api('GET', `/v1/hr/payroll/${id}`)));
+    on('pr-post', async (id) => { await api('POST', `/v1/hr/payroll/${id}/post`); ok('Payroll posted to the ledger'); });
+    on('pr-pay', async (id) => {
+      const employerId = prompt('MOHRE employer (establishment) id, 13 digits', localStorage.getItem('baatsEmployer') || ''); if (!employerId) return;
+      const employerBankCode = prompt("Your bank's 9-digit routing code", localStorage.getItem('baatsEmployerBank') || ''); if (!employerBankCode) return;
+      localStorage.setItem('baatsEmployer', employerId); localStorage.setItem('baatsEmployerBank', employerBankCode);
+      const r = await api('POST', `/v1/hr/payroll/${id}/pay`, { date: today(), employerId, employerBankCode });
+      download(r.fileName, r.content); ok(`Salaries paid. WPS file ${r.fileName} downloaded (${r.records} employees, ${money(r.total)} AED)`);
+    });
+  },
+});
+
+// Operations demo: warehouse, items, a purchase order through approval, receipt and bill,
+// a lead converted and sold, two contracts and a payroll with its WPS file.
+async function loadOperationsDemo(step, co, asApprover, root) {
+  step('Operations: warehouse and items...');
+  const whs = await api('GET', `/v1/inv/companies/${co}/warehouses`);
+  const wh = whs.find((w) => w.code === 'MAIN') || await api('POST', `/v1/inv/companies/${co}/warehouses`, { code: 'MAIN', name: 'Main warehouse' });
+  const uoms = await api('GET', '/v1/mdm/uoms');
+  if (!uoms.find((u) => u.code === 'EA')) await api('POST', '/v1/mdm/uoms', { code: 'EA', name: 'Each' });
+  let items = await api('GET', '/v1/mdm/items');
+  const item = async (code, name, itemType, attributes) => items.find((i) => i.code === code) || api('POST', '/v1/mdm/items', { code, name, itemType, baseUom: 'EA', attributes });
+  const laptop = await item('DEMO-LAP', 'Laptop 14 inch', 'stock', { revenue_account: '4200' });
+  await item('DEMO-SETUP', 'Setup service', 'service');
+  const parties = await api('GET', '/v1/mdm/parties');
+  const supp = parties.find((p) => p.code === 'DEMO-S1'); const cust = parties.find((p) => p.code === 'DEMO-C1');
+  step('Operations: purchase order, approval, receipt and bill...');
+  const po = await api('POST', `/v1/pur/companies/${co}/orders`, { supplierId: supp.id, warehouseId: wh.id, date: today(), lines: [{ itemId: laptop.id, description: 'Laptop 14 inch', quantity: 10, unitPrice: 2500, taxCode: 'SR' }] });
+  await api('POST', `/v1/pur/orders/${po.id}/submit`);
+  await asApprover(async () => { for (const t of await api('GET', '/v1/wf/inbox')) if (t.entity_type === 'pur.order') await api('POST', `/v1/wf/tasks/${t.task_id}/approve`, { comment: 'Demo approval' }); });
+  await api('POST', `/v1/pur/orders/${po.id}/receipts`, { date: today(), lines: [{ orderLineId: po.lines[0].id, quantity: 10 }] });
+  const bill = await api('POST', `/v1/pur/orders/${po.id}/bill`, { date: today(), supplierRef: 'GT-' + Date.now().toString().slice(-6) });
+  await api('POST', `/v1/fin/invoices/${bill.id}/post`);
+  step('Operations: lead, quotation, order, delivery and invoice...');
+  const lead = await api('POST', '/v1/crm/leads', { ownerUnitId: root.id, name: 'Sara Khan', companyName: 'Marina Clinics', email: 'sara@example.com', countryCode: 'AE', source: 'Website' });
+  await api('POST', '/v1/crm/opportunities', { ownerUnitId: root.id, leadId: lead.id, title: 'Laptops for 3 clinics', amount: 12000, currency: 'AED', stage: 'proposal' });
+  const qt = await api('POST', `/v1/sal/companies/${co}/quotations`, { customerId: cust.id, warehouseId: wh.id, date: today(), lines: [{ itemId: laptop.id, description: 'Laptop 14 inch', quantity: 4, unitPrice: 3200, taxCode: 'SR' }] });
+  await api('POST', `/v1/sal/orders/${qt.id}/confirm`);
+  await api('POST', `/v1/sal/orders/${qt.id}/deliveries`, { date: today() });
+  const si = await api('POST', `/v1/sal/orders/${qt.id}/invoice`, { date: today() });
+  await api('POST', `/v1/fin/invoices/${si.id}/post`);
+  step('Operations: contracts and payroll...');
+  let emps = await api('GET', '/v1/org/employees');
+  const emp = async (no, first, last) => emps.find((e) => e.employee_no === no) || api('POST', '/v1/org/employees', { employeeNo: no, firstName: first, lastName: last, unitId: root.id, hireDate: '2021-04-01' });
+  const e1 = await emp('DEMO-001', 'Omar', 'Haddad'); const e2 = await emp('DEMO-002', 'Priya', 'Nair');
+  const ks = await api('GET', `/v1/hr/companies/${co}/contracts`);
+  if (!ks.find((k) => k.employee_id === e1.id)) await api('POST', '/v1/hr/contracts', { employeeId: e1.id, companyId: co, startDate: '2021-04-01', basic: 12000, housing: 5000, transport: 1500, wpsPersonId: '10000000000001', bankRoutingCode: '803320101', iban: 'AE070331234567890123456' });
+  if (!ks.find((k) => k.employee_id === e2.id)) await api('POST', '/v1/hr/contracts', { employeeId: e2.id, companyId: co, startDate: today().slice(0, 8) + '01', basic: 8000, housing: 3000, wpsPersonId: '10000000000002', bankRoutingCode: '803320101', iban: 'AE070331234567890123457' });
+  const run = await api('POST', `/v1/hr/companies/${co}/payroll`, { period: today().slice(0, 7) }).catch(() => null);
+  if (run && run.status === 'draft') await api('POST', `/v1/hr/payroll/${run.id}/post`);
+}
+
 // Demo: everything through the public API, as the signed-in admin plus a second approver user.
 async function loadDemo(step) {
   const me = await api('GET', '/v1/me');
@@ -455,6 +670,7 @@ async function loadDemo(step) {
   step("Owner's capital journal (submitted, then approved by the second user)...");
   await api('POST', `/v1/fin/companies/${co}/journals`, { date: d, memo: "Owner's capital introduced", lines: [{ account: '1010', debit: 50000 }, { account: '3000', credit: 50000 }] });
   await asApprover(async () => { for (const t of await api('GET', '/v1/wf/inbox')) if (t.entity_type === 'fin.journal') await api('POST', `/v1/wf/tasks/${t.task_id}/approve`, { comment: 'Demo approval' }); });
+  await loadOperationsDemo(step, co, asApprover, root);
   step(`Done. Second user: ${appEmail} / ${pw}`);
   toast(`Demo loaded. The approver can sign in as ${appEmail} with password ${pw}`);
 }

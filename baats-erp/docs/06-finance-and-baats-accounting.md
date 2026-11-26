@@ -43,11 +43,11 @@ Phase 2 starts with the accounting engine, built on **BAATS Accounting v10.86, U
 
 In priority order. Each one reuses the posting API, so it is mostly business rules.
 
-1. **E-invoicing (PINT AE)**: port `einvoice.js`, `pintae.js` and the ASP adapters onto posted sales documents.
+1. ~~E-invoicing (PINT AE)~~: done in `src/fin/einvoice.ts` (UBL generation and UAE pre-validation from `pintae.js`). Not ported: the ASP adapters (`asp-adapters.js`), which need a contract with an accredited provider; the ERP records the provider's answer. Inbound supplier e-invoices are not read yet.
 2. **PDC cheques** (1050 / 2050 clearing on cheque date, bounce handling) and **advances with VAT** (1150 / 2160).
 3. **VAT timing**: output VAT declared in a later return (2105) and late bills (1210).
-4. **Bank statement import and reconciliation** (`bankparse.js`).
-5. **Fixed assets and IFRS 16 leases** (1500/1590/5800, 1600/1690/2600/5810/5820).
+4. ~~Bank statement import and reconciliation~~: done in `src/fin/bank.ts` for CSV statements (MT940 and bank-specific formats still to add).
+5. ~~Fixed assets~~: done in `src/fin/assets.ts` (straight line). Still to port: **IFRS 16 leases** (1600/1690/2600/5810/5820) and other depreciation methods.
 6. **Prepayments, accruals with auto-reversal, deferred revenue** (1250, 2200, 2300) and revenue recognised over time.
 7. ~~Payroll, WPS and end-of-service gratuity~~: done in `src/hr` (2210, 2500/5920, 1260). Gratuity uses BAATS `eosb()` exactly; the ERP trues up the provision monthly with payroll instead of every 31 December.
 8. ~~Inventory~~: done in `src/inv`, with procurement (`src/pur`, new account 2010 GRNI added to older books on first use, like `ensureAcc()`) and sales (`src/sal`, 5050 COGS).

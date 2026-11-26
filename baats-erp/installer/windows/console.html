@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BAATS ERP Trial Console</title>
+<style>
+:root{--bg:#f5f6f8;--panel:#fff;--ink:#1d2330;--muted:#667085;--line:#e3e6ec;--brand:#1f4fd1;--brand-ink:#fff;--ok:#127a3e;--bad:#b42318;--chip:#eef2ff}
+@media (prefers-color-scheme:dark){:root{--bg:#12151b;--panel:#1a1f28;--ink:#e7eaf0;--muted:#98a2b3;--line:#2b3240;--brand:#5b84f5;--chip:#232b3d;--ok:#4ade80;--bad:#f87171}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+header b{font-size:16px}header .sp{flex:1}header small{color:var(--muted)}
+.wrap{display:flex;min-height:calc(100vh - 53px)}nav{width:210px;padding:12px;border-right:1px solid var(--line);background:var(--panel)}
+nav button{display:block;width:100%;text-align:left;margin:2px 0;padding:8px 10px;border:0;border-radius:6px;background:none;color:var(--ink);cursor:pointer;font:inherit}
+nav button.on{background:var(--chip);color:var(--brand);font-weight:600}
+main{flex:1;padding:20px;max-width:1200px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.card h3{margin:0 0 10px;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+input,select,textarea{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+textarea{min-height:120px;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.btn{padding:8px 14px;border:0;border-radius:6px;background:var(--brand);color:var(--brand-ink);cursor:pointer;font:inherit;font-weight:600}
+.btn.sec{background:var(--chip);color:var(--brand)}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.tbl{overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis}
+th{color:var(--muted);font-weight:600}.muted{color:var(--muted)}.empty{color:var(--muted);padding:8px 0}
+#toast{position:fixed;right:16px;bottom:16px;max-width:420px;padding:10px 14px;border-radius:8px;color:#fff;display:none;white-space:pre-wrap}
+.auth{max-width:520px;margin:40px auto}.pill{display:inline-block;padding:2px 8px;border-radius:99px;background:var(--chip);font-size:12px;margin:2px}
+pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:var(--bg);padding:10px;border-radius:6px;max-height:400px;overflow:auto}
+@media (max-width:760px){.wrap{flex-direction:column}nav{width:auto;display:flex;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line)}nav button{width:auto}main{padding:12px}}
+</style>
+</head>
+<body>
+<header><b>BAATS Enterprise ERP</b><small id="ver">Trial console</small><span class="sp"></span><span id="who" class="muted"></span><button id="logout" class="btn sec" style="display:none">Sign out</button></header>
+<div id="app"></div>
+<div id="toast"></div>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let S = JSON.parse(sessionStorage.getItem('baats') || 'null');
+let cache = {};
+
+function toast(msg, ok = true) { const t = $('#toast'); t.textContent = msg; t.style.background = ok ? 'var(--ok)' : 'var(--bad)'; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', ok ? 2500 : 7000); }
+async function api(method, path, body) {
+  const h = body === undefined ? {} : { 'content-type': 'application/json' };
+  if (S?.token) h.authorization = 'Bearer ' + S.token;
+  const r = await fetch(path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
+  const text = await r.text(); let data; try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (r.status === 401 && S && path !== '/v1/auth/login') { S = null; sessionStorage.removeItem('baats'); render(); throw new Error('Your session ended. Please sign in again.'); }
+  if (!r.ok) throw new Error((data && (data.message || data.error)) || ('HTTP ' + r.status));
+  return data;
+}
+const form = (el) => Object.fromEntries([...el.querySelectorAll('[name]')].map((i) => [i.name, i.type === 'checkbox' ? i.checked : i.value.trim()]).filter(([, v]) => v !== ''));
+function table(rows, cols) {
+  if (!Array.isArray(rows) || !rows.length) return '<div class="empty">Nothing here yet.</div>';
+  cols = cols || Object.keys(rows[0]).filter((k) => !/hash|^id$|_id$|password/.test(k)).slice(0, 10);
+  return '<div class="tbl"><table><tr>' + cols.map((c) => `<th>${esc(c.replace(/_/g, ' '))}</th>`).join('') + '</tr>' +
+    rows.map((r) => '<tr>' + cols.map((c) => { let v = r[c]; if (v && typeof v === 'object') v = JSON.stringify(v); return `<td title="${esc(v)}">${esc(v)}</td>`; }).join('') + '</tr>').join('') + '</table></div>';
+}
+const field = (name, label, attrs = '') => `<label>${label}<input name="${name}" ${attrs}></label>`;
+const pick = (name, label, opts, attrs = '') => `<label>${label}<select name="${name}" ${attrs}>${opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('')}</select></label>`;
+const check = (name, label, on) => `<label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" name="${name}" ${on ? 'checked' : ''}>${label}</label>`;
+function bindForm(id, fn) { const el = $('#' + id); if (!el) return; el.addEventListener('submit', async (e) => { e.preventDefault(); try { await fn(form(el), el); } catch (err) { toast(err.message, false); } }); }
+
+// ---------- Sign in / create company ----------
+function authView() {
+  return `<div class="auth">
+  <div class="card"><h3>Sign in</h3><form id="f-login"><div class="grid">
+    ${field('tenant', 'Company code', 'required value="' + esc(localStorage.getItem('baatsTenant') || '') + '"')}
+    ${field('email', 'Email', 'type="email" required')}${field('password', 'Password', 'type="password" required')}
+    ${field('totp', 'MFA code (only if enabled)')}</div>
+    <div class="row"><button class="btn">Sign in</button></div></form></div>
+  <div class="card"><h3>New here? Create your company</h3><p class="muted">This sets up a company with its own head office unit, an administrator account and a default approval workflow.</p>
+    <form id="f-company"><div class="grid">
+    ${field('code', 'Company code (short, e.g. acme)', 'required pattern="[a-z0-9\\-]+" title="lowercase letters, numbers and dashes"')}
+    ${field('name', 'Company name', 'required')}
+    ${field('baseCurrency', 'Base currency', 'required value="AED" maxlength="3"')}
+    ${field('countryCode', 'Country code', 'required value="AE" maxlength="2"')}
+    ${field('adminName', 'Your name', 'required')}
+    ${field('adminEmail', 'Your email', 'type="email" required')}
+    ${field('adminPassword', 'Password (12+ chars, mixed case, number)', 'type="password" required minlength="12"')}
+    </div><div class="row"><button class="btn">Create company</button></div></form></div></div>`;
+}
+async function afterAuthBind() {
+  bindForm('f-login', async (b) => {
+    const r = await api('POST', '/v1/auth/login', b);
+    const sess = r.session || r; if (!sess.token) throw new Error(r.message || 'Sign in failed');
+    S = { token: sess.token, tenant: b.tenant, email: b.email };
+    sessionStorage.setItem('baats', JSON.stringify(S)); localStorage.setItem('baatsTenant', b.tenant);
+    render();
+  });
+  bindForm('f-company', async (b) => {
+    const r = await fetch('/local/create-company', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+      code: b.code, name: b.name, baseCurrency: b.baseCurrency.toUpperCase(), countryCode: b.countryCode.toUpperCase(),
+      admin: { email: b.adminEmail, displayName: b.adminName, password: b.adminPassword } }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(/tenants_code/.test(d.message || '') ? 'That company code is already used. Sign in above, or pick another code.' : (d.message || d.error || 'Could not create the company'));
+    toast('Company created. Signing you in...');
+    const l = await api('POST', '/v1/auth/login', { tenant: b.code, email: b.adminEmail, password: b.adminPassword });
+    const ls = l.session || l; if (!ls.token) throw new Error(l.message || 'Sign in failed');
+    S = { token: ls.token, tenant: b.code, email: b.adminEmail };
+    sessionStorage.setItem('baats', JSON.stringify(S)); localStorage.setItem('baatsTenant', b.code);
+    render();
+  });
+}
+
+// ---------- Pages ----------
+const units = async () => (cache.units = await api('GET', '/v1/org/units'));
+const unitOpts = (us) => us.map((u) => [u.id, `${'  '.repeat(u.depth || 0)}${u.code} - ${u.name}`]);
+const pages = {
+  async overview() {
+    const me = await api('GET', '/v1/me');
+    return `<div class="card"><h3>Welcome, ${esc(me.user.display_name)}</h3><p class="muted">Signed in to <b>${esc(S.tenant)}</b> as ${esc(me.user.email)}. MFA: ${me.user.mfa_enabled ? 'on' : 'off'}.</p>
+      <p>This console lets you try what BAATS can do today. Phase 2 finance: books with the BAATS UAE chart of accounts, sales and purchase invoices, receipts and payments, journals with approval, the UAE VAT return and financial reports. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
+      <div class="card"><h3>Your approvals waiting (${me.inbox.length})</h3>${table(me.inbox)}</div>
+      <div class="card"><h3>Your permissions (${me.permissions.length})</h3>${me.permissions.map((p) => `<span class="pill">${esc(typeof p === 'string' ? p : p.permission || JSON.stringify(p))}</span>`).join('')}</div>`;
+  },
+  async organization() {
+    const [us, types] = await Promise.all([units(), api('GET', '/v1/org/unit-types')]);
+    return `<div class="card"><h3>Organization units</h3>${table(us, ['code', 'name', 'type', 'depth', 'country_code', 'currency_code', 'is_cost_center', 'is_profit_center', 'status'].filter((c) => !us[0] || c in us[0]))}</div>
+    <div class="card"><h3>Add a unit</h3><form id="f-unit"><div class="grid">
+      ${pick('typeCode', 'Type', [...types].sort((a, b) => a.rank - b.rank).slice(1).concat([...types].sort((a, b) => a.rank - b.rank).slice(0, 1)).map((t) => [t.code, `${t.name} (level ${t.rank})`]))}${pick('parentId', 'Under', unitOpts(us))}
+      ${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${field('countryCode', 'Country', 'maxlength="2"')}${field('currencyCode', 'Currency', 'maxlength="3"')}
+      ${check('isCostCenter', 'Cost center')}${check('isProfitCenter', 'Profit center')}</div><div class="row"><button class="btn">Add unit</button></div></form></div>
+    <div class="card"><h3>Hierarchy levels</h3>${table(types)}
+      <form id="f-type"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${field('rank', 'Rank (higher = lower in tree)', 'type="number" required')}${check('isLegalEntity', 'Legal entity')}</div><div class="row"><button class="btn sec">Add level</button></div></form></div>
+    <div class="card"><h3>Add a designation (job title)</h3><form id="f-desig"><div class="grid">${field('code', 'Code', 'required')}${field('title', 'Title', 'required')}${field('grade', 'Grade')}</div><div class="row"><button class="btn sec">Add designation</button></div></form></div>`;
+  },
+  async employees() {
+    const [us, emps] = await Promise.all([units(), api('GET', '/v1/org/employees')]);
+    return `<div class="card"><h3>Employees</h3>${table(emps, ['employee_no', 'first_name', 'last_name', 'email', 'designation', 'status', 'hire_date'].filter((c) => !emps[0] || c in emps[0]))}</div>
+    <div class="card"><h3>Add an employee</h3><form id="f-emp"><div class="grid">
+      ${field('employeeNo', 'Employee no.', 'required')}${field('firstName', 'First name', 'required')}${field('lastName', 'Last name', 'required')}${field('email', 'Email', 'type="email"')}
+      ${pick('unitId', 'Unit', unitOpts(us))}${pick('managerId', 'Manager', [['', '(none)'], ...emps.map((e) => [e.id, `${e.first_name} ${e.last_name}`])])}${field('hireDate', 'Hire date', 'type="date"')}
+      </div><div class="row"><button class="btn">Add employee</button></div></form></div>`;
+  },
+  async access() {
+    const [users, roles, us] = await Promise.all([api('GET', '/v1/iam/users'), api('GET', '/v1/iam/roles'), units()]);
+    return `<div class="card"><h3>Users</h3>${table(users)}
+      <form id="f-user"><div class="grid">${field('displayName', 'Name', 'required')}${field('email', 'Email', 'type="email" required')}${field('password', 'Password (12+ chars)', 'type="password"')}</div><div class="row"><button class="btn">Add user</button></div></form></div>
+    <div class="card"><h3>Roles</h3>${table(roles.map((r) => ({ code: r.code, name: r.name, permissions: (r.permissions || []).filter((p) => p.permission).map((p) => p.permission).join(', ') })))}
+      <form id="f-role"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}</div><div class="row"><button class="btn sec">Add role</button></div></form>
+      <form id="f-perm"><div class="grid">${pick('roleId', 'Role', roles.map((r) => [r.id, r.name]))}${field('perm', 'Permission code (e.g. mdm.item.read)', 'required')}</div><div class="row"><button class="btn sec">Grant permission</button></div></form></div>
+    <div class="card"><h3>Give a user a role</h3><form id="f-assign"><div class="grid">
+      ${pick('userId', 'User', users.map((u) => [u.id, u.email]))}${pick('roleId', 'Role', roles.map((r) => [r.id, r.name]))}${pick('scopeUnitId', 'For unit', unitOpts(us))}${check('includeDescendants', 'Include units below', true)}
+      </div><div class="row"><button class="btn">Assign</button></div></form></div>
+    <div class="card"><h3>Why can (or can't) I do something?</h3><form id="f-check"><div class="grid">${field('permission', 'Permission code', 'required value="mdm.party.approve"')}${pick('unitId', 'Unit', [['', '(any)'], ...unitOpts(us)])}</div><div class="row"><button class="btn sec">Check</button></div></form><pre id="check-out" style="display:none"></pre></div>`;
+  },
+  async masterdata() {
+    const [uoms, items, parties, us] = await Promise.all([api('GET', '/v1/mdm/uoms'), api('GET', '/v1/mdm/items'), api('GET', '/v1/mdm/parties'), units()]);
+    return `<div class="card"><h3>Customers and suppliers</h3><p class="muted">New records start as drafts. "Submit" sends one for approval, and someone other than you must approve it. So before submitting, add a second user under Users and roles and give them the Tenant administrator role.</p>
+      ${parties.length ? '<div class="tbl"><table><tr><th>code</th><th>name</th><th>customer</th><th>supplier</th><th>country</th><th>credit limit</th><th>status</th><th></th></tr>' + parties.map((p) => `<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${p.is_customer ? 'yes' : ''}</td><td>${p.is_supplier ? 'yes' : ''}</td><td>${esc(p.country_code)}</td><td>${esc(p.credit_limit)}</td><td>${esc(p.status)}${p.blocked ? ' (blocked)' : ''}</td><td>${p.status === 'draft' ? `<button class="btn sec" data-submit="${p.id}">Submit</button>` : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">Nothing here yet.</div>'}
+      <form id="f-party"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${check('isCustomer', 'Customer', true)}${check('isSupplier', 'Supplier')}
+      ${field('countryCode', 'Country', 'required value="AE" maxlength="2"')}${field('currencyCode', 'Currency', 'maxlength="3"')}${field('taxRegistrationNo', 'Tax reg. no.')}${field('creditLimit', 'Credit limit', 'type="number" min="0"')}${pick('ownerUnitId', 'Owning unit', unitOpts(us))}
+      </div><div class="row"><button class="btn">Add customer / supplier</button></div></form></div>
+    <div class="card"><h3>Items</h3>${table(items, ['code', 'name', 'item_type', 'base_uom', 'barcode', 'status'].filter((c) => !items[0] || c in items[0]))}
+      <form id="f-item"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${pick('itemType', 'Type', [['stock', 'Stock'], ['service', 'Service'], ['non_stock', 'Non-stock'], ['asset', 'Asset']])}${uoms.length ? pick('baseUom', 'Unit of measure', uoms.map((u) => [u.code, `${u.code} - ${u.name}`])) : '<label>Unit of measure<input disabled placeholder="Add one below first"></label>'}${field('barcode', 'Barcode')}</div><div class="row"><button class="btn">Add item</button></div></form></div>
+    <div class="card"><h3>Units of measure</h3>${table(uoms)}<form id="f-uom"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}</div><div class="row"><button class="btn sec">Add unit of measure</button></div></form></div>`;
+  },
+  async approvals() {
+    const [inbox, defs] = await Promise.all([api('GET', '/v1/wf/inbox'), api('GET', '/v1/wf/definitions')]);
+    return `<div class="card"><h3>Waiting for you (${inbox.length})</h3>
+      ${inbox.length ? '<div class="tbl"><table><tr>' + Object.keys(inbox[0]).slice(0, 7).map((k) => `<th>${esc(k.replace(/_/g, ' '))}</th>`).join('') + '<th></th></tr>' + inbox.map((t) => '<tr>' + Object.keys(inbox[0]).slice(0, 7).map((k) => `<td>${esc(typeof t[k] === 'object' && t[k] ? JSON.stringify(t[k]) : t[k])}</td>`).join('') + `<td><button class="btn" data-approve="${t.task_id}">Approve</button> <button class="btn sec" data-reject="${t.task_id}">Reject</button></td></tr>`).join('') + '</table></div>' : '<div class="empty">No approvals waiting.</div>'}
+      <p class="muted">Note: BAATS enforces maker-checker. You cannot approve a record you submitted yourself. To try the full flow: (1) under Users and roles, add a second user and give them the Tenant administrator role, (2) under Master data, add a customer and press Submit, (3) sign out, sign in as the second user, and approve it here.</p></div>
+    <div class="card"><h3>Approval workflows</h3>${table(defs.map((d) => ({ code: d.code, name: d.name, entity_type: d.entity_type, version: d.version, status: d.status })))}</div>`;
+  },
+  async audit() {
+    const rows = await api('GET', '/v1/audit/entries?limit=100');
+    return `<div class="card"><h3>Audit trail integrity</h3><p class="muted">Every change is chained with SHA-256. Verify checks that no entry has been altered or removed.</p><div class="row"><button class="btn" id="verify">Verify audit chain</button><span id="verify-out"></span></div></div>
+    <div class="card"><h3>Latest 100 audit entries</h3>${table(rows, ['seq', 'occurred_at', 'category', 'action', 'entity_type', 'entity_id'].filter((c) => !rows[0] || c in rows[0]))}</div>`;
+  },
+  async apitester() {
+    return `<div class="card"><h3>API tester</h3><p class="muted">For anything the screens above don't cover. Your sign-in is sent automatically. See the README for all endpoints under /v1.</p>
+      <form id="f-api"><div class="grid">${pick('method', 'Method', [['GET', 'GET'], ['POST', 'POST'], ['PATCH', 'PATCH'], ['PUT', 'PUT'], ['DELETE', 'DELETE']])}${field('path', 'Path', 'required value="/v1/me"')}</div>
+      <label style="margin-top:10px">JSON body<textarea name="body"></textarea></label><div class="row"><button class="btn">Send</button></div></form><pre id="api-out"></pre></div>`;
+  },
+};
+const MENU = [['overview', 'Overview'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audit', 'Audit trail'], ['apitester', 'API tester']];
+let current = 'overview';
+const after = {};
+
+async function show(page) {
+  current = page;
+  document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.p === page));
+  const m = $('main'); m.innerHTML = '<div class="muted">Loading...</div>';
+  try { m.innerHTML = await pages[page](); } catch (err) { m.innerHTML = `<div class="card"><h3>Could not load this page</h3><p>${esc(err.message)}</p></div>`; return; }
+  const reload = () => show(current);
+  const ok = (msg) => { toast(msg); reload(); };
+  bindForm('f-unit', async (b) => { await api('POST', '/v1/org/units', b); ok('Unit added'); });
+  bindForm('f-type', async (b) => { await api('POST', '/v1/org/unit-types', { ...b, rank: Number(b.rank) }); ok('Level added'); });
+  bindForm('f-desig', async (b) => { await api('POST', '/v1/org/designations', b); ok('Designation added'); });
+  bindForm('f-emp', async (b) => { await api('POST', '/v1/org/employees', b); ok('Employee added'); });
+  bindForm('f-user', async (b) => { await api('POST', '/v1/iam/users', b); ok('User added'); });
+  bindForm('f-role', async (b) => { await api('POST', '/v1/iam/roles', b); ok('Role added'); });
+  bindForm('f-perm', async (b) => { await api('PUT', `/v1/iam/roles/${b.roleId}/permissions/${encodeURIComponent(b.perm)}`, {}); ok('Permission granted'); });
+  bindForm('f-assign', async (b) => { await api('POST', '/v1/iam/assignments', b); ok('Role assigned'); });
+  bindForm('f-check', async (b) => { const r = await api('POST', '/v1/iam/check', b); const o = $('#check-out'); o.style.display = 'block'; o.textContent = JSON.stringify(r, null, 2); });
+  bindForm('f-party', async (b) => { if (b.creditLimit) b.creditLimit = Number(b.creditLimit); await api('POST', '/v1/mdm/parties', b); ok('Saved as draft'); });
+  bindForm('f-item', async (b) => { await api('POST', '/v1/mdm/items', b); ok('Item added'); });
+  bindForm('f-uom', async (b) => { await api('POST', '/v1/mdm/uoms', b); ok('Unit of measure added'); });
+  bindForm('f-api', async (b) => {
+    const out = $('#api-out'); out.textContent = '...';
+    try { const r = await api(b.method, b.path, b.body ? JSON.parse(b.body) : undefined); out.textContent = JSON.stringify(r, null, 2); }
+    catch (err) { out.textContent = 'Error: ' + err.message; }
+  });
+  m.querySelectorAll('[data-submit]').forEach((el) => el.onclick = async () => { try { await api('POST', `/v1/mdm/parties/${el.dataset.submit}/submit`); ok('Sent for approval'); } catch (e) { toast(e.message, false); } });
+  m.querySelectorAll('[data-approve]').forEach((el) => el.onclick = async () => { try { await api('POST', `/v1/wf/tasks/${el.dataset.approve}/approve`, {}); ok('Approved'); } catch (e) { toast(e.message, false); } });
+  m.querySelectorAll('[data-reject]').forEach((el) => el.onclick = async () => { const c = prompt('Reason for rejecting?'); if (!c) return; try { await api('POST', `/v1/wf/tasks/${el.dataset.reject}/reject`, { comment: c }); ok('Rejected'); } catch (e) { toast(e.message, false); } });
+  if (after[page]) await after[page](m, ok);
+  const v = $('#verify'); if (v) v.onclick = async () => { try { const r = await api('GET', '/v1/audit/verify'); $('#verify-out').innerHTML = `<span style="color:${r.valid ? 'var(--ok)' : 'var(--bad)'}">${r.valid ? `Intact: all ${r.entries} entries check out` : `Problem found at entry ${r.firstBrokenSeq}`}</span> <span class="muted">${esc(JSON.stringify(r))}</span>`; } catch (e) { toast(e.message, false); } };
+}
+
+// ---------- Finance (Phase 2) ----------
+const money = (v) => (v === null || v === undefined || v === '') ? '' : Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const today = () => new Date().toISOString().slice(0, 10);
+const yearStart = () => `${new Date().getFullYear()}-01-01`;
+const quarter = () => { const d = new Date(); const q = Math.floor(d.getMonth() / 3); const y = d.getFullYear();
+  const from = new Date(Date.UTC(y, q * 3, 1)); const to = new Date(Date.UTC(y, q * 3 + 3, 0)); return [from.toISOString().slice(0, 10), to.toISOString().slice(0, 10)]; };
+
+async function companies() {
+  const us = await units();
+  const out = [];
+  for (const u of us.filter((x) => x.country_code === 'AE' && x.currency_code)) {
+    try { const acc = await api('GET', `/v1/fin/companies/${u.id}/accounts`); if (acc.length) out.push({ ...u, accounts: acc }); } catch { /* not a company with books */ }
+  }
+  cache.companies = out;
+  if (!out.find((c) => c.id === S.company)) S.company = out[0]?.id;
+  return out;
+}
+const company = () => cache.companies.find((c) => c.id === S.company);
+function companyBar(cs) {
+  return cs.length > 1 ? `<div class="card"><label>Company<select id="co-pick">${cs.map((c) => `<option value="${c.id}" ${c.id === S.company ? 'selected' : ''}>${esc(c.code)} - ${esc(c.name)}</option>`).join('')}</select></label></div>` : '';
+}
+const noBooks = `<div class="card"><h3>No books yet</h3><p>Set up the books first under <b>Finance: setup</b>. The quickest way is the <b>Load demo data</b> button there.</p></div>`;
+const leafAccounts = (types) => company().accounts.filter((a) => !a.is_group && a.status !== 'inactive' && (!types || types.includes(a.type)));
+const accountOpts = (accs) => accs.map((a) => [a.code, `${a.code} ${a.name}`]);
+async function activeParties(role) {
+  const ps = await api('GET', '/v1/mdm/parties');
+  return ps.filter((p) => p.status === 'active' && !p.blocked && (role === 'customer' ? p.is_customer : role === 'supplier' ? p.is_supplier : true));
+}
+function bindCompanyPick() { const el = $('#co-pick'); if (el) el.onchange = () => { S.company = el.value; show(current); }; }
+function report(rows, cols, totalLabel, total) {
+  if (!rows.length) return '<div class="empty">No entries.</div>';
+  return '<div class="tbl"><table><tr>' + cols.map(([, t, r]) => `<th${r ? ' style="text-align:right"' : ''}>${t}</th>`).join('') + '</tr>' +
+    rows.map((x) => '<tr>' + cols.map(([k, , r]) => `<td${r ? ' style="text-align:right"' : ''}>${esc(r ? money(x[k]) : x[k])}</td>`).join('') + '</tr>').join('') +
+    (totalLabel ? `<tr><th colspan="${cols.length - 1}">${totalLabel}</th><th style="text-align:right">${money(total)}</th></tr>` : '') + '</table></div>';
+}
+
+Object.assign(pages, {
+  async books() {
+    const [cs, us] = await Promise.all([companies(), units()]);
+    const types = await api('GET', '/v1/org/unit-types');
+    const legal = new Set(types.filter((t) => t.is_legal_entity).map((t) => t.code));
+    const candidates = us.filter((u) => legal.has(u.type) && !cs.find((c) => c.id === u.id));
+    return `<div class="card"><h3>Try finance in one click</h3><p class="muted">Loads a small demo: sets up books for your head company (if needed), adds a second user who can approve, a customer and a supplier, two invoices, a receipt and an owner's capital journal. Takes about 10 seconds.</p>
+      <div class="row"><button class="btn" id="demo">Load demo data</button><span id="demo-out" class="muted"></span></div></div>
+    ${cs.length ? companyBar(cs) + `<div class="card"><h3>Chart of accounts: ${esc(company().name)}</h3>${table(company().accounts, ['code', 'name', 'type', 'parent_code', 'is_group', 'control'])}
+      <form id="f-acct"><div class="grid">${field('code', 'New account code (3-10 digits)', 'required')}${field('name', 'Name', 'required')}${pick('parentCode', 'Under group', company().accounts.filter((a) => a.is_group).map((a) => [a.code, `${a.code} ${a.name}`]))}</div><div class="row"><button class="btn sec">Add account</button></div></form></div>` : ''}
+    <div class="card"><h3>Set up books for a company</h3>
+      ${candidates.length ? `<p class="muted">Books can be kept by a legal-entity unit with country AE and a currency (UAE is the first country pack). The BAATS UAE chart of accounts, VAT codes and 12 open months are created.</p>
+      <form id="f-books"><div class="grid">${pick('unitId', 'Unit', candidates.map((u) => [u.id, `${u.code} - ${u.name} (${u.country_code || 'no country'}, ${u.currency_code || 'no currency'})`]))}
+      ${field('legalName', 'Legal name', 'required')}${field('taxRegistrationNo', 'TRN (15 digits, optional)', 'pattern="[0-9]{15}"')}${field('openFrom', 'Books open from', `type="date" required value="${yearStart()}"`)}
+      ${pick('vatPeriod', 'VAT period', [['quarterly', 'Quarterly'], ['monthly', 'Monthly']])}</div><div class="row"><button class="btn">Set up books</button></div></form>`
+      : '<p class="muted">Every legal-entity unit already has books. Add a Company unit under Organization to set up another one.</p>'}</div>`;
+  },
+  async invoices() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [invs, custs, supps, taxes] = await Promise.all([api('GET', `/v1/fin/companies/${S.company}/invoices`), activeParties('customer'), activeParties('supplier'), api('GET', '/v1/fin/tax-codes')]);
+    cache.parties = { customer: custs, supplier: supps };
+    const taxOpts = taxes.map((t) => [t.code, `${t.code} - ${t.name}`]);
+    const line = (i) => `<div class="grid" style="margin-top:6px">${field(`d${i}`, `Line ${i + 1}: description`, i ? '' : 'required')}${field(`q${i}`, 'Quantity', `type="number" step="any" ${i ? '' : 'required value="1"'}`)}${field(`p${i}`, 'Unit price', `type="number" step="any" ${i ? '' : 'required'}`)}${pick(`t${i}`, 'VAT', taxOpts)}<label>Account<select name="a${i}" class="acct"></select></label></div>`;
+    return companyBar(cs) + `<div class="card"><h3>Invoices and credit notes</h3>
+      ${invs.length ? '<div class="tbl"><table><tr><th>no</th><th>kind</th><th>party</th><th>date</th><th>due</th><th style="text-align:right">total</th><th style="text-align:right">open</th><th>status</th><th></th></tr>' + invs.map((v) => `<tr><td>${esc(v.no || '(draft)')}</td><td>${esc(v.kind.replace('_', ' '))}</td><td>${esc(v.party_name)}</td><td>${esc(String(v.date).slice(0, 10))}</td><td>${esc(String(v.due_date || '').slice(0, 10))}</td><td style="text-align:right">${money(v.gross_total)} ${esc(v.currency)}</td><td style="text-align:right">${v.status === 'posted' ? money(v.outstanding) : ''}</td><td>${esc(v.status)}</td><td>${v.status === 'draft' ? `<button class="btn" data-post="${v.id}">Post</button> <button class="btn sec" data-del="${v.id}">Delete</button>` : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No invoices yet.</div>'}</div>
+    <div class="card"><h3>New invoice</h3>${custs.length || supps.length ? '' : '<p class="muted">You need an approved customer or supplier first (Master data, then Approvals), or use Load demo data under Finance: setup.</p>'}
+      <form id="f-inv"><div class="grid">${pick('kind', 'Type', [['sales_invoice', 'Sales invoice'], ['purchase_invoice', 'Purchase bill'], ['sales_credit', 'Sales credit note'], ['purchase_credit', 'Purchase credit note']])}
+      <label>Customer / supplier<select name="partyId" required></select></label>${field('date', 'Date', `type="date" required value="${today()}"`)}${field('dueDate', 'Due date', 'type="date"')}${field('supplierRef', "Supplier's invoice no. (bills)")}
+      <label>Credits invoice (credit notes)<select name="creditOf"><option value="">(none)</option>${invs.filter((v) => v.status === 'posted' && /invoice/.test(v.kind)).map((v) => `<option value="${v.id}">${esc(v.no)} ${esc(v.party_name)}</option>`).join('')}</select></label></div>
+      ${line(0)}${line(1)}${line(2)}
+      <div class="row"><button class="btn" name="go" value="post">Save and post</button><button class="btn sec" name="go2" value="draft" type="button" id="inv-draft">Save as draft</button></div></form></div>
+    <div class="card"><h3>Record a receipt or payment</h3><form id="f-pay"><div class="grid">
+      ${pick('kind', 'Type', [['receipt', 'Receipt from customer'], ['payment', 'Payment to supplier']])}<label>Customer / supplier<select name="partyId" required></select></label>
+      ${field('date', 'Date', `type="date" required value="${today()}"`)}${pick('bankAccount', 'Paid into / from', accountOpts(company().accounts.filter((a) => ['1000', '1010'].includes(a.code))))}${field('amount', 'Amount', 'type="number" step="any" required min="0.01"')}${field('reference', 'Reference')}
+      <label>Settles invoice<select name="invoiceId"><option value="">(none, keep as advance)</option></select></label></div><div class="row"><button class="btn">Record</button></div></form></div>`;
+  },
+  async journals() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const manual = company().accounts.filter((a) => !a.is_group && a.allow_manual !== false);
+    const line = (i) => `<div class="grid" style="margin-top:6px">${pick(`a${i}`, `Line ${i + 1}: account`, [['', '(unused)'], ...accountOpts(manual)])}${field(`d${i}`, 'Debit', 'type="number" step="any" min="0"')}${field(`c${i}`, 'Credit', 'type="number" step="any" min="0"')}</div>`;
+    return companyBar(cs) + `<div class="card"><h3>New journal</h3><p class="muted">Manual journals need approval by someone else (maker-checker). After you submit, they wait under Approvals for a Finance controller or Tenant administrator. Control accounts (receivables, payables, VAT) can't be used here; they are posted by invoices and payments.</p>
+      <form id="f-jnl"><div class="grid">${field('date', 'Date', `type="date" required value="${today()}"`)}${field('memo', 'Memo', 'required')}${pick('type', 'Type', [['manual', 'Manual'], ['opening', 'Opening balance']])}</div>
+      ${line(0)}${line(1)}${line(2)}${line(3)}<div class="row"><button class="btn">Submit for approval</button></div></form></div>
+    <div class="card"><h3>Account ledger</h3><form id="f-led"><div class="grid">${pick('account', 'Account', accountOpts(company().accounts.filter((a) => !a.is_group)))}${field('from', 'From', `type="date" value="${yearStart()}"`)}${field('to', 'To', `type="date" value="${today()}"`)}</div><div class="row"><button class="btn sec">Show</button></div></form><div id="led-out"></div></div>`;
+  },
+  async vat() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [f, t] = quarter();
+    return companyBar(cs) + `<div class="card"><h3>UAE VAT return (VAT 201)</h3><form id="f-vat"><div class="grid">${field('from', 'From', `type="date" required value="${f}"`)}${field('to', 'To', `type="date" required value="${t}"`)}</div>
+      <div class="row"><button class="btn">Calculate</button><button class="btn sec" type="button" id="vat-file">File this return</button></div></form><div id="vat-out"></div></div>`;
+  },
+  async reports() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    return companyBar(cs) + `<div class="card"><h3>Reports</h3><form id="f-rep"><div class="grid">${pick('r', 'Report', [['tb', 'Trial balance'], ['pl', 'Profit and loss'], ['bs', 'Balance sheet'], ['ar', 'Receivables ageing'], ['ap', 'Payables ageing']])}
+      ${field('from', 'From', `type="date" value="${yearStart()}"`)}${field('to', 'To / as of', `type="date" value="${today()}"`)}</div><div class="row"><button class="btn">Run</button></div></form></div><div id="rep-out"></div>`;
+  },
+});
+
+const VAT_BOXES = { '1': 'Box 1: Standard rated supplies', '3': 'Box 3: Supplies subject to reverse charge', '4': 'Box 4: Zero rated supplies', '5': 'Box 5: Exempt supplies',
+  '8': 'Box 8: Totals (sales)', '9': 'Box 9: Standard rated expenses', '10': 'Box 10: Supplies subject to reverse charge (purchases)', '11': 'Box 11: Totals (purchases)' };
+
+Object.assign(after, {
+  async books(m, ok) {
+    bindCompanyPick();
+    bindForm('f-books', async (b) => { await api('POST', '/v1/fin/companies', b); S.company = b.unitId; ok('Books set up'); });
+    bindForm('f-acct', async (b) => { await api('POST', `/v1/fin/companies/${S.company}/accounts`, b); ok('Account added'); });
+    $('#demo').onclick = async () => { const out = $('#demo-out'); $('#demo').disabled = true; try { await loadDemo((t) => { out.textContent = t; }); ok('Demo data loaded'); } catch (e) { out.textContent = ''; toast(e.message, false); $('#demo').disabled = false; } };
+  },
+  async invoices(m, ok) {
+    bindCompanyPick();
+    const f = $('#f-inv'); const pf = $('#f-pay');
+    const fill = (form) => {
+      const kind = form.kind.value; const role = /sales|receipt/.test(kind) ? 'customer' : 'supplier';
+      form.partyId.innerHTML = cache.parties[role].map((p) => `<option value="${p.id}">${esc(p.code)} - ${esc(p.name)}</option>`).join('') || '<option value="">(none approved yet)</option>';
+      if (form === f) {
+        const accs = leafAccounts(role === 'customer' ? ['revenue'] : ['expense', 'asset']).filter((a) => a.allow_manual !== false && !a.control);
+        form.querySelectorAll('.acct').forEach((s) => { s.innerHTML = '<option value="">(default)</option>' + accountOpts(accs).map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join(''); });
+      } else fillInv();
+    };
+    const fillInv = async () => {
+      const kind = pf.kind.value === 'receipt' ? 'sales_invoice' : 'purchase_invoice';
+      const invs = (await api('GET', `/v1/fin/companies/${S.company}/invoices?kind=${kind}&status=posted&partyId=${pf.partyId.value}`).catch(() => [])).filter((v) => Number(v.outstanding) > 0);
+      pf.invoiceId.innerHTML = '<option value="">(none, keep as advance)</option>' + invs.map((v) => `<option value="${v.id}" data-open="${v.outstanding}">${esc(v.no)} open ${money(v.outstanding)}</option>`).join('');
+    };
+    f.kind.onchange = () => fill(f); pf.kind.onchange = () => fill(pf); pf.partyId.onchange = fillInv;
+    pf.invoiceId.onchange = () => { const o = pf.invoiceId.selectedOptions[0]; if (o?.dataset.open) pf.amount.value = o.dataset.open; };
+    fill(f); fill(pf);
+    ['t0', 't1', 't2'].forEach((n) => { f[n].value = 'SR'; }); pf.bankAccount.value = '1010';
+    const saveInv = async (postIt) => {
+      const b = form(f); const lines = [];
+      for (let i = 0; i < 3; i++) if (b[`d${i}`]) lines.push({ description: b[`d${i}`], quantity: Number(b[`q${i}`] || 1), unitPrice: Number(b[`p${i}`] || 0), taxCode: b[`t${i}`], ...(b[`a${i}`] ? { account: b[`a${i}`] } : {}) });
+      const body = { kind: b.kind, partyId: b.partyId, date: b.date, lines };
+      for (const k of ['dueDate', 'supplierRef', 'creditOf']) if (b[k]) body[k] = b[k];
+      const d = await api('POST', `/v1/fin/companies/${S.company}/invoices`, body);
+      if (postIt) { const p = await api('POST', `/v1/fin/invoices/${d.id}/post`); ok(`Posted ${p.no}`); } else ok('Saved as draft');
+    };
+    bindForm('f-inv', () => saveInv(true));
+    $('#inv-draft').onclick = async () => { if (!f.reportValidity()) return; try { await saveInv(false); } catch (e) { toast(e.message, false); } };
+    bindForm('f-pay', async (b) => {
+      const body = { kind: b.kind, partyId: b.partyId, date: b.date, bankAccount: b.bankAccount, amount: Number(b.amount) };
+      if (b.reference) body.reference = b.reference;
+      if (b.invoiceId) body.allocations = [{ invoiceId: b.invoiceId, amount: Math.min(Number(b.amount), Number(pf.invoiceId.selectedOptions[0].dataset.open)) }];
+      const r = await api('POST', `/v1/fin/companies/${S.company}/payments`, body); ok(`Recorded ${r.no}`);
+    });
+    m.querySelectorAll('[data-post]').forEach((el) => el.onclick = async () => { try { const p = await api('POST', `/v1/fin/invoices/${el.dataset.post}/post`); ok(`Posted ${p.no}`); } catch (e) { toast(e.message, false); } });
+    m.querySelectorAll('[data-del]').forEach((el) => el.onclick = async () => { try { await api('DELETE', `/v1/fin/invoices/${el.dataset.del}`); ok('Draft deleted'); } catch (e) { toast(e.message, false); } });
+  },
+  async journals(m, ok) {
+    bindCompanyPick();
+    bindForm('f-jnl', async (b) => {
+      const lines = [];
+      for (let i = 0; i < 4; i++) if (b[`a${i}`]) lines.push({ account: b[`a${i}`], ...(b[`d${i}`] ? { debit: Number(b[`d${i}`]) } : {}), ...(b[`c${i}`] ? { credit: Number(b[`c${i}`]) } : {}) });
+      await api('POST', `/v1/fin/companies/${S.company}/journals`, { date: b.date, memo: b.memo, type: b.type, lines }); ok('Submitted for approval');
+    });
+    bindForm('f-led', async (b) => {
+      const r = await api('GET', `/v1/fin/companies/${S.company}/ledger/${b.account}?from=${b.from}&to=${b.to}`);
+      $('#led-out').innerHTML = `<p>Opening balance: <b>${money(r.opening)}</b> · Closing balance: <b>${money(r.closing)}</b></p>` +
+        report(r.lines.map((x) => ({ ...x, date: String(x.date).slice(0, 10) })), [['date', 'Date'], ['no', 'No.'], ['memo', 'Memo'], ['debit', 'Debit', 1], ['credit', 'Credit', 1], ['balance', 'Balance', 1]]);
+    });
+  },
+  async vat(m, ok) {
+    bindCompanyPick();
+    const calc = async (b) => {
+      const r = await api('GET', `/v1/fin/companies/${S.company}/vat-return?from=${b.from}&to=${b.to}`);
+      $('#vat-out').innerHTML = report(Object.entries(r.boxes).map(([k, v]) => ({ box: VAT_BOXES[k] || 'Box ' + k, amount: v.amount, vat: v.vat })), [['box', 'Box'], ['amount', 'Amount (AED)', 1], ['vat', 'VAT (AED)', 1]]) +
+        `<p>Output tax <b>${money(r.outputTax)}</b> · Input tax <b>${money(r.inputTax)}</b> · <b>Net VAT ${r.netPayable >= 0 ? 'payable' : 'refundable'}: ${money(Math.abs(r.netPayable))}</b></p>`;
+    };
+    bindForm('f-vat', calc);
+    $('#vat-file').onclick = async () => { const b = form($('#f-vat')); if (!confirm('File this VAT return? This posts the VAT settlement journal and locks the period for VAT.')) return; try { await api('POST', `/v1/fin/companies/${S.company}/vat-returns`, b); toast('VAT return filed'); await calc(b); } catch (e) { toast(e.message, false); } };
+  },
+  async reports() {
+    bindCompanyPick();
+    bindForm('f-rep', async (b) => {
+      const c = S.company; const o = $('#rep-out'); let h = '';
+      if (b.r === 'tb') {
+        const r = await api('GET', `/v1/fin/companies/${c}/trial-balance?to=${b.to}`);
+        h = `<div class="card"><h3>Trial balance to ${esc(r.to)} ${r.balanced ? '<span class="pill">balanced</span>' : '<span class="pill" style="color:var(--bad)">NOT balanced</span>'}</h3>` +
+          report(r.lines.map((x) => ({ ...x, dr: x.closing > 0 ? x.closing : 0, cr: x.closing < 0 ? -x.closing : 0 })), [['code', 'Code'], ['name', 'Account'], ['dr', 'Debit', 1], ['cr', 'Credit', 1]]) +
+          `<p>Totals: debit <b>${money(r.totals.closingDebit)}</b> · credit <b>${money(r.totals.closingCredit)}</b></p></div>`;
+      } else if (b.r === 'pl') {
+        const r = await api('GET', `/v1/fin/companies/${c}/profit-and-loss?from=${b.from}&to=${b.to}`);
+        const cols = [['code', 'Code'], ['name', 'Account'], ['amount', 'Amount', 1]];
+        h = `<div class="card"><h3>Profit and loss, ${esc(r.from)} to ${esc(r.to)}</h3><h4>Revenue</h4>${report(r.revenue, cols, 'Total revenue', r.totalRevenue)}<h4>Direct costs</h4>${report(r.directCosts, cols, 'Total direct costs', r.totalDirectCosts)}
+          <p>Gross profit <b>${money(r.grossProfit)}</b></p><h4>Expenses</h4>${report(r.expenses, cols, 'Total expenses', r.totalExpenses)}<p style="font-size:16px">Net profit <b>${money(r.netProfit)}</b></p></div>`;
+      } else if (b.r === 'bs') {
+        const r = await api('GET', `/v1/fin/companies/${c}/balance-sheet?asOf=${b.to}`);
+        const cols = [['code', 'Code'], ['name', 'Account'], ['amount', 'Amount', 1]];
+        h = `<div class="card"><h3>Balance sheet as of ${esc(r.asOf)} ${r.balanced ? '<span class="pill">balanced</span>' : '<span class="pill" style="color:var(--bad)">NOT balanced</span>'}</h3><h4>Assets</h4>${report(r.assets, cols, 'Total assets', r.totalAssets)}
+          <h4>Liabilities</h4>${report(r.liabilities, cols, 'Total liabilities', r.totalLiabilities)}<h4>Equity</h4>${report([...r.equity, { code: '', name: 'Current year earnings', amount: r.currentEarnings }], cols, 'Total equity', r.totalEquity)}</div>`;
+      } else {
+        const r = await api('GET', `/v1/fin/companies/${c}/ageing/${b.r === 'ar' ? 'receivable' : 'payable'}?asOf=${b.to}`);
+        const rows = r.partners;
+        h = `<div class="card"><h3>${b.r === 'ar' ? 'Receivables' : 'Payables'} ageing as of ${esc(r.asOf)}</h3>` + report(rows, [['party', 'Partner'], ['currency', 'Cur.'], ['current', 'Current', 1], ['1-30', '1-30', 1], ['31-60', '31-60', 1], ['61-90', '61-90', 1], ['over_90', 'Over 90', 1], ['advances', 'Advances', 1], ['total', 'Total', 1]]) + '</div>';
+      }
+      o.innerHTML = h;
+    });
+  },
+});
+
+// Demo: everything through the public API, as the signed-in admin plus a second approver user.
+async function loadDemo(step) {
+  const me = await api('GET', '/v1/me');
+  const us = await units(); const root = us.find((u) => u.depth === 0) || us[0];
+  let cs = await companies();
+  if (!cs.length) {
+    step('Setting up books...');
+    await api('POST', '/v1/fin/companies', { unitId: root.id, legalName: root.name + ' LLC', taxRegistrationNo: '100000000000003', openFrom: yearStart() });
+    cs = await companies();
+  }
+  const co = S.company;
+  step('Adding an approver user...');
+  const pw = 'Approver-Demo-2026';
+  const users = await api('GET', '/v1/iam/users');
+  const appEmail = `approver@${S.tenant}.demo`;
+  let approver = users.find((u) => u.email === appEmail);
+  if (!approver) {
+    approver = await api('POST', '/v1/iam/users', { email: appEmail, displayName: 'Demo Approver', password: pw });
+    const roles = await api('GET', '/v1/iam/roles');
+    await api('POST', '/v1/iam/assignments', { userId: approver.id, roleId: roles.find((r) => r.code === 'TENANT_ADMIN').id, scopeUnitId: root.id, includeDescendants: true });
+  }
+  const asApprover = async (fn) => {
+    const l = await api('POST', '/v1/auth/login', { tenant: S.tenant, email: appEmail, password: pw });
+    const saved = S.token; S.token = (l.session || l).token;
+    try { return await fn(); } finally { await api('POST', '/v1/auth/logout').catch(() => {}); S.token = saved; }
+  };
+  step('Adding a customer and a supplier...');
+  const existing = await api('GET', '/v1/mdm/parties');
+  const mk = async (code, name, isCustomer, isSupplier) => {
+    let p = existing.find((x) => x.code === code);
+    if (!p) p = (await api('POST', '/v1/mdm/parties', { code, name, isCustomer, isSupplier, countryCode: 'AE', currencyCode: 'AED', ownerUnitId: co })).party;
+    if (p.status === 'draft') await api('POST', `/v1/mdm/parties/${p.id}/submit`);
+    return p;
+  };
+  const cust = await mk('DEMO-C1', 'Gulf Retail LLC', true, false);
+  const supp = await mk('DEMO-S1', 'Dubai Office Supplies', false, true);
+  step('Approving them as the second user...');
+  await asApprover(async () => { for (const t of await api('GET', '/v1/wf/inbox')) if (t.entity_type === 'mdm.party') await api('POST', `/v1/wf/tasks/${t.task_id}/approve`, { comment: 'Demo approval' }); });
+  step('Posting invoices and a receipt...');
+  const d = today();
+  const si = await api('POST', `/v1/fin/companies/${co}/invoices`, { kind: 'sales_invoice', partyId: cust.id, date: d, lines: [
+    { description: 'Consulting services', quantity: 10, unitPrice: 1000, taxCode: 'SR' }, { description: 'Export service', quantity: 1, unitPrice: 2500, taxCode: 'ZR', account: '4100' }] });
+  const sip = await api('POST', `/v1/fin/invoices/${si.id}/post`);
+  const pi = await api('POST', `/v1/fin/companies/${co}/invoices`, { kind: 'purchase_invoice', partyId: supp.id, supplierRef: 'DOS-' + Date.now().toString().slice(-5), date: d, lines: [
+    { description: 'Paper and toner', quantity: 4, unitPrice: 500, taxCode: 'SR', account: '5500' }] });
+  await api('POST', `/v1/fin/invoices/${pi.id}/post`);
+  await api('POST', `/v1/fin/companies/${co}/payments`, { kind: 'receipt', partyId: cust.id, date: d, bankAccount: '1010', amount: 5000, allocations: [{ invoiceId: sip.id || si.id, amount: 5000 }] });
+  step("Owner's capital journal (submitted, then approved by the second user)...");
+  await api('POST', `/v1/fin/companies/${co}/journals`, { date: d, memo: "Owner's capital introduced", lines: [{ account: '1010', debit: 50000 }, { account: '3000', credit: 50000 }] });
+  await asApprover(async () => { for (const t of await api('GET', '/v1/wf/inbox')) if (t.entity_type === 'fin.journal') await api('POST', `/v1/wf/tasks/${t.task_id}/approve`, { comment: 'Demo approval' }); });
+  step(`Done. Second user: ${appEmail} / ${pw}`);
+  toast(`Demo loaded. The approver can sign in as ${appEmail} with password ${pw}`);
+}
+
+function render() {
+  const a = $('#app');
+  $('#logout').style.display = S ? '' : 'none';
+  $('#who').textContent = S ? `${S.email} @ ${S.tenant}` : '';
+  if (!S) { a.innerHTML = authView(); afterAuthBind(); return; }
+  a.innerHTML = `<div class="wrap"><nav>${MENU.map(([k, t]) => `<button data-p="${k}">${t}</button>`).join('')}</nav><main></main></div>`;
+  a.querySelectorAll('nav button').forEach((b) => b.onclick = () => show(b.dataset.p));
+  show(current);
+}
+$('#logout').onclick = async () => { try { await api('POST', '/v1/auth/logout'); } catch { /* ignore */ } S = null; sessionStorage.removeItem('baats'); render(); };
+fetch('/local/ping').then((r) => r.json()).then((d) => { $('#ver').textContent = 'Trial console · ' + d.version; }).catch(() => {});
+render();
+</script>
+</body>
+</html>

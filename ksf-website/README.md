@@ -21,7 +21,7 @@ Open `index.html` in a browser, or run `python3 -m http.server` inside this fold
 2. ~~Collection photo~~ added (`assets/ksf-collection.jpg`). Separate photos of each pack would replace the drawn packs on the flavour cards.
 3. **Pack sizes and prices** (flavours are now the real six, in `assets/main.js` `FLAVOURS`).
 4. **Factory address, phone and WhatsApp** for the Contact page.
-5. **Social media links** once the pages are live (Facebook, Instagram, TikTok, YouTube, LinkedIn, X).
+5. ~~Facebook and Instagram~~ linked (2026-11-27). **TikTok, YouTube, LinkedIn, X** links once those pages are live.
 6. Claims used come from the pack artwork: 100% vegetarian, real potatoes, quality corn, no artificial colours, no preservatives, Pops baked not fried.
 
 ## Editing tips

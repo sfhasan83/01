@@ -404,6 +404,12 @@ form.enquiry .note { font-size: 13px; color: var(--muted-ink); margin: 0; }
 .social small { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--gold); }
 .social-icons { display: flex; gap: 10px; }
 .social-icons span { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,247,232,.06); box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); }
+.social-icons span { opacity: .45; }
+.social-icons a { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,184,28,.12); box-shadow: inset 0 0 0 1px var(--gold); color: var(--gold); transition: background .2s, color .2s, transform .2s; }
+.social-icons a:hover, .social-icons a:focus-visible { background: var(--gold); color: #120d08; transform: translateY(-2px); }
+.social.live { cursor: pointer; color: var(--cream); box-shadow: inset 0 0 0 1px var(--gold); text-decoration: none; transition: background .2s, transform .2s; }
+.social.live:hover, .social.live:focus-visible { background: rgba(255,184,28,.16); transform: translateY(-2px); }
+.social[aria-disabled="true"] { opacity: .55; }
 .social-icons svg { width: 18px; height: 18px; }
 
 /* ---------- Footer ---------- */

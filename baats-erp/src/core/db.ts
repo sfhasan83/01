@@ -26,6 +26,20 @@ export class Db {
    * An access denial is rolled back and then written to the audit trail on its own.
    */
   async withTenant<T>(ctx: Ctx, fn: (tx: Tx) => Promise<T>): Promise<T> {
+    // A deadlock or serialization failure rolls the whole transaction back, so
+    // it is safe to run it again; PostgreSQL has already picked one side to lose.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.once(ctx, fn);
+      } catch (err) {
+        const code = (err as { code?: string })?.code;
+        if ((code !== '40P01' && code !== '40001') || attempt >= 3) throw fromPg(err);
+        await new Promise((r) => setTimeout(r, 20 * attempt + Math.random() * 30));
+      }
+    }
+  }
+
+  private async once<T>(ctx: Ctx, fn: (tx: Tx) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -37,7 +51,7 @@ export class Db {
     } catch (err) {
       await client.query('ROLLBACK').catch(() => undefined);
       if (err instanceof ForbiddenError) await this.recordDenial(ctx, err);
-      throw fromPg(err);
+      throw err;
     } finally {
       client.release();
     }

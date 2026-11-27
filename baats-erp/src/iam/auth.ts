@@ -25,7 +25,7 @@ export async function login(db: Db, input: { tenant: string; email: string; pass
   type Outcome = { ok: true; session: Session } | { ok: false; message: string };
   const outcome = await db.withTenant<Outcome>({ tenantId, userId: null }, async (tx) => {
     const u = await one(tx, `SELECT id, password_hash, status, mfa_enabled, mfa_secret, failed_logins, locked_until
-                               FROM iam.users WHERE lower(email) = lower($1) FOR UPDATE`, [input.email]);
+                               FROM iam.users WHERE lower(email) = lower($1) FOR NO KEY UPDATE`, [input.email]);
     const fail = async (reason: string, userId: string | null): Promise<Outcome> => {
       await audit(tx, 'login_failed', userId, { email: input.email.toLowerCase(), reason });
       return { ok: false, message: 'invalid credentials' };

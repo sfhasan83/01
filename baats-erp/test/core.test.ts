@@ -233,3 +233,29 @@ describe('audit trail', () => {
     assert.deepEqual(r, { entries: 2, valid: false, firstBrokenSeq: 3 });
   });
 });
+
+describe('concurrency', () => {
+  it('signing in does not block a workflow task being assigned to the same user', async () => {
+    // A login locks the user's row; it must not conflict with the key-share lock a foreign key check takes.
+    const owner = new pg.Client({ connectionString: t.ownerUrl });
+    await owner.connect();
+    try {
+      await t.db.withTenant(a.adminCtx, async (tx) => {
+        await tx.query(`SELECT 1 FROM iam.users WHERE id = $1 FOR NO KEY UPDATE`, [a.adminUserId]);
+        await owner.query('SET lock_timeout = 2000');
+        await owner.query('BEGIN');
+        await owner.query(`SELECT 1 FROM iam.users WHERE id = $1 FOR KEY SHARE`, [a.adminUserId]);
+        await owner.query('ROLLBACK');
+      });
+    } finally { await owner.end(); }
+  });
+
+  it('runs a transaction again after a deadlock, and gives up after three tries', async () => {
+    let n = 0;
+    const r = await t.db.withTenant(a.adminCtx, async () => { n++; if (n < 3) throw Object.assign(new Error('deadlock detected'), { code: '40P01' }); return 'ok'; });
+    assert.deepEqual([r, n], ['ok', 3]);
+    n = 0;
+    await assert.rejects(t.db.withTenant(a.adminCtx, async () => { n++; throw Object.assign(new Error('deadlock detected'), { code: '40P01' }); }), /deadlock/);
+    assert.equal(n, 3);
+  });
+});

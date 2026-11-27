@@ -1,8 +1,9 @@
 import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
-import { company, nextNumber, post, round2 } from '../fin/ledger.ts';
+import { company, nextNumber, post, roundMoney } from '../fin/ledger.ts';
 import { priceLines } from '../fin/pricing.ts';
+import { roundIn } from '../core/money.ts';
 import { createInvoice } from '../fin/documents.ts';
 import { applyMove, issueCost, warehouse } from '../inv/service.ts';
 
@@ -45,7 +46,7 @@ export async function createQuotation(tx: Tx, ctx: Ctx, input: QuotationInput) {
     if (item.item_type === 'stock' && !input.warehouseId) throw new ValidationError('choose the warehouse the goods ship from');
   }
   if (input.warehouseId) await warehouse(tx, input.companyId, input.warehouseId);
-  const priced = await priceLines(tx, c.country_code, input.lines);
+  const priced = await priceLines(tx, c.country_code, currency, input.lines);
   const quoteNo = await nextNumber(tx, input.companyId, 'sal_quote', 'QT', input.date);
   const o = await one(tx, `INSERT INTO sal.orders (tenant_id, company_id, quote_no, customer_id, opportunity_id, date, valid_until, currency, fx_rate,
       warehouse_id, selling_unit_id, notes, net_total, tax_total, gross_total, created_by)
@@ -75,7 +76,7 @@ export async function exposure(tx: Tx, customerId: string, companyId: string): P
           WHERE o.customer_id = $1 AND o.company_id = $2 AND o.status = 'confirmed'
             AND NOT EXISTS (SELECT 1 FROM fin.invoices v WHERE v.source_type = 'sal.order' AND v.source_id = o.id AND v.status <> 'void')), 0) AS e`,
   [customerId, companyId]);
-  return round2(Number(r.e));
+  return roundMoney(Number(r.e));
 }
 
 export async function confirmOrder(tx: Tx, ctx: Ctx, orderId: string) {
@@ -89,9 +90,9 @@ export async function confirmOrder(tx: Tx, ctx: Ctx, orderId: string) {
     const c = await company(tx, o.company_id);
     // The limit is held in the customer's currency; compare in base using this order's rate when they differ.
     const limitBase = cust.currency_code === c.base_currency ? Number(cust.credit_limit) : Number(cust.credit_limit) * Number(o.fx_rate);
-    const after = round2(await exposure(tx, o.customer_id, o.company_id) + Number(o.gross_total) * Number(o.fx_rate));
-    if (after > limitBase + 0.001) {
-      throw new ValidationError(`credit limit exceeded for ${cust.name}: exposure would be ${after} ${c.base_currency} against a limit of ${round2(limitBase)}`);
+    const after = roundMoney(await exposure(tx, o.customer_id, o.company_id) + Number(o.gross_total) * Number(o.fx_rate));
+    if (after > limitBase + 0.0005) {
+      throw new ValidationError(`credit limit exceeded for ${cust.name}: exposure would be ${after} ${c.base_currency} against a limit of ${roundMoney(limitBase)}`);
     }
   }
   const no = await nextNumber(tx, o.company_id, 'sal_order', 'SO', o.date.toISOString().slice(0, 10));
@@ -147,7 +148,7 @@ export async function deliver(tx: Tx, ctx: Ctx, orderId: string, input: { date: 
   const no = await nextNumber(tx, o.company_id, 'sal_delivery', 'DN', input.date);
   const d = await one(tx, `INSERT INTO sal.deliveries (tenant_id, company_id, order_id, no, date, warehouse_id, created_by)
     VALUES (app.tenant(), $1, $2, $3, $4, $5, $6) RETURNING *`, [o.company_id, orderId, no, input.date, o.warehouse_id, ctx.userId]);
-  const cost = round2(lines.reduce((s, l) => s + l.cost, 0));
+  const cost = roundMoney(lines.reduce((s, l) => s + l.cost, 0));
   let journalId: string | null = null;
   if (cost > 0) {
     const j = await post(tx, ctx, { companyId: o.company_id, type: 'delivery', date: input.date, memo: `${no} – ${o.no}`,
@@ -175,7 +176,7 @@ export async function invoiceOrder(tx: Tx, ctx: Ctx, orderId: string, input: { d
   const lines = all.map((l) => {
     const billable = (l.item_type === 'stock' ? l.delivered_qty : Number(l.quantity)) - l.invoiced_qty;
     if (billable <= 1e-9) return null;
-    const discount = round2(Number(l.discount) * billable / Number(l.quantity));
+    const discount = roundIn(o.currency, Number(l.discount) * billable / Number(l.quantity));
     return { itemId: l.item_id ?? undefined, description: l.description, quantity: billable, unitPrice: Number(l.unit_price), discount,
       taxCode: l.tax_code, account: l.account ?? undefined, unitId: o.selling_unit_id ?? undefined, sourceLineId: l.id };
   }).filter((l) => l !== null);

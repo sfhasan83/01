@@ -2,7 +2,7 @@ Unicode true
 SetCompressor /SOLID lzma
 !include "MUI2.nsh"
 !define APPNAME "BAATS ERP"
-!define VERSION "0.9.0"
+!define VERSION "0.10.0"
 Name "BAATS Enterprise ERP ${VERSION} (trial)"
 OutFile "/home/claude/build/out/BAATS-ERP-Setup-${VERSION}.exe"
 InstallDir "$LOCALAPPDATA\Programs\BAATS ERP"
@@ -17,7 +17,7 @@ VIAddVersionKey "LegalCopyright" "BAATS"
 !define MUI_ICON "/home/claude/build/win/baats.ico"
 !define MUI_UNICON "/home/claude/build/win/baats.ico"
 !define MUI_WELCOMEPAGE_TITLE "Install BAATS Enterprise ERP"
-!define MUI_WELCOMEPAGE_TEXT "This installs a trial of BAATS Enterprise ERP, Phases 1 to 6a: the core platform, finance on UAE and Saudi rules, operations, corporate functions, analytics with an interactive dashboard, and the AI assistant.$\r$\n$\r$\nEverything it needs is included: its own database and runtime. Nothing is shared on your network, and no administrator rights are needed.$\r$\n$\r$\nAbout 200 MB of disk space is used."
+!define MUI_WELCOMEPAGE_TEXT "This installs a trial of BAATS Enterprise ERP, Phases 1 to 6b: the core platform, finance for all six GCC states, operations, corporate functions, analytics with an interactive dashboard, and the AI assistant.$\r$\n$\r$\nEverything it needs is included: its own database and runtime. Nothing is shared on your network, and no administrator rights are needed.$\r$\n$\r$\nAbout 200 MB of disk space is used."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\BAATS ERP.cmd"
 !define MUI_FINISHPAGE_RUN_TEXT "Start BAATS ERP now"
 !insertmacro MUI_PAGE_WELCOME

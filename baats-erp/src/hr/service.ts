@@ -1,8 +1,9 @@
+import { fixed } from '../core/money.ts';
 import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
 import { insertDefinition, onWorkflowComplete, submit } from '../workflow/engine.ts';
-import { company, post, resolveAccount, round2, type PostingLine } from '../fin/ledger.ts';
+import { company, post, resolveAccount, roundMoney, type PostingLine } from '../fin/ledger.ts';
 import { companyPack, uaeGratuity, type EndReason } from '../fin/country.ts';
 import { ensureRoleAccount } from '../fin/setup.ts';
 
@@ -37,9 +38,12 @@ const dstr = (v: Date | string | null) => (v === null ? null : typeof v === 'str
 export const gratuity = uaeGratuity;
 
 /** The end-of-service benefit of a contract under its company's country rules. */
-async function endOfService(tx: Tx, k: { company_id: string; basic: unknown; housing: unknown; start_date: Date | string }, at: string, reason?: EndReason | null) {
+async function endOfService(tx: Tx, k: { company_id: string; employee_id: string; basic: unknown; housing: unknown; start_date: Date | string; nationality?: string | null },
+  at: string, reason?: EndReason | null) {
   const pack = await companyPack(tx, k.company_id);
-  return pack.endOfService({ basic: Number(k.basic), housing: Number(k.housing) }, dstr(k.start_date)!, at, reason);
+  const nationality = k.nationality !== undefined ? k.nationality
+    : (await one(tx, 'SELECT nationality FROM org.employees WHERE id = $1', [k.employee_id]))?.nationality ?? null;
+  return pack.endOfService({ basic: Number(k.basic), housing: Number(k.housing) }, dstr(k.start_date)!, at, reason, nationality === pack.country);
 }
 
 export interface ContractInput {
@@ -202,11 +206,11 @@ export async function runPayroll(tx: Tx, ctx: Ctx, input: { companyId: string; p
                                      AND date_from <= $3 AND date_to >= $2`, [k.employee_id, start, end]);
     const paidDays = Math.max(0, employed - unpaid.d);
     const share = paidDays / daysInPeriod;
-    const basic = round2(Number(k.basic) * share);
-    const allowances = round2((Number(k.housing) + Number(k.transport) + Number(k.other_allowances)) * share);
+    const basic = roundMoney(Number(k.basic) * share);
+    const allowances = roundMoney((Number(k.housing) + Number(k.transport) + Number(k.other_allowances)) * share);
     const x = extras.get(k.employee_id);
-    const additions = round2(x?.additions ?? 0), deductions = round2(x?.deductions ?? 0);
-    const g = round2(basic + allowances + additions);
+    const additions = roundMoney(x?.additions ?? 0), deductions = roundMoney(x?.deductions ?? 0);
+    const g = roundMoney(basic + allowances + additions);
     // Social insurance on the contractual base, pro-rated like pay, up to the monthly cap.
     const contributions = [];
     for (const r of rules) {
@@ -215,12 +219,15 @@ export async function runPayroll(tx: Tx, ctx: Ctx, input: { companyId: string; p
       if (r.applies_to === 'non_nationals' && national) continue;
       const full = r.base === 'basic' ? Number(k.basic) : r.base === 'basic_housing' ? Number(k.basic) + Number(k.housing)
         : Number(k.basic) + Number(k.housing) + Number(k.transport) + Number(k.other_allowances);
-      const base = round2(Math.min(full, r.monthly_cap === null ? Infinity : Number(r.monthly_cap)) * share);
-      const employee = round2(base * Number(r.employee_pct) / 100), employer = round2(base * Number(r.employer_pct) / 100);
+      const base = roundMoney(Math.min(full, r.monthly_cap === null ? Infinity : Number(r.monthly_cap)) * share);
+      // Some employer rates step up with service (Bahrain's leaving indemnity after three years).
+      const served = days(dstr(k.start_date)!, to) / 365.25;
+      const employerPct = r.after_years !== null && served >= Number(r.after_years) ? Number(r.employer_pct_after) : Number(r.employer_pct);
+      const employee = roundMoney(base * Number(r.employee_pct) / 100), employer = roundMoney(base * employerPct / 100);
       if (employee || employer) contributions.push({ code: r.code, name: r.name, base, employee, employer });
     }
-    const ee = round2(contributions.reduce((x, c) => x + c.employee, 0)), er = round2(contributions.reduce((x, c) => x + c.employer, 0));
-    const n = round2(g - deductions - ee);
+    const ee = roundMoney(contributions.reduce((x, c) => x + c.employee, 0)), er = roundMoney(contributions.reduce((x, c) => x + c.employer, 0));
+    const n = roundMoney(g - deductions - ee);
     if (n < 0) throw new ValidationError(`deductions for employee ${k.employee_no} exceed the month's pay`);
     const grat = await endOfService(tx, k, end);
     await tx.query(`INSERT INTO hr.payslips (tenant_id, run_id, employee_id, contract_id, unit_id, days_in_period, paid_days, unpaid_leave_days,
@@ -234,7 +241,7 @@ export async function runPayroll(tx: Tx, ctx: Ctx, input: { companyId: string; p
   }
   await tx.query(`UPDATE hr.payroll_runs SET gross_total = $2, deductions_total = $3, net_total = $4,
       employee_contributions_total = $5, employer_contributions_total = $6 WHERE id = $1`,
-    [run.id, round2(gross), round2(ded), round2(net), round2(eeTotal), round2(erTotal)]);
+    [run.id, roundMoney(gross), roundMoney(ded), roundMoney(net), roundMoney(eeTotal), roundMoney(erTotal)]);
   return getPayroll(tx, ctx, run.id);
 }
 
@@ -257,7 +264,7 @@ async function provisionBalance(tx: Tx, companyId: string): Promise<number> {
   const r = await one(tx, `SELECT coalesce(sum(l.credit - l.debit), 0)::float AS b FROM fin.journal_lines l
                              JOIN fin.journals j ON j.id = l.journal_id JOIN fin.accounts a ON a.id = l.account_id
                             WHERE j.company_id = $1 AND j.status = 'posted' AND a.system_role = 'eosb_provision'`, [companyId]);
-  return round2(r.b);
+  return roundMoney(r.b);
 }
 
 /** Post the payroll and true up the gratuity provision to what the payslips show. */
@@ -268,7 +275,7 @@ export async function postPayroll(tx: Tx, ctx: Ctx, runId: string, date?: string
   if (run.status !== 'draft') throw new ConflictError(`the payroll is already ${run.status}`);
   const on = date ?? periodBounds(run.period).to;
   const byUnit = await many(tx, `SELECT unit_id, sum(gross)::float AS gross FROM hr.payslips WHERE run_id = $1 GROUP BY unit_id`, [runId]);
-  const lines: PostingLine[] = byUnit.filter((u) => u.gross > 0).map((u) => ({ account: 'role:salaries', debit: round2(u.gross), unitId: u.unit_id, description: `Payroll ${run.period}` }));
+  const lines: PostingLine[] = byUnit.filter((u) => u.gross > 0).map((u) => ({ account: 'role:salaries', debit: roundMoney(u.gross), unitId: u.unit_id, description: `Payroll ${run.period}` }));
   lines.push({ account: 'role:salaries_payable', credit: Number(run.net_total), description: `Net pay ${run.period}` });
   if (Number(run.deductions_total) > 0) lines.push({ account: 'role:employee_advances', credit: Number(run.deductions_total), description: 'Recovered from salaries' });
   const ee = Number(run.employee_contributions_total), er = Number(run.employer_contributions_total);
@@ -277,16 +284,16 @@ export async function postPayroll(tx: Tx, ctx: Ctx, runId: string, date?: string
     if (er > 0) {
       const expense = await ensureRoleAccount(tx, run.company_id, 'social_insurance_expense');
       const erByUnit = await many(tx, `SELECT unit_id, sum(employer_contributions)::float AS er FROM hr.payslips WHERE run_id = $1 GROUP BY unit_id`, [runId]);
-      for (const u of erByUnit) if (u.er > 0) lines.push({ account: expense, debit: round2(u.er), unitId: u.unit_id, description: `Employer social insurance ${run.period}` });
+      for (const u of erByUnit) if (u.er > 0) lines.push({ account: expense, debit: roundMoney(u.er), unitId: u.unit_id, description: `Employer social insurance ${run.period}` });
     }
-    lines.push({ account: payable, credit: round2(ee + er), description: `Social insurance ${run.period} (employees ${ee.toFixed(2)}, employer ${er.toFixed(2)})` });
+    lines.push({ account: payable, credit: roundMoney(ee + er), description: `Social insurance ${run.period} (employees ${fixed(ee)}, employer ${fixed(er)})` });
   }
   const j = await post(tx, ctx, { companyId: run.company_id, type: 'payroll', date: on, memo: `Payroll ${run.period}`, source: { type: 'hr.payroll', id: runId }, lines });
 
   // Gratuity: the provision equals what everyone on this payroll has accrued (a leaver's to the last day).
   // Leavers are paid from the provision with paySettlement, before they drop off the next payroll.
   const target = await one(tx, `SELECT coalesce(sum(gratuity_balance), 0)::float AS t FROM hr.payslips WHERE run_id = $1`, [runId]);
-  const change = round2(target.t - await provisionBalance(tx, run.company_id));
+  const change = roundMoney(target.t - await provisionBalance(tx, run.company_id));
   let gj = null;
   if (change !== 0) {
     gj = await post(tx, ctx, { companyId: run.company_id, type: 'gratuity', date: on, memo: `End-of-service provision ${run.period}`,
@@ -331,14 +338,15 @@ export async function payPayroll(tx: Tx, ctx: Ctx, runId: string, input: { date:
   await authorize(tx, ctx, 'hr.payroll.run', { unitId: run.company_id, attrs: { amount: Number(run.net_total) } });
   if (run.status !== 'posted') throw new ConflictError(run.status === 'paid' ? 'the payroll is already paid' : 'post the payroll first');
   const bank = await resolveAccount(tx, run.company_id, input.bankAccount ?? 'role:bank');
-  const wps = (await companyPack(tx, run.company_id)).wps;
+  const pack = await companyPack(tx, run.company_id);
+  const wps = pack.wps;
   if (wps && (!input.employerId || !input.employerBankCode)) throw new ValidationError('the MOHRE employer id and the employer bank routing code are needed for the WPS file');
   const sif = wps ? await wpsFile(tx, runId, input.employerId!, input.employerBankCode!, new Date()) : { fileName: null, content: null, records: 0, total: Number(run.net_total) };
   const j = await post(tx, ctx, { companyId: run.company_id, type: 'payroll_payment', date: input.date, memo: `Salaries paid ${run.period}${wps ? ' (WPS)' : ''}`,
     source: { type: 'hr.payroll', id: runId },
     lines: [{ account: 'role:salaries_payable', debit: Number(run.net_total) }, { account: bank.id, credit: Number(run.net_total) }] });
   await tx.query(`UPDATE hr.payroll_runs SET status = 'paid', payment_journal_id = $2 WHERE id = $1`, [runId, j.id]);
-  return { journalId: j.id, ...sif };
+  return { journalId: j.id, ...sif, note: pack.payrollFileGap ?? null };
 }
 
 /**
@@ -359,15 +367,15 @@ export async function wpsFile(tx: Tx, runId: string, employerId: string, employe
   const m2 = (n: number) => n.toFixed(2);
   let total = 0;
   const edr = slips.map((s) => {
-    const net = Number(s.net), variable = Math.min(Number(s.additions), net), fixed = round2(net - variable);
+    const net = Number(s.net), variable = Math.min(Number(s.additions), net), fixed = roundMoney(net - variable);
     total += net;
     return ['EDR', s.wps_person_id, s.bank_routing_code, s.iban, from, to, Math.round(Number(s.paid_days)), m2(fixed), m2(variable), Math.round(Number(s.unpaid_leave_days))].join(',');
   });
   const stamp = iso(now);
   const hhmm = now.toISOString().slice(11, 16).replace(':', '');
-  const scr = ['SCR', employerId, employerBankCode, stamp, hhmm, run.period.slice(5) + run.period.slice(0, 4), edr.length, m2(round2(total)), 'AED', `PAYROLL-${run.period}`].join(',');
+  const scr = ['SCR', employerId, employerBankCode, stamp, hhmm, run.period.slice(5) + run.period.slice(0, 4), edr.length, m2(roundMoney(total)), 'AED', `PAYROLL-${run.period}`].join(',');
   const fileName = `${employerId}${now.toISOString().replace(/[-:T]/g, '').slice(2, 14)}.SIF`;
-  return { fileName, content: [...edr, scr].join('\r\n') + '\r\n', records: edr.length, total: round2(total) };
+  return { fileName, content: [...edr, scr].join('\r\n') + '\r\n', records: edr.length, total: roundMoney(total) };
 }
 
 // --- Social insurance rules ----------------------------------------------------------------
@@ -375,14 +383,17 @@ export async function wpsFile(tx: Tx, runId: string, employerId: string, employe
 export async function listContributionRules(tx: Tx, ctx: Ctx, companyId: string) {
   await authorize(tx, ctx, 'hr.manage', { unitId: companyId });
   const pack = await companyPack(tx, companyId);
-  const rules = await many(tx, `SELECT id, code, name, applies_to, employee_pct::float, employer_pct::float, base, monthly_cap::float, active
+  const rules = await many(tx, `SELECT id, code, name, applies_to, employee_pct::float, employer_pct::float, base, monthly_cap::float, active,
+                                         after_years::float, employer_pct_after::float
                                   FROM hr.contribution_rules WHERE company_id = $1 ORDER BY code`, [companyId]);
-  return { country: pack.country, endOfService: pack.endOfServiceRule, wps: pack.wps, rules };
+  return { country: pack.country, endOfService: pack.endOfServiceRule, wps: pack.wps, payrollFileGap: pack.payrollFileGap ?? null, rules };
 }
 
 export interface ContributionRuleInput {
   code?: string; name?: string; appliesTo?: 'nationals' | 'non_nationals' | 'all'; employeePct?: number; employerPct?: number;
   base?: 'basic' | 'basic_housing' | 'gross'; monthlyCap?: number | null; active?: boolean;
+  /** A higher employer rate from this many years of service; null removes the step. */
+  afterYears?: number | null; employerPctAfter?: number | null;
 }
 
 /** Add a rule, or change one by its code (rates change by law; payrolls already posted keep the old figures). */
@@ -396,12 +407,19 @@ export async function saveContributionRule(tx: Tx, ctx: Ctx, companyId: string, 
     name: input.name ?? old.name, applies_to: input.appliesTo ?? old?.applies_to ?? 'all', employee_pct: input.employeePct ?? old?.employee_pct ?? 0,
     employer_pct: input.employerPct ?? old?.employer_pct ?? 0, base: input.base ?? old?.base ?? 'basic_housing',
     monthly_cap: input.monthlyCap !== undefined ? input.monthlyCap : old?.monthly_cap ?? null, active: input.active ?? old?.active ?? true,
+    after_years: input.afterYears !== undefined ? input.afterYears : old?.after_years ?? null,
+    employer_pct_after: input.employerPctAfter !== undefined ? input.employerPctAfter : old?.employer_pct_after ?? null,
   };
+  if ((v.after_years === null) !== (v.employer_pct_after === null)) throw new ValidationError('a stepped rate needs both the years of service and the later employer rate');
+  if (v.after_years !== null && !(Number(v.after_years) > 0 && Number(v.after_years) <= 50)) throw new ValidationError('the years of service are more than 0 and at most 50');
+  if (v.employer_pct_after !== null && !(Number(v.employer_pct_after) >= 0 && Number(v.employer_pct_after) <= 100)) throw new ValidationError('rates are 0 to 100 percent');
   for (const k of ['employee_pct', 'employer_pct'] as const) if (!(Number(v[k]) >= 0 && Number(v[k]) <= 100)) throw new ValidationError('rates are 0 to 100 percent');
-  return one(tx, `INSERT INTO hr.contribution_rules (tenant_id, company_id, code, name, applies_to, employee_pct, employer_pct, base, monthly_cap, active)
-      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
+  return one(tx, `INSERT INTO hr.contribution_rules (tenant_id, company_id, code, name, applies_to, employee_pct, employer_pct, base, monthly_cap, active,
+                     after_years, employer_pct_after)
+      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       ON CONFLICT (tenant_id, company_id, code) DO UPDATE SET name = EXCLUDED.name, applies_to = EXCLUDED.applies_to, employee_pct = EXCLUDED.employee_pct,
-        employer_pct = EXCLUDED.employer_pct, base = EXCLUDED.base, monthly_cap = EXCLUDED.monthly_cap, active = EXCLUDED.active
-      RETURNING id, code, name, applies_to, employee_pct::float, employer_pct::float, base, monthly_cap::float, active`,
-    [companyId, input.code, v.name, v.applies_to, v.employee_pct, v.employer_pct, v.base, v.monthly_cap, v.active]);
+        employer_pct = EXCLUDED.employer_pct, base = EXCLUDED.base, monthly_cap = EXCLUDED.monthly_cap, active = EXCLUDED.active,
+        after_years = EXCLUDED.after_years, employer_pct_after = EXCLUDED.employer_pct_after
+      RETURNING id, code, name, applies_to, employee_pct::float, employer_pct::float, base, monthly_cap::float, active, after_years::float, employer_pct_after::float`,
+    [companyId, input.code, v.name, v.applies_to, v.employee_pct, v.employer_pct, v.base, v.monthly_cap, v.active, v.after_years, v.employer_pct_after]);
 }

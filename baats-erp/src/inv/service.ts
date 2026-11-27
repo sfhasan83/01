@@ -1,7 +1,7 @@
 import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
-import { company, post, round2, type PostingLine } from '../fin/ledger.ts';
+import { company, post, roundMoney, type PostingLine } from '../fin/ledger.ts';
 
 /**
  * Inventory: perpetual stock at moving average cost, per warehouse.
@@ -44,7 +44,7 @@ export async function issueCost(tx: Tx, warehouseId: string, itemId: string, qty
     throw new ValidationError(`not enough ${item?.code ?? 'stock'} in the warehouse: ${onHand} on hand, ${qty} needed`);
   }
   // Taking the last unit takes the remaining value, so no rounding residue stays behind.
-  return Math.abs(onHand - qty) < 1e-9 ? Number(s.value) : round2(Number(s.value) * qty / onHand);
+  return Math.abs(onHand - qty) < 1e-9 ? Number(s.value) : roundMoney(Number(s.value) * qty / onHand);
 }
 
 /** Record a movement and update the balance. qty and value carry their sign. */
@@ -83,9 +83,9 @@ export async function openingStock(tx: Tx, ctx: Ctx, input: { companyId: string;
   for (const l of input.lines) {
     await stockItem(tx, l.itemId);
     if (!(l.qty > 0) || !(l.unitCost >= 0)) throw new ValidationError('opening quantities must be positive and costs not negative');
-    valued.push({ ...l, value: round2(l.qty * l.unitCost) });
+    valued.push({ ...l, value: roundMoney(l.qty * l.unitCost) });
   }
-  const total = round2(valued.reduce((s, l) => s + l.value, 0));
+  const total = roundMoney(valued.reduce((s, l) => s + l.value, 0));
   const j = total > 0 ? await post(tx, ctx, {
     companyId: input.companyId, type: 'inventory', date: input.date, memo: 'Opening stock',
     lines: [{ account: 'role:inventory', debit: total }, { account: 'role:opening_balance_equity', credit: total }],
@@ -109,7 +109,7 @@ export async function adjustStock(tx: Tx, ctx: Ctx, input: { companyId: string; 
     const avg = cur && Number(cur.qty) > 0 ? Number(cur.value) / Number(cur.qty) : undefined;
     const unitCost = input.unitCost ?? avg;
     if (unitCost === undefined) throw new ValidationError('give a unit cost: the item has no stock to take an average cost from');
-    value = round2(input.qty * unitCost);
+    value = roundMoney(input.qty * unitCost);
   } else {
     value = -(await issueCost(tx, input.warehouseId, input.itemId, -input.qty));
   }
@@ -163,7 +163,7 @@ export async function valuation(tx: Tx, ctx: Ctx, companyId: string) {
   const gl = await one(tx, `SELECT coalesce(sum(l.debit - l.credit), 0)::float AS v FROM fin.journal_lines l
                               JOIN fin.journals j ON j.id = l.journal_id JOIN fin.accounts a ON a.id = l.account_id
                              WHERE j.company_id = $1 AND j.status = 'posted' AND a.system_role = 'inventory'`, [companyId]);
-  return { stockValue: round2(sub.v), ledgerBalance: round2(gl.v), difference: round2(sub.v - gl.v) };
+  return { stockValue: roundMoney(sub.v), ledgerBalance: roundMoney(gl.v), difference: roundMoney(sub.v - gl.v) };
 }
 
 export async function blockWarehouse(tx: Tx, ctx: Ctx, warehouseId: string) {

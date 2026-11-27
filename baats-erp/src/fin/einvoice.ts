@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
-import { round2 } from './ledger.ts';
+import { roundMoney } from './ledger.ts';
+import { fixed } from '../core/money.ts';
 import { companyPack } from './country.ts';
 import { verifyZatcaChain, zatcaIssue, zatcaPreview } from './zatca.ts';
 
@@ -36,7 +37,7 @@ const V = PINT_AE_PROFILE.values;
 const UNIT_MAP: Record<string, string> = { EA: 'EA', PCS: 'H87', PC: 'H87', UNIT: 'C62', HR: 'HUR', HOUR: 'HUR', DAY: 'DAY', MON: 'MON', KG: 'KGM', L: 'LTR', M: 'MTR' };
 
 const isTRN = (t?: string | null) => !!t && /^1\d{12}03$/.test(t);
-const a2 = (n: number) => round2(n).toFixed(2);
+const a2 = (n: number) => roundMoney(n).toFixed(2);
 const pn = (n: number) => { const v = Math.round(n * 1e6) / 1e6; return Number.isInteger(v * 100) ? v.toFixed(2) : String(v); };
 const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 const d10 = (v: Date | string | null) => (v === null ? null : typeof v === 'string' ? v.slice(0, 10) : v.toISOString().slice(0, 10));
@@ -74,12 +75,12 @@ async function modelFor(tx: Tx, invoiceId: string) {
     return {
       k: l.line_no, qty, unit: UNIT_MAP[String(l.uom ?? '').toUpperCase()] ?? 'C62', net, desc: l.description, name: l.item_name ?? l.description,
       itype: l.item_type === 'stock' ? 'G' : l.item_type === 'service' || !l.item_type ? 'S' : 'B',
-      cat: l.einvoice_category, rate: Number(l.rate), gross: Number(l.unit_price), discAmt: round2(Number(l.discount) / qty), netp: net / qty,
-      vat, totAed: round2((net + vat) * fx), vatAed: round2(vat * fx),
+      cat: l.einvoice_category, rate: Number(l.rate), gross: Number(l.unit_price), discAmt: roundMoney(Number(l.discount) / qty), netp: net / qty,
+      vat, totAed: roundMoney((net + vat) * fx), vatAed: roundMoney(vat * fx),
     };
   });
-  const lineExt = round2(mLines.reduce((x, l) => x + l.net, 0));
-  const tax = round2(mLines.reduce((x, l) => x + l.vat, 0));
+  const lineExt = roundMoney(mLines.reduce((x, l) => x + l.net, 0));
+  const tax = roundMoney(mLines.reduce((x, l) => x + l.vat, 0));
   const model = {
     ubl: credit ? 'CreditNote' : 'Invoice', no: inv.no, date: d10(inv.date)!, due: d10(inv.due_date), sdate: d10(inv.tax_date),
     typeCode: credit ? V.creditNoteType.v : outOfScope ? V.invoiceTypeOutOfScope.v : V.invoiceTypeTax.v,
@@ -94,9 +95,9 @@ async function modelFor(tx: Tx, invoiceId: string) {
       email: a.email, phone: a.phone, contact: a.contact_name,
       endpoint: p.country_code === 'AE' && p.tax_registration_no ? String(p.tax_registration_no).slice(0, 10) : a.peppol_endpoint, endpointScheme: V.endpointScheme.v },
     pm: V.paymentMeansDefault.v, terms: a.payment_terms_days ?? 30,
-    subs: [...subs.values()].map((s) => ({ ...s, base: round2(s.base), tax: round2(s.tax) })),
+    subs: [...subs.values()].map((s) => ({ ...s, base: roundMoney(s.base), tax: roundMoney(s.tax) })),
     lines: mLines,
-    totals: { lineExt, taxExcl: lineExt, tax, taxIncl: round2(lineExt + tax), payable: Number(inv.gross_total), taxAed: round2(tax * fx), totalAed: round2((lineExt + tax) * fx) },
+    totals: { lineExt, taxExcl: lineExt, tax, taxIncl: roundMoney(lineExt + tax), payable: Number(inv.gross_total), taxAed: roundMoney(tax * fx), totalAed: roundMoney((lineExt + tax) * fx) },
   };
   return { inv, model };
 }
@@ -120,9 +121,9 @@ export function validateModel(m: Model): Problem[] {
   if (m.ubl === 'Invoice' && m.totals.payable > 0 && !m.due) E('ibr-127-ae', 'A payment due date is required when an amount is due');
   if (m.ubl === 'CreditNote' && !m.orig?.no) E('ibr-158-ae', 'A credit note must refer to the invoice it credits');
   if (m.cur !== 'AED' && !(m.rate > 0)) E('ibr-159-ae', 'An exchange rate to AED is required');
-  const sumSubs = round2(m.subs.reduce((x, t) => x + t.tax, 0));
+  const sumSubs = roundMoney(m.subs.reduce((x, t) => x + t.tax, 0));
   if (sumSubs !== m.totals.tax) E('IBR-CO-14', 'VAT total must equal the sum of the VAT breakdown');
-  if (round2(m.subs.reduce((x, t) => x + t.base, 0)) !== m.totals.taxExcl) E('IBR-CO-13', 'Taxable amounts must add up to the total without VAT');
+  if (roundMoney(m.subs.reduce((x, t) => x + t.base, 0)) !== m.totals.taxExcl) E('IBR-CO-13', 'Taxable amounts must add up to the total without VAT');
   return out;
 }
 
@@ -137,7 +138,7 @@ export function toXml(m: Model, uuid: string): string {
   };
   const open = (n: string, at?: Record<string, string>) => { o.push(`${ind()}<${n}${at ? Object.entries(at).map(([k, x]) => ` ${k}="${esc(x)}"`).join('') : ''}>`); d++; };
   const close = (n: string) => { d--; o.push(`${ind()}</${n}>`); };
-  const amt = (n: string, v: number, c = cur) => el(n, a2(v), { currencyID: c });
+  const amt = (n: string, v: number, c = cur) => el(n, fixed(v, c), { currencyID: c });
   const taxCat = (tag: string, c: string, rate: number) => {
     open(tag); el('cbc:ID', c); if (c !== 'E' && c !== 'O') el('cbc:Percent', pn(rate));
     open('cac:TaxScheme'); el('cbc:ID', V.taxScheme.v); close('cac:TaxScheme'); close(tag);
@@ -211,7 +212,9 @@ export function toXml(m: Model, uuid: string): string {
 /** Check a document is ready for e-invoicing, without issuing it. */
 export async function preview(tx: Tx, ctx: Ctx, invoiceId: string) {
   const company = await documentCompany(tx, invoiceId);
-  if ((await companyPack(tx, company)).einvoice === 'zatca') {
+  const pack = await companyPack(tx, company);
+  if (!pack.einvoice) throw new ValidationError(pack.einvoiceGap ?? `${pack.name} has no e-invoicing`);
+  if (pack.einvoice === 'zatca') {
     await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: company });
     return zatcaPreview(tx, invoiceId);
   }
@@ -223,7 +226,9 @@ export async function preview(tx: Tx, ctx: Ctx, invoiceId: string) {
 /** Issue the e-invoice: validate, write the XML once and keep it. */
 export async function issue(tx: Tx, ctx: Ctx, invoiceId: string) {
   const company = await documentCompany(tx, invoiceId);
-  if ((await companyPack(tx, company)).einvoice === 'zatca') {
+  const pack = await companyPack(tx, company);
+  if (!pack.einvoice) throw new ValidationError(pack.einvoiceGap ?? `${pack.name} has no e-invoicing`);
+  if (pack.einvoice === 'zatca') {
     await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: company });
     return zatcaIssue(tx, ctx, invoiceId);
   }
@@ -289,8 +294,8 @@ export async function updateCompanyDetails(tx: Tx, ctx: Ctx, companyId: string, 
   if (pack.country === 'AE' && d.taxRegistrationNo && !isTRN(d.taxRegistrationNo)) throw new ValidationError('a UAE TRN has 15 digits, starts with 1 and ends with 03');
   if (d.taxRegistrationNo && !pack.taxNumber.test(d.taxRegistrationNo)) throw new ValidationError(pack.taxNumber.message);
   if (d.emirate && pack.country !== 'AE') throw new ValidationError('the emirate applies to UAE companies');
-  if (d.buildingNo && !/^\d{4}$/.test(d.buildingNo)) throw new ValidationError('the building number has 4 digits');
-  if (d.postalCode && !/^\d{5}$/.test(d.postalCode)) throw new ValidationError('the postal code has 5 digits');
+  if (pack.country === 'SA' && d.buildingNo && !/^\d{4}$/.test(d.buildingNo)) throw new ValidationError('the building number has 4 digits');
+  if (pack.country === 'SA' && d.postalCode && !/^\d{5}$/.test(d.postalCode)) throw new ValidationError('the postal code has 5 digits');
   const cols: Record<string, string> = { street: 'street', city: 'city', emirate: 'emirate', email: 'email', phone: 'phone', iban: 'iban',
     tradeLicenceNo: 'trade_licence_no', licenceAuthority: 'licence_authority', taxRegistrationNo: 'tax_registration_no',
     buildingNo: 'building_no', district: 'district', postalCode: 'postal_code' };

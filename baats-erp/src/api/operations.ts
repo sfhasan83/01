@@ -131,6 +131,7 @@ export function registerOperations(app: FastifyInstance, run: Run): void {
   app.get<{ Params: P }>('/v1/hr/companies/:company/contribution-rules', async (req) => run(req, (tx, ctx) => hr.listContributionRules(tx, ctx, req.params.company)));
   app.put<{ Params: P }>('/v1/hr/companies/:company/contribution-rules', {
     schema: body(['code'], { code: str, name: str, appliesTo: { enum: ['nationals', 'non_nationals', 'all'] }, employeePct: nonneg, employerPct: nonneg,
-      base: { enum: ['basic', 'basic_housing', 'gross'] }, monthlyCap: { type: ['number', 'null'], exclusiveMinimum: 0 }, active: { type: 'boolean' } }),
+      base: { enum: ['basic', 'basic_housing', 'gross'] }, monthlyCap: { type: ['number', 'null'], exclusiveMinimum: 0 }, active: { type: 'boolean' },
+      afterYears: { type: ['number', 'null'], exclusiveMinimum: 0 }, employerPctAfter: { type: ['number', 'null'], minimum: 0 } }),
   }, async (req) => run(req, (tx, ctx) => hr.saveContributionRule(tx, ctx, req.params.company, req.body as B)));
 }

@@ -1,7 +1,7 @@
 import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
-import { company, post, resolveAccount, round2 } from './ledger.ts';
+import { company, post, resolveAccount, roundMoney } from './ledger.ts';
 
 /**
  * Fixed assets (BAATS 1500 Fixed assets – cost, 1590 Accumulated depreciation, 5800 Depreciation):
@@ -32,7 +32,7 @@ export interface AssetInput {
 async function accumulated(tx: Tx, assetId: string) {
   const a = await one(tx, `SELECT a.opening_accumulated + coalesce((SELECT sum(amount) FROM fin.asset_depreciation d WHERE d.asset_id = a.id), 0) AS acc
                              FROM fin.assets a WHERE a.id = $1`, [assetId]);
-  return round2(Number(a.acc));
+  return roundMoney(Number(a.acc));
 }
 
 export async function registerAsset(tx: Tx, ctx: Ctx, input: AssetInput) {
@@ -45,13 +45,13 @@ export async function registerAsset(tx: Tx, ctx: Ctx, input: AssetInput) {
     if (!l || l.company_id !== input.companyId || l.kind !== 'purchase_invoice' || l.status !== 'posted') throw new ValidationError('choose a line of a posted purchase bill of this company');
     if (l.system_role !== 'fixed_assets') throw new ValidationError('the bill line must be charged to 1500 Fixed assets – cost');
     if (input.openingAccumulated) throw new ValidationError('a newly bought asset has no depreciation yet');
-    cost = round2(Number(l.net_amount) * Number(l.fx_rate));
+    cost = roundMoney(Number(l.net_amount) * Number(l.fx_rate));
   } else {
     if (!(input.cost && input.cost > 0)) throw new ValidationError('give the cost, or the purchase bill line the asset was bought on');
-    cost = round2(input.cost);
+    cost = roundMoney(input.cost);
   }
-  const residual = round2(input.residualValue ?? 0);
-  const opening = round2(input.openingAccumulated ?? 0);
+  const residual = roundMoney(input.residualValue ?? 0);
+  const opening = roundMoney(input.openingAccumulated ?? 0);
   if (residual >= cost) throw new ValidationError('the residual value must be below the cost');
   if (opening > cost - residual) throw new ValidationError('depreciation to date cannot exceed cost less residual value');
   const start = input.depreciationStart ?? input.acquisitionDate;
@@ -77,7 +77,7 @@ export async function getAsset(tx: Tx, ctx: Ctx, id: string) {
   await authorize(tx, ctx, 'fin.report.read', { unitId: a.company_id });
   const acc = await accumulated(tx, id);
   const schedule = await many(tx, 'SELECT period, amount::float AS amount FROM fin.asset_depreciation WHERE asset_id = $1 ORDER BY period', [id]);
-  return { ...a, accumulated: acc, net_book_value: round2(Number(a.cost) - acc), schedule };
+  return { ...a, accumulated: acc, net_book_value: roundMoney(Number(a.cost) - acc), schedule };
 }
 
 export async function listAssets(tx: Tx, ctx: Ctx, companyId: string) {
@@ -93,8 +93,8 @@ async function chargeFor(tx: Tx, a: any, period: string): Promise<number> {
   if (period < ym(a.depreciation_start)) return 0;
   if (await one(tx, 'SELECT 1 FROM fin.asset_depreciation WHERE asset_id = $1 AND period = $2', [a.id, period])) return 0;
   const monthly = (Number(a.cost) - Number(a.residual_value)) / a.useful_life_months;
-  const remaining = round2(Number(a.cost) - Number(a.residual_value) - await accumulated(tx, a.id));
-  return Math.min(round2(monthly), remaining);
+  const remaining = roundMoney(Number(a.cost) - Number(a.residual_value) - await accumulated(tx, a.id));
+  return Math.min(roundMoney(monthly), remaining);
 }
 
 /** Depreciate every active asset for a month. Months must be run in order. */
@@ -117,8 +117,8 @@ export async function runDepreciation(tx: Tx, ctx: Ctx, companyId: string, perio
   }
   if (!charges.length) return { period, journalId: null, total: 0, assets: 0 };
   const byUnit = new Map<string, number>();
-  for (const c of charges) byUnit.set(c.a.unit_id ?? '', round2((byUnit.get(c.a.unit_id ?? '') ?? 0) + c.amount));
-  const total = round2(charges.reduce((x, c) => x + c.amount, 0));
+  for (const c of charges) byUnit.set(c.a.unit_id ?? '', roundMoney((byUnit.get(c.a.unit_id ?? '') ?? 0) + c.amount));
+  const total = roundMoney(charges.reduce((x, c) => x + c.amount, 0));
   const j = await post(tx, ctx, { companyId, type: 'depreciation', date: monthEnd(period), memo: `Depreciation ${period}`,
     source: { type: 'depreciation', id: (await one(tx, `SELECT md5($1 || $2)::uuid AS u`, [companyId, period])).u },
     lines: [...[...byUnit].map(([u, amt]) => ({ account: 'role:depreciation', debit: amt, unitId: u || null })),
@@ -137,13 +137,13 @@ export async function disposeAsset(tx: Tx, ctx: Ctx, assetId: string, input: { d
   if (a.status !== 'active') throw new ConflictError('the asset is already disposed');
   const last = await one(tx, 'SELECT max(period) AS p FROM fin.asset_depreciation WHERE asset_id = $1', [assetId]);
   const prevMonth = (() => { const d = new Date(`${input.date.slice(0, 7)}-01T00:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 1); return ym(d); })();
-  if (prevMonth >= ym(a.depreciation_start) && (last.p ?? '') < prevMonth && await accumulated(tx, assetId) < round2(Number(a.cost) - Number(a.residual_value))) {
+  if (prevMonth >= ym(a.depreciation_start) && (last.p ?? '') < prevMonth && await accumulated(tx, assetId) < roundMoney(Number(a.cost) - Number(a.residual_value))) {
     throw new ValidationError(`run depreciation up to ${prevMonth} before disposing`);
   }
   const acc = await accumulated(tx, assetId);
   const cost = Number(a.cost);
-  const proceeds = round2(input.proceeds ?? 0);
-  const gain = round2(proceeds - (cost - acc));
+  const proceeds = roundMoney(input.proceeds ?? 0);
+  const gain = roundMoney(proceeds - (cost - acc));
   const lines: { account: string; debit?: number; credit?: number }[] = [{ account: 'role:fixed_assets', credit: cost }];
   if (acc > 0) lines.push({ account: 'role:accumulated_depreciation', debit: acc });
   if (proceeds > 0) lines.push({ account: (await resolveAccount(tx, a.company_id, input.bankAccount ?? 'role:bank')).id, debit: proceeds });

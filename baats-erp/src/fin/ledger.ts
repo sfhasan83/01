@@ -12,7 +12,8 @@ import { onWorkflowComplete, submit } from '../workflow/engine.ts';
 
 export const JOURNAL_WORKFLOW = 'fin.journal.approval';
 
-export const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
+export { roundMoney } from '../core/money.ts';
+import { roundMoney, roundIn, useBaseCurrency, moneyDp } from '../core/money.ts';
 
 export interface PostingLine {
   account: string;          // account id, or a code, or "role:<system role>"
@@ -43,6 +44,8 @@ export interface PostingInput {
 export async function company(tx: Tx, companyId: string) {
   const c = await one(tx, 'SELECT * FROM fin.companies WHERE unit_id = $1', [companyId]);
   if (!c) throw new NotFoundError('company books');
+  // Ledger amounts from here on round to this company's base currency (fils for BHD, KWD, OMR).
+  useBaseCurrency(c.base_currency);
   return c;
 }
 
@@ -83,7 +86,7 @@ async function writeDraft(tx: Tx, ctx: Ctx, input: PostingInput, status: 'draft'
 
   const lines = [];
   for (const [i, l] of input.lines.entries()) {
-    const dr = round2(l.debit ?? 0), cr = round2(l.credit ?? 0);
+    const dr = roundIn(currency, l.debit ?? 0), cr = roundIn(currency, l.credit ?? 0);
     // A line with an explicit base amount (realised FX) may have no journal-currency amount.
     const baseOnly = l.baseAmount !== undefined && dr === 0 && cr === 0;
     if (dr < 0 || cr < 0 || (!baseOnly && (dr > 0) === (cr > 0))) throw new ValidationError(`line ${i + 1}: enter either a debit or a credit`);
@@ -93,18 +96,19 @@ async function writeDraft(tx: Tx, ctx: Ctx, input: PostingInput, status: 'draft'
       if (!p || p.company_id !== input.companyId) throw new ValidationError(`line ${i + 1}: the project does not belong to this company`);
     }
     const txn = dr - cr;
-    const base = l.baseAmount !== undefined ? round2(l.baseAmount) : round2(txn * fx);
+    const base = l.baseAmount !== undefined ? roundMoney(l.baseAmount) : roundMoney(txn * fx);
     lines.push({ ...l, accountId: acc.id, txn, base });
   }
-  // Conversion rounding: put any cent difference on the largest line.
-  const diff = round2(lines.reduce((s, l) => s + l.base, 0));
+  // Conversion rounding: put any difference of a cent (or fils) a line on the largest line.
+  const diff = roundMoney(lines.reduce((s, l) => s + l.base, 0));
+  const unit = 10 ** -moneyDp();
   if (diff !== 0) {
-    if (Math.abs(diff) > 0.01 * lines.length && input.lines.every((l) => l.baseAmount === undefined)) {
+    if (Math.abs(diff) > unit * lines.length && input.lines.every((l) => l.baseAmount === undefined)) {
       throw new ValidationError('journal is not balanced');
     }
-    if (Math.abs(diff) <= 0.01 * lines.length) {
+    if (Math.abs(diff) <= unit * lines.length) {
       const big = lines.reduce((a, b) => (Math.abs(b.base) > Math.abs(a.base) ? b : a));
-      big.base = round2(big.base - diff);
+      big.base = roundMoney(big.base - diff);
     }
   }
   const j = await one(tx, `INSERT INTO fin.journals (tenant_id, company_id, type, date, memo, currency, fx_rate, source_type, source_id, status, created_by, reversal_of)
@@ -116,7 +120,7 @@ async function writeDraft(tx: Tx, ctx: Ctx, input: PostingInput, status: 'draft'
     await tx.query(`INSERT INTO fin.journal_lines (tenant_id, journal_id, line_no, account_id, debit, credit, txn_amount,
                       party_id, unit_id, tax_code_id, tax_base, description, project_id)
       VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-      [j.id, i + 1, l.accountId, l.base > 0 ? l.base : 0, l.base < 0 ? -l.base : 0, round2(l.txn),
+      [j.id, i + 1, l.accountId, l.base > 0 ? l.base : 0, l.base < 0 ? -l.base : 0, roundIn(currency, l.txn),
         l.partyId ?? null, l.unitId ?? null, l.taxCodeId ?? null, l.taxBase ?? null, l.description ?? null, l.projectId ?? null]);
   }
   return j;

@@ -1,3 +1,4 @@
+import { baseCurrencySet, useBaseCurrency } from '../core/money.ts';
 import { ForbiddenError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { matches, type Condition } from '../core/rules.ts';
@@ -68,6 +69,12 @@ export async function authorize(tx: Tx, ctx: Ctx, permission: string, resource: 
   if (!ctx.userId) throw new ForbiddenError(permission, resource, 'no acting user');
   const d = await decide(tx, ctx.userId, permission, resource);
   if (!d.allowed) throw new ForbiddenError(permission, resource, d.reason);
+  // Work on a company's books rounds money to its base currency (three decimals for
+  // BHD, KWD and OMR) from the first check onwards, reports included.
+  if (resource.unitId && !baseCurrencySet()) {
+    const c = await tx.query('SELECT base_currency FROM fin.companies WHERE unit_id = $1', [resource.unitId]);
+    if (c.rows[0]) useBaseCurrency(c.rows[0].base_currency);
+  }
 }
 
 /**

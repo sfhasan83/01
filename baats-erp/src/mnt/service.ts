@@ -1,7 +1,7 @@
 import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
-import { company, nextNumber, post, round2 } from '../fin/ledger.ts';
+import { company, nextNumber, post, roundMoney } from '../fin/ledger.ts';
 import { ensureRoleAccount } from '../fin/setup.ts';
 import { applyMove, issueCost, stockItem, warehouse } from '../inv/service.ts';
 
@@ -120,7 +120,7 @@ export async function issueParts(tx: Tx, ctx: Ctx, id: string, input: { warehous
     if (!(l.qty > 0)) throw new ValidationError('part quantities must be positive');
     costed.push({ ...l, cost: await issueCost(tx, input.warehouseId, l.itemId, l.qty) });
   }
-  const total = round2(costed.reduce((s, l) => s + l.cost, 0));
+  const total = roundMoney(costed.reduce((s, l) => s + l.cost, 0));
   await ensureRoleAccount(tx, w.company_id, 'maintenance');
   const j = total > 0 ? await post(tx, ctx, { companyId: w.company_id, type: 'maintenance', date: input.date, memo: `Parts for ${w.no}: ${w.description}`,
     lines: [{ account: 'role:maintenance', debit: total, unitId: w.unit_id }, { account: 'role:inventory', credit: total }] }) : null;

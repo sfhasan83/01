@@ -1,7 +1,7 @@
 import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
-import { company, post, round2, type PostingLine } from '../fin/ledger.ts';
+import { company, post, roundMoney, type PostingLine } from '../fin/ledger.ts';
 import { ensureRoleAccount } from '../fin/setup.ts';
 import { createInvoice } from '../fin/documents.ts';
 
@@ -79,7 +79,7 @@ export async function addMilestone(tx: Tx, ctx: Ctx, projectId: string, input: {
   await authorize(tx, ctx, 'prj.manage', { unitId: p.unit_id ?? p.company_id });
   if (p.billing === 'non_billable') throw new ValidationError('a non-billable project has no billing milestones');
   const sum = await one(tx, 'SELECT coalesce(sum(amount), 0)::float AS s FROM prj.milestones WHERE project_id = $1', [projectId]);
-  if (Number(p.contract_value) > 0 && sum.s + input.amount > Number(p.contract_value) + 0.001) {
+  if (Number(p.contract_value) > 0 && sum.s + input.amount > Number(p.contract_value) + 0.0005) {
     throw new ValidationError(`milestones would exceed the contract value of ${p.contract_value}`);
   }
   return one(tx, `INSERT INTO prj.milestones (tenant_id, project_id, name, amount, due_date) VALUES (app.tenant(), $1, $2, $3, $4) RETURNING *`,
@@ -153,12 +153,12 @@ export async function approveTimesheets(tx: Tx, ctx: Ctx, ids: string[], input: 
     const costed = [];
     for (const r of list) {
       const rate = await hourlyCost(tx, r.employee_id, r.date.toISOString().slice(0, 10));
-      const cost = round2(rate * Number(r.hours));
+      const cost = roundMoney(rate * Number(r.hours));
       const billRate = r.billable ? Number(members.get(r.employee_id) ?? p.default_bill_rate) : null;
       costed.push({ r, rate, cost, billRate });
-      total = round2(total + cost);
+      total = roundMoney(total + cost);
       const unit = r.employee_unit ?? '';
-      credits.set(unit, round2((credits.get(unit) ?? 0) + cost));
+      credits.set(unit, roundMoney((credits.get(unit) ?? 0) + cost));
     }
     const date = input.date ?? list[list.length - 1].date.toISOString().slice(0, 10);
     const lines: PostingLine[] = [{ account: 'role:project_labour', debit: total, projectId, unitId: p.unit_id, description: `Time on ${p.code}` }];
@@ -214,7 +214,7 @@ export async function invoiceProject(tx: Tx, ctx: Ctx, projectId: string, input:
   }
   for (const g of groups.values()) {
     if (g.rate <= 0) throw new ValidationError(`no bill rate for ${g.name}: set it on the team or the project`);
-    lines.push({ description: `${p.name}: ${g.name}, ${g.from} to ${g.to}`, quantity: round2(g.hours), unitPrice: g.rate, taxCode, projectId, unitId: p.unit_id ?? undefined });
+    lines.push({ description: `${p.name}: ${g.name}, ${g.from} to ${g.to}`, quantity: roundMoney(g.hours), unitPrice: g.rate, taxCode, projectId, unitId: p.unit_id ?? undefined });
   }
   const miles = await many(tx, `SELECT * FROM prj.milestones WHERE project_id = $1 AND status = 'reached' AND invoice_id IS NULL ORDER BY reached_date FOR UPDATE`, [projectId]);
   for (const m of miles) lines.push({ description: `${p.name}: milestone ${m.name}`, quantity: 1, unitPrice: Number(m.amount), taxCode, projectId, unitId: p.unit_id ?? undefined });
@@ -246,7 +246,7 @@ export async function projectStatus(tx: Tx, ctx: Ctx, projectId: string) {
   const p = await project(tx, projectId);
   await authorize(tx, ctx, 'prj.manage', { unitId: p.unit_id ?? p.company_id });
   const x = await one(tx, `SELECT * FROM (${ACTUALS}) x WHERE project_id = $1`, [projectId]);
-  const revenue = round2(x?.revenue ?? 0), cost = round2(x?.cost ?? 0);
+  const revenue = roundMoney(x?.revenue ?? 0), cost = roundMoney(x?.cost ?? 0);
   const time = await one(tx, `SELECT coalesce(sum(hours) FILTER (WHERE status = 'approved'), 0)::float AS approved,
       coalesce(sum(hours) FILTER (WHERE status = 'submitted'), 0)::float AS submitted,
       coalesce(sum(hours * bill_rate) FILTER (WHERE status = 'approved' AND billable AND invoice_id IS NULL), 0)::float AS unbilled
@@ -262,9 +262,9 @@ export async function projectStatus(tx: Tx, ctx: Ctx, projectId: string) {
   const budget = Number(p.budget_cost);
   return {
     project: p, team, milestones, breakdown,
-    revenue, cost, margin: round2(revenue - cost), marginPct: revenue ? round2((revenue - cost) / revenue * 100) : null,
-    budgetCost: budget, budgetUsedPct: budget ? round2(cost / budget * 100) : null, overBudget: budget > 0 && cost > budget,
+    revenue, cost, margin: roundMoney(revenue - cost), marginPct: revenue ? roundMoney((revenue - cost) / revenue * 100) : null,
+    budgetCost: budget, budgetUsedPct: budget ? roundMoney(cost / budget * 100) : null, overBudget: budget > 0 && cost > budget,
     hours: { approved: time.approved, submitted: time.submitted, budget: Number(p.budget_hours) },
-    unbilled: round2(time.unbilled + unbilledMilestones),
+    unbilled: roundMoney(time.unbilled + unbilledMilestones),
   };
 }

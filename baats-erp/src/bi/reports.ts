@@ -1,3 +1,4 @@
+import { roundMoney } from '../core/money.ts';
 import { ForbiddenError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize, unitScope } from '../iam/authz.ts';
@@ -219,7 +220,7 @@ export async function runReport(tx: Tx, ctx: Ctx, dataset: string, spec: ReportS
     const v = r[c.key];
     return [c.key, v instanceof Date ? v.toISOString().slice(0, 10) : (c.type === 'money' || c.type === 'number') && v !== null ? Number(v) : v];
   })));
-  const totals = Object.fromEntries(q.columns.filter((c) => c.type === 'money' || (c.type === 'number' && c.key.startsWith('count_'))).map((c) => [c.key, Math.round(data.reduce((s, r) => s + (Number(r[c.key]) || 0), 0) * 100) / 100]));
+  const totals = Object.fromEntries(q.columns.filter((c) => c.type === 'money' || (c.type === 'number' && c.key.startsWith('count_'))).map((c) => [c.key, roundMoney(data.reduce((s, r) => s + (Number(r[c.key]) || 0), 0), 3)]));
   return { dataset, columns: q.columns, rows: data, totals, truncated };
 }
 

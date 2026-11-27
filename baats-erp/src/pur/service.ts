@@ -2,7 +2,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
 import { insertDefinition, onWorkflowComplete, submit } from '../workflow/engine.ts';
-import { company, nextNumber, post, round2 } from '../fin/ledger.ts';
+import { company, nextNumber, post, roundMoney } from '../fin/ledger.ts';
 import { priceLines } from '../fin/pricing.ts';
 import { ensureRoleAccount } from '../fin/setup.ts';
 import { createInvoice } from '../fin/documents.ts';
@@ -62,7 +62,7 @@ export async function createOrder(tx: Tx, ctx: Ctx, input: OrderInput) {
     if (!input.warehouseId) throw new ValidationError('choose the warehouse that will receive the stock items');
     await warehouse(tx, input.companyId, input.warehouseId);
   }
-  const priced = await priceLines(tx, c.country_code, input.lines);
+  const priced = await priceLines(tx, c.country_code, currency, input.lines);
   const order = await one(tx, `INSERT INTO pur.orders (tenant_id, company_id, supplier_id, date, expected_date, currency, fx_rate, warehouse_id,
       requesting_unit_id, notes, net_total, tax_total, gross_total, created_by)
     VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
@@ -86,7 +86,7 @@ export async function submitOrder(tx: Tx, ctx: Ctx, orderId: string) {
   const no = o.no ?? await nextNumber(tx, o.company_id, 'pur_order', 'PO', o.date.toISOString().slice(0, 10));
   await tx.query(`UPDATE pur.orders SET status = 'pending_approval', no = $2 WHERE id = $1`, [orderId, no]);
   const inst = await submit(tx, ctx, { code: PO_WORKFLOW, entityType: 'pur.order', entityId: orderId, subjectUnitId: o.company_id,
-    payload: { amount: round2(Number(o.gross_total) * Number(o.fx_rate)), currency: o.currency, no } });
+    payload: { amount: roundMoney(Number(o.gross_total) * Number(o.fx_rate)), currency: o.currency, no } });
   return { ...(await getOrder(tx, ctx, orderId)), workflowInstanceId: inst.id };
 }
 
@@ -137,13 +137,13 @@ export async function receive(tx: Tx, ctx: Ctx, orderId: string, input: { date: 
       throw new ValidationError(`line ${l.line_no}: receiving ${r.quantity} would exceed the ${Number(l.quantity)} ordered (${l.received_qty} already received)`);
     }
     const stock = l.item_type === 'stock';
-    lines.push({ ...r, line: l, stock, value: stock ? round2(r.quantity * Number(l.unit_price) * fx) : 0 });
+    lines.push({ ...r, line: l, stock, value: stock ? roundMoney(r.quantity * Number(l.unit_price) * fx) : 0 });
   }
   const no = await nextNumber(tx, o.company_id, 'pur_receipt', 'GRN', input.date);
   const rec = await one(tx, `INSERT INTO pur.receipts (tenant_id, company_id, order_id, no, date, warehouse_id, delivery_note, created_by)
     VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7) RETURNING *`,
     [o.company_id, orderId, no, input.date, o.warehouse_id, input.deliveryNote ?? null, ctx.userId]);
-  const stockValue = round2(lines.reduce((s, l) => s + l.value, 0));
+  const stockValue = roundMoney(lines.reduce((s, l) => s + l.value, 0));
   let journalId: string | null = null;
   if (stockValue > 0) {
     await ensureRoleAccount(tx, o.company_id, 'grni');

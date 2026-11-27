@@ -1,7 +1,7 @@
 import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
-import { company, nextNumber, post, round2 } from '../fin/ledger.ts';
+import { company, nextNumber, post, roundMoney } from '../fin/ledger.ts';
 import { ensureRoleAccount } from '../fin/setup.ts';
 import { applyMove, issueCost, stockItem, warehouse } from '../inv/service.ts';
 
@@ -116,7 +116,7 @@ export async function costRollup(tx: Tx, ctx: Ctx, companyId: string, itemId: st
   for (const o of await many(tx, `SELECT o.*, w.hourly_rate FROM mfg.bom_operations o JOIN mfg.work_centers w ON w.id = o.work_center_id WHERE o.bom_id = $1`, [bom.id])) {
     conversion += (Number(o.setup_minutes) / out + Number(o.run_minutes)) / 60 * Number(o.hourly_rate);
   }
-  return { material: round2(material), conversion: round2(conversion), total: round2(material + conversion) };
+  return { material: roundMoney(material), conversion: roundMoney(conversion), total: roundMoney(material + conversion) };
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ export async function releaseWorkOrder(tx: Tx, ctx: Ctx, id: string) {
     await tx.query(`INSERT INTO mfg.wo_materials (tenant_id, work_order_id, item_id, required_qty) VALUES (app.tenant(), $1, $2, $3)`, [id, l.item_id, req]);
   }
   for (const o of bom.operations) {
-    const minutes = round2(Number(o.setup_minutes) + Number(o.run_minutes) * Number(wo.qty));
+    const minutes = roundMoney(Number(o.setup_minutes) + Number(o.run_minutes) * Number(wo.qty));
     await tx.query(`INSERT INTO mfg.wo_operations (tenant_id, work_order_id, seq, name, work_center_id, planned_minutes, hourly_rate)
       VALUES (app.tenant(), $1, $2, $3, $4, $5, $6)`, [id, o.seq, o.name, o.work_center_id, minutes, o.hourly_rate]);
   }
@@ -170,7 +170,7 @@ async function issue(tx: Tx, ctx: Ctx, wo: any, lines: { itemId: string; qty: nu
     if (!m) throw new ValidationError('the item is not a material of this work order');
     costed.push({ ...l, value: await issueCost(tx, wo.warehouse_id, l.itemId, l.qty) });
   }
-  const total = round2(costed.reduce((s, l) => s + l.value, 0));
+  const total = roundMoney(costed.reduce((s, l) => s + l.value, 0));
   const j = total > 0 ? await post(tx, ctx, { companyId: wo.company_id, type: 'production', date, memo,
     lines: [{ account: 'role:wip', debit: total }, { account: 'role:inventory', credit: total }] }) : null;
   for (const l of costed) {
@@ -217,13 +217,13 @@ export async function completeWorkOrder(tx: Tx, ctx: Ctx, id: string, input: { d
   for (const o of await many(tx, 'SELECT * FROM mfg.wo_operations WHERE work_order_id = $1 ORDER BY seq', [id])) {
     const minutes = actual.get(o.seq) ?? Number(o.planned_minutes) * share;
     if (minutes < 0) throw new ValidationError('minutes cannot be negative');
-    const cost = round2(minutes / 60 * Number(o.hourly_rate));
-    conversion = round2(conversion + cost);
-    await tx.query('UPDATE mfg.wo_operations SET actual_minutes = $2, cost = $3 WHERE id = $1', [o.id, round2(minutes), cost]);
+    const cost = roundMoney(minutes / 60 * Number(o.hourly_rate));
+    conversion = roundMoney(conversion + cost);
+    await tx.query('UPDATE mfg.wo_operations SET actual_minutes = $2, cost = $3 WHERE id = $1', [o.id, roundMoney(minutes), cost]);
   }
   await ensureRoleAccount(tx, wo.company_id, 'production_absorbed');
   const fresh = await one(tx, 'SELECT material_cost FROM mfg.work_orders WHERE id = $1', [id]);
-  const total = round2(Number(fresh.material_cost) + conversion);
+  const total = roundMoney(Number(fresh.material_cost) + conversion);
   const wc = await one(tx, `SELECT w.unit_id FROM mfg.wo_operations o JOIN mfg.work_centers w ON w.id = o.work_center_id WHERE o.work_order_id = $1 ORDER BY o.seq LIMIT 1`, [id]);
   const lines = [];
   if (conversion > 0) lines.push({ account: 'role:wip', debit: conversion }, { account: 'role:production_absorbed', credit: conversion, unitId: wc?.unit_id ?? null });
@@ -257,7 +257,7 @@ export async function getWorkOrder(tx: Tx, ctx: Ctx, id: string) {
   wo.operations = await many(tx, `SELECT o.*, w.code AS work_center_code FROM mfg.wo_operations o JOIN mfg.work_centers w ON w.id = o.work_center_id
                                     WHERE o.work_order_id = $1 ORDER BY o.seq`, [id]);
   const made = Number(wo.completed_qty ?? 0);
-  wo.unit_cost = made > 0 ? round2((Number(wo.material_cost) + Number(wo.conversion_cost)) / made) : null;
+  wo.unit_cost = made > 0 ? roundMoney((Number(wo.material_cost) + Number(wo.conversion_cost)) / made) : null;
   return wo;
 }
 

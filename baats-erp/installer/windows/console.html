@@ -133,7 +133,7 @@ const pages = {
   async overview() {
     const me = await api('GET', '/v1/me');
     return `<div class="card"><h3>Welcome, ${esc(me.user.display_name)}</h3><p class="muted">Signed in to <b>${esc(S.tenant)}</b> as ${esc(me.user.email)}. MFA: ${me.user.mfa_enabled ? 'on' : 'off'}.</p>
-      <p>This console lets you try what BAATS can do today. Phase 6a: an interactive dashboard (pick any period and a comparison, click a KPI to see its trend, breakdowns and the records behind it, and keep your own tiles), and country packs with Saudi Arabia beside the UAE: 15% VAT, the ZATCA VAT return, ZATCA e-invoices chained by hash with QR codes, GOSI and the Saudi end-of-service award (try it with Load Saudi demo under Finance: setup). Phase 5: an AI assistant that answers questions from your books and proposes changes for you to confirm (an administrator turns it on under Assistant settings, with Claude or a model on this computer), an executive dashboard computed live from the books, a report builder over governed datasets with CSV export, a strategy scorecard with KPI targets, ESG emissions and resource use, and anomaly checks on the whole ledger. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
+      <p>This console lets you try what BAATS can do today. Phase 6b: the rest of the GCC beside the UAE and Saudi Arabia: Oman (5% VAT and its return, 15% income tax, the Social Protection Fund), Bahrain (10% VAT and the NBR return, SIO with the leaving indemnity), Qatar and Kuwait (no VAT; GRSIA and PIFSS), each with its own end-of-service rule, and money in three decimals for the dinar and rial (try it with Load GCC demo under Finance: setup). Phase 6a: an interactive dashboard (pick any period and a comparison, click a KPI to see its trend, breakdowns and the records behind it, and keep your own tiles), and country packs with Saudi Arabia beside the UAE: 15% VAT, the ZATCA VAT return, ZATCA e-invoices chained by hash with QR codes, GOSI and the Saudi end-of-service award (try it with Load Saudi demo under Finance: setup). Phase 5: an AI assistant that answers questions from your books and proposes changes for you to confirm (an administrator turns it on under Assistant settings, with Claude or a model on this computer), an executive dashboard computed live from the books, a report builder over governed datasets with CSV export, a strategy scorecard with KPI targets, ESG emissions and resource use, and anomaly checks on the whole ledger. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
       <div class="card"><h3>Your approvals waiting (${me.inbox.length})</h3>${table(me.inbox)}</div>
       <div class="card"><h3>Your permissions (${me.permissions.length})</h3>${me.permissions.map((p) => `<span class="pill">${esc(typeof p === 'string' ? p : p.permission || JSON.stringify(p))}</span>`).join('')}</div>`;
   },
@@ -237,7 +237,10 @@ async function show(page) {
 }
 
 // ---------- Finance (Phase 2) ----------
-const money = (v) => (v === null || v === undefined || v === '') ? '' : Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Dinars and rials have three decimals (fils, baisa); yen and won none.
+const DECIMALS = { BHD: 3, KWD: 3, OMR: 3, JOD: 3, IQD: 3, TND: 3, LYD: 3, JPY: 0, KRW: 0 };
+const decimalsOf = (c) => DECIMALS[c] ?? 2;
+const money = (v, cur) => { if (v === null || v === undefined || v === '') return ''; const d = decimalsOf(cur || ccy()); return Number(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }); };
 const today = () => new Date().toISOString().slice(0, 10);
 const yearStart = () => `${new Date().getFullYear()}-01-01`;
 const quarter = () => { const d = new Date(); const q = Math.floor(d.getMonth() / 3); const y = d.getFullYear();
@@ -253,9 +256,16 @@ async function companies() {
   if (!out.find((c) => c.id === S.company)) S.company = out[0]?.id;
   return out;
 }
-const company = () => cache.companies.find((c) => c.id === S.company);
-const PACK_COUNTRIES = ['AE', 'SA'];
+const company = () => (cache.companies || []).find((c) => c.id === S.company);
+const PACK_COUNTRIES = ['AE', 'SA', 'OM', 'BH', 'QA', 'KW'];
 const isSA = () => company()?.country_code === 'SA';
+const countryOf = () => company()?.country_code || 'AE';
+const noVat = () => ['QA', 'KW'].includes(countryOf());
+const defaultTax = () => (noVat() ? 'NV' : 'SR');
+// What each country calls its VAT return and its social insurance.
+const VAT_TITLE = { AE: 'UAE VAT return (VAT 201)', SA: 'Saudi VAT return (ZATCA)', BH: 'Bahrain VAT return (NBR)', OM: 'Oman VAT return (Tax Authority)' };
+const SI_NAME = { SA: 'GOSI', OM: 'Social Protection Fund', BH: 'SIO', QA: 'GRSIA', KW: 'PIFSS' };
+const NATIONALS = { SA: 'Saudis', OM: 'Omanis', BH: 'Bahrainis', QA: 'Qataris', KW: 'Kuwaitis', AE: 'UAE nationals' };
 const ccy = () => company()?.currency_code || 'AED';
 function companyBar(cs) {
   return cs.length > 1 ? `<div class="card"><label>Company<select id="co-pick">${cs.map((c) => `<option value="${c.id}" ${c.id === S.company ? 'selected' : ''}>${esc(c.code)} - ${esc(c.name)}</option>`).join('')}</select></label></div>` : '';
@@ -286,7 +296,9 @@ Object.assign(pages, {
       <div class="row"><button class="btn" id="demo">Load demo data</button><span id="demo-out" class="muted"></span></div></div>
     <div class="card"><h3>Try Saudi Arabia</h3><p class="muted">Adds a Saudi company (BAATS Arabia, in SAR) beside your head company and fills it: books with 15% VAT, a standard and a simplified sale, an export, an exempt sale and a reverse-charge bill, ZATCA e-invoices chained by hash with QR codes, and a payroll with GOSI for a Saudi and a non-Saudi employee. Run the main demo first. Takes about 20 seconds.</p>
       <div class="row"><button class="btn sec" id="demo-sa">Load Saudi demo</button><span id="demo-sa-out" class="muted"></span></div></div>
-    ${packs.length ? `<div class="card"><h3>Country packs</h3><div class="tbl"><table><tr><th>country</th><th>currency</th><th>VAT return</th><th>e-invoices</th><th>end of service</th><th>social insurance</th><th>corporate tax</th></tr>${packs.map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.currency)}</td><td>${esc(p.vatForm)}</td><td>${esc(p.einvoice)}</td><td title="${esc(p.endOfService)}">${esc(p.endOfService)}</td><td>${p.contributions.length ? esc(p.contributions.map((c) => c.name).join(', ')) : 'none set'}</td><td>${esc(p.corporateTax)}</td></tr>`).join('')}</table></div></div>` : ''}
+    <div class="card"><h3>Try Oman, Bahrain, Qatar and Kuwait</h3><p class="muted">Adds a company in each (BAATS Oman in OMR, BAATS Bahrain in BHD, BAATS Qatar in QAR, BAATS Kuwait in KWD) and fills it: books with the country's chart and VAT (5% in Oman, 10% in Bahrain, none in Qatar and Kuwait), a sale, a purchase and, where there is VAT, a reverse-charge bill, amounts in fils and baisa where the currency has three decimals, and a payroll with social insurance for a national and an expatriate employee. Run the main demo first. Takes about 40 seconds.</p>
+      <div class="row"><button class="btn sec" id="demo-gcc">Load GCC demo</button><span id="demo-gcc-out" class="muted"></span></div></div>
+    ${packs.length ? `<div class="card"><h3>Country packs</h3><div class="tbl"><table><tr><th>country</th><th>currency</th><th>VAT</th><th>VAT return</th><th>e-invoices</th><th>end of service</th><th>social insurance</th><th>corporate tax</th></tr>${packs.map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.currency)}${p.decimals === 3 ? ' (3 decimals)' : ''}</td><td>${esc(p.vat)}</td><td>${esc(p.vatForm)}</td><td>${esc(p.einvoice)}</td><td title="${esc(p.endOfService)}">${esc(p.endOfService)}</td><td>${p.contributions.length ? esc(p.contributions.map((c) => c.name).join(', ')) : 'none set'}</td><td>${esc(p.corporateTax)}</td></tr>`).join('')}</table></div></div>` : ''}
     ${cs.length ? companyBar(cs) + `<div class="card"><h3>Chart of accounts: ${esc(company().name)}</h3>${table(company().accounts, ['code', 'name', 'type', 'parent_code', 'is_group', 'control'])}
       <form id="f-acct"><div class="grid">${field('code', 'New account code (3-10 digits)', 'required')}${field('name', 'Name', 'required')}${pick('parentCode', 'Under group', company().accounts.filter((a) => a.is_group).map((a) => [a.code, `${a.code} ${a.name}`]))}</div><div class="row"><button class="btn sec">Add account</button></div></form></div>` : ''}
     <div class="card"><h3>Set up books for a company</h3>
@@ -327,7 +339,8 @@ Object.assign(pages, {
   async vat() {
     const cs = await companies(); if (!cs.length) return noBooks;
     const [f, t] = quarter();
-    return companyBar(cs) + `<div class="card"><h3>${isSA() ? 'Saudi VAT return (ZATCA)' : 'UAE VAT return (VAT 201)'}</h3><form id="f-vat"><div class="grid">${field('from', 'From', `type="date" required value="${f}"`)}${field('to', 'To', `type="date" required value="${t}"`)}</div>
+    if (noVat()) return companyBar(cs) + `<div class="card"><h3>No VAT return</h3><p>${esc(company().name)} is in ${countryOf() === 'QA' ? 'Qatar' : 'Kuwait'}, which has no VAT, so there is no VAT return. Invoices use the tax code NV (no VAT).</p></div>`;
+    return companyBar(cs) + `<div class="card"><h3>${VAT_TITLE[countryOf()]}</h3><form id="f-vat"><div class="grid">${field('from', 'From', `type="date" required value="${f}"`)}${field('to', 'To', `type="date" required value="${t}"`)}</div>
       <div class="row"><button class="btn">Calculate</button><button class="btn sec" type="button" id="vat-file">File this return</button></div></form><div id="vat-out"></div></div>`;
   },
   async reports() {
@@ -345,6 +358,7 @@ Object.assign(after, {
     bindCompanyPick();
     bindForm('f-books', async (b) => { await api('POST', '/v1/fin/companies', b); S.company = b.unitId; ok('Books set up'); });
     bindForm('f-acct', async (b) => { await api('POST', `/v1/fin/companies/${S.company}/accounts`, b); ok('Account added'); });
+    $('#demo-gcc').onclick = async () => { const out = $('#demo-gcc-out'); $('#demo-gcc').disabled = true; try { await loadGccDemo((t) => { out.textContent = t; }); ok('GCC demo loaded'); } catch (e) { out.textContent = ''; toast(e.message, false); $('#demo-gcc').disabled = false; } };
     $('#demo-sa').onclick = async () => { const out = $('#demo-sa-out'); $('#demo-sa').disabled = true; try { await loadSaudiDemo((t) => { out.textContent = t; }); ok('Saudi demo loaded'); } catch (e) { out.textContent = ''; toast(e.message, false); $('#demo-sa').disabled = false; } };
     $('#demo').onclick = async () => { const out = $('#demo-out'); $('#demo').disabled = true; try { await loadDemo((t) => { out.textContent = t; }); ok('Demo data loaded'); } catch (e) { out.textContent = ''; toast(e.message, false); $('#demo').disabled = false; } };
   },
@@ -367,7 +381,7 @@ Object.assign(after, {
     f.kind.onchange = () => fill(f); pf.kind.onchange = () => fill(pf); pf.partyId.onchange = fillInv;
     pf.invoiceId.onchange = () => { const o = pf.invoiceId.selectedOptions[0]; if (o?.dataset.open) pf.amount.value = o.dataset.open; };
     fill(f); fill(pf);
-    ['t0', 't1', 't2'].forEach((n) => { f[n].value = 'SR'; }); pf.bankAccount.value = '1010';
+    ['t0', 't1', 't2'].forEach((n) => { f[n].value = defaultTax(); }); pf.bankAccount.value = '1010';
     const saveInv = async (postIt) => {
       const b = form(f); const lines = [];
       for (let i = 0; i < 3; i++) if (b[`d${i}`]) lines.push({ description: b[`d${i}`], quantity: Number(b[`q${i}`] || 1), unitPrice: Number(b[`p${i}`] || 0), taxCode: b[`t${i}`], ...(b[`a${i}`] ? { account: b[`a${i}`] } : {}) });
@@ -404,11 +418,11 @@ Object.assign(after, {
     bindCompanyPick();
     const calc = async (b) => {
       const r = await api('GET', `/v1/fin/companies/${S.company}/vat-return?from=${b.from}&to=${b.to}`);
-      $('#vat-out').innerHTML = report(Object.entries(r.boxes).sort(([a], [b]) => a - b).map(([k, v]) => ({ box: `Box ${k}: ${r.labels?.[k] || VAT_BOXES[k] || ''}`, amount: v.amount, vat: v.vat })), [['box', 'Box'], ['amount', `Amount (${ccy()})`, 1], ['vat', `VAT (${ccy()})`, 1]]) +
+      $('#vat-out').innerHTML = report(Object.entries(r.boxes).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true })).map(([k, v]) => ({ box: `Box ${k}: ${r.labels?.[k] || VAT_BOXES[k] || ''}`, amount: v.amount, vat: v.vat })), [['box', 'Box'], ['amount', `Amount (${ccy()})`, 1], ['vat', `VAT (${ccy()})`, 1]]) +
         `<p>Output tax <b>${money(r.outputTax)}</b> · Input tax <b>${money(r.inputTax)}</b> · <b>Net VAT ${r.netPayable >= 0 ? `payable to the ${esc(r.authority || 'FTA')}` : `refundable by the ${esc(r.authority || 'FTA')}`}: ${money(Math.abs(r.netPayable))} ${ccy()}</b></p>${(r.notes || []).map((n) => `<p class="muted">${esc(n)}</p>`).join('')}`;
     };
     bindForm('f-vat', calc);
-    $('#vat-file').onclick = async () => { const b = form($('#f-vat')); if (!confirm('File this VAT return? This posts the VAT settlement journal and locks the period for VAT.')) return; try { await api('POST', `/v1/fin/companies/${S.company}/vat-returns`, b); toast('VAT return filed'); await calc(b); } catch (e) { toast(e.message, false); } };
+    if ($('#vat-file')) $('#vat-file').onclick = async () => { const b = form($('#f-vat')); if (!confirm('File this VAT return? This posts the VAT settlement journal and locks the period for VAT.')) return; try { await api('POST', `/v1/fin/companies/${S.company}/vat-returns`, b); toast('VAT return filed'); await calc(b); } catch (e) { toast(e.message, false); } };
   },
   async reports() {
     bindCompanyPick();
@@ -458,7 +472,7 @@ function readLines(b, n, items) {
     if (!b[`d${i}`] && !b[`i${i}`]) continue;
     const item = items.find((x) => x.id === b[`i${i}`]);
     out.push({ ...(item ? { itemId: item.id } : {}), description: b[`d${i}`] || item.name, quantity: Number(b[`q${i}`] || 1), unitPrice: Number(b[`p${i}`] || 0),
-      taxCode: b[`t${i}`] || 'SR', ...(b[`x${i}`] ? { discount: Number(b[`x${i}`]) } : {}) });
+      taxCode: b[`t${i}`] || defaultTax(), ...(b[`x${i}`] ? { discount: Number(b[`x${i}`]) } : {}) });
   }
   return out;
 }
@@ -515,24 +529,26 @@ Object.assign(pages, {
     const cs = await companies(); if (!cs.length) return noBooks;
     const [contracts, leave, runs, emps, gosi] = await Promise.all([api('GET', `/v1/hr/companies/${S.company}/contracts`), api('GET', `/v1/hr/companies/${S.company}/leave`),
       api('GET', `/v1/hr/companies/${S.company}/payroll`), api('GET', '/v1/org/employees'), api('GET', `/v1/hr/companies/${S.company}/contribution-rules`)]);
-    const sa = isSA();
+    const sa = countryOf() !== 'AE';   // social insurance and no UAE WPS file
+    const si = SI_NAME[countryOf()] || 'Social insurance';
     const withK = contracts.filter((k) => k.status === 'active');
     const runAct = (r) => r.status === 'draft' ? `${act('View', 'pr-view', r.id, 1)} ${act('Post to ledger', 'pr-post', r.id)}` : r.status === 'posted' ? `${act('View', 'pr-view', r.id, 1)} ${act(sa ? 'Pay salaries' : 'Pay and make WPS file', 'pr-pay', r.id)}` : act('View', 'pr-view', r.id, 1);
     const ym = today().slice(0, 7);
-    return companyBar(cs) + `<div class="card"><h3>Payroll</h3><p class="muted">${sa ? `Monthly pay is pro-rated for joiners, leavers and approved unpaid leave. GOSI is worked out from the rules below by nationality: the employee share comes off net pay, the employer share is charged to 5930, and both go to 2220 GOSI payable. Posting also trues up the end-of-service provision (2500) under Saudi law: ${esc(gosi.endOfService)}.` : "Monthly pay is pro-rated for joiners, leavers and approved unpaid leave. Posting charges 5000 Salaries by cost center, and trues up the end-of-service gratuity provision (2500) using BAATS's rule: 21 days' basic a year for 5 years, 30 after, none under 1 year, capped at 24 months. Paying creates the UAE WPS salary file (SIF)."}</p>
-      ${runs.length ? '<div class="tbl"><table><tr><th>period</th><th style="text-align:right">gross</th><th style="text-align:right">deductions</th>' + (sa ? '<th style="text-align:right">GOSI (employees)</th><th style="text-align:right">GOSI (employer)</th>' : '') + '<th style="text-align:right">net</th><th style="text-align:right">gratuity change</th><th>status</th><th></th></tr>' + runs.map((r) => `<tr><td>${esc(r.period)}</td><td style="text-align:right">${money(r.gross_total)}</td><td style="text-align:right">${money(r.deductions_total)}</td>${sa ? `<td style="text-align:right">${money(r.employee_contributions_total)}</td><td style="text-align:right">${money(r.employer_contributions_total)}</td>` : ''}<td style="text-align:right">${money(r.net_total)}</td><td style="text-align:right">${money(r.gratuity_change)}</td><td>${esc(r.status)}</td><td>${runAct(r)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No payroll yet.</div>'}
+    return companyBar(cs) + `<div class="card"><h3>Payroll</h3><p class="muted">${sa ? `Monthly pay is pro-rated for joiners, leavers and approved unpaid leave. ${esc(si)} contributions are worked out from the rules below by nationality: the employee share comes off net pay, the employer share is charged to 5930, and both go to 2220. Posting also trues up the end-of-service provision (2500) under local law: ${esc(gosi.endOfService)}.${gosi.payrollFileGap ? ` Note: ${esc(gosi.payrollFileGap)}.` : ''}` : "Monthly pay is pro-rated for joiners, leavers and approved unpaid leave. Posting charges 5000 Salaries by cost center, and trues up the end-of-service gratuity provision (2500) using BAATS's rule: 21 days' basic a year for 5 years, 30 after, none under 1 year, capped at 24 months. Paying creates the UAE WPS salary file (SIF)."}</p>
+      ${runs.length ? '<div class="tbl"><table><tr><th>period</th><th style="text-align:right">gross</th><th style="text-align:right">deductions</th>' + (sa ? `<th style="text-align:right">${esc(si)} (employees)</th><th style="text-align:right">${esc(si)} (employer)</th>` : '') + '<th style="text-align:right">net</th><th style="text-align:right">gratuity change</th><th>status</th><th></th></tr>' + runs.map((r) => `<tr><td>${esc(r.period)}</td><td style="text-align:right">${money(r.gross_total)}</td><td style="text-align:right">${money(r.deductions_total)}</td>${sa ? `<td style="text-align:right">${money(r.employee_contributions_total)}</td><td style="text-align:right">${money(r.employer_contributions_total)}</td>` : ''}<td style="text-align:right">${money(r.net_total)}</td><td style="text-align:right">${money(r.gratuity_change)}</td><td>${esc(r.status)}</td><td>${runAct(r)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No payroll yet.</div>'}
       <form id="f-pr"><div class="grid">${field('period', 'Month', `type="month" required value="${ym}"`)}</div><div class="row"><button class="btn">Calculate payroll</button></div></form><div id="pr-out"></div></div>
     <div class="card"><h3>Employment contracts</h3>${report(contracts.map((k) => ({ ...k, start_date: d10(k.start_date), end_date: d10(k.end_date) })), [['employee_no', 'No.'], ['employee_name', 'Employee'], ['unit_name', 'Unit'], ['start_date', 'Start'], ['end_date', 'End'], ['status', 'Status'], ['basic', 'Basic', 1], ['monthly_total', 'Monthly total', 1]])}
       <form id="f-k"><div class="grid">${pick('employeeId', 'Employee', emps.filter((e) => !withK.find((k) => k.employee_id === e.id)).map((e) => [e.id, `${e.employee_no} ${e.first_name} ${e.last_name}`]))}${field('startDate', 'Start date', `type="date" required value="${today()}"`)}
         ${field('basic', 'Basic salary', 'type="number" step="any" required min="1"')}${field('housing', 'Housing', 'type="number" step="any" min="0"')}${field('transport', 'Transport', 'type="number" step="any" min="0"')}${field('otherAllowances', 'Other allowances', 'type="number" step="any" min="0"')}
-        ${sa ? field('iban', 'IBAN (SA...)') : `${field('wpsPersonId', 'WPS personal no. (14 digits)', 'pattern="[0-9]{14}"')}${field('bankRoutingCode', 'Bank routing code (9 digits)', 'pattern="[0-9]{9}"')}${field('iban', 'IBAN (AE...)')}`}</div><div class="row"><button class="btn sec">Add contract</button></div></form>
-      ${withK.length ? `<h4>End a contract</h4><p class="muted">The end-of-service benefit depends on the reason${sa ? ': on resignation Saudi law pays nothing under 2 years, a third to 5 years, two thirds to 10 years' : ''}. Once ended, pay the settlement from the 2500 provision.</p>
+        ${sa ? field('iban', `IBAN (${countryOf()}...)`) : `${field('wpsPersonId', 'WPS personal no. (14 digits)', 'pattern="[0-9]{14}"')}${field('bankRoutingCode', 'Bank routing code (9 digits)', 'pattern="[0-9]{9}"')}${field('iban', 'IBAN (AE...)')}`}</div><div class="row"><button class="btn sec">Add contract</button></div></form>
+      ${withK.length ? `<h4>End a contract</h4><p class="muted">The end-of-service benefit depends on the reason${sa ? `: ${esc(gosi.endOfService)}` : ''}. Once ended, pay the settlement from the 2500 provision.</p>
       <form id="f-kend"><div class="grid">${pick('contractId', 'Contract', withK.map((k) => [k.id, `${k.employee_no} ${k.employee_name}`]))}${field('endDate', 'Last day', `type="date" required value="${today()}"`)}${pick('reason', 'Reason', [['termination', 'Ended by the employer'], ['resignation', 'Resignation'], ['contract_end', 'Fixed term ended'], ['mutual', 'Mutual agreement'], ['retirement', 'Retirement'], ['death', 'Death']])}</div><div class="row"><button class="btn sec">End contract</button></div></form>` : ''}
       ${contracts.filter((k) => k.status === 'ended').length ? `<div class="row">${contracts.filter((k) => k.status === 'ended').map((k) => act(`Pay end-of-service: ${esc(k.employee_no)}`, 'k-settle', k.id, 1)).join(' ')}</div>` : ''}</div>
-    ${gosi.rules.length ? `<div class="card"><h3>Social insurance (GOSI)</h3><p class="muted">Rates are kept per company so a change in the law is a change here, not a new release. Payrolls already posted keep the rates they used. Please check these against GOSI's current rates for your employees: Saudis who first joined GOSI from July 2024 have annuity rates that step up each year.</p>
-      ${report(gosi.rules.map((r) => ({ ...r, applies_to: { nationals: 'Saudi nationals', non_nationals: 'Non-Saudis', all: 'Everyone' }[r.applies_to], base: { basic: 'Basic', basic_housing: 'Basic + housing', gross: 'Gross' }[r.base], active: r.active ? 'yes' : 'no' })),
-        [['code', 'Code'], ['name', 'Contribution'], ['applies_to', 'Applies to'], ['employee_pct', 'Employee %'], ['employer_pct', 'Employer %'], ['base', 'On'], ['monthly_cap', 'Monthly cap', 1], ['active', 'Active']])}
-      <form id="f-gosi"><div class="grid">${pick('code', 'Rule', gosi.rules.map((r) => [r.code, r.name]))}${field('employeePct', 'Employee %', 'type="number" step="0.001" min="0" max="100" required')}${field('employerPct', 'Employer %', 'type="number" step="0.001" min="0" max="100" required')}${field('monthlyCap', 'Monthly cap', 'type="number" step="any" min="1"')}</div><div class="row"><button class="btn sec">Change rate</button></div></form></div>` : ''}
+    ${gosi.rules.length ? `<div class="card"><h3>Social insurance (${esc(si)})</h3><p class="muted">Rates are kept per company so a change in the law is a change here, not a new release. Payrolls already posted keep the rates they used. Please check these against ${esc(si)}'s current rates for your employees${countryOf() === 'SA' ? ': Saudis who first joined GOSI from July 2024 have annuity rates that step up each year' : ''}. A rate with a step goes up to the later employer rate once the employee has that many years of service.</p>
+      ${report(gosi.rules.map((r) => ({ ...r, applies_to: { nationals: NATIONALS[countryOf()] || 'Nationals', non_nationals: 'Everyone else', all: 'Everyone' }[r.applies_to], base: { basic: 'Basic', basic_housing: 'Basic + housing', gross: 'Gross' }[r.base], active: r.active ? 'yes' : 'no',
+        step: r.after_years ? `${r.employer_pct_after}% after ${r.after_years} years` : '' })),
+        [['code', 'Code'], ['name', 'Contribution'], ['applies_to', 'Applies to'], ['employee_pct', 'Employee %'], ['employer_pct', 'Employer %'], ['step', 'Step'], ['base', 'On'], ['monthly_cap', 'Monthly cap', 1], ['active', 'Active']])}
+      <form id="f-gosi"><div class="grid">${pick('code', 'Rule', gosi.rules.map((r) => [r.code, r.name]))}${field('employeePct', 'Employee %', 'type="number" step="0.001" min="0" max="100" required')}${field('employerPct', 'Employer %', 'type="number" step="0.001" min="0" max="100" required')}${field('monthlyCap', 'Monthly cap', 'type="number" step="any" min="1"')}${field('afterYears', 'Step after years (optional)', 'type="number" step="0.5" min="0.5"')}${field('employerPctAfter', 'Employer % after the step', 'type="number" step="0.001" min="0" max="100"')}</div><div class="row"><button class="btn sec">Change rate</button></div></form></div>` : ''}
     <div class="card"><h3>Leave</h3>${report(leave.map((l) => ({ ...l, date_from: d10(l.date_from), date_to: d10(l.date_to) })), [['employee_name', 'Employee'], ['leave_type', 'Type'], ['date_from', 'From'], ['date_to', 'To'], ['days', 'Days'], ['status', 'Status']])}
       <p class="muted">The employee's line manager (or an HR manager) approves under Approvals. Annual leave accrues monthly from the contract start.</p>
       <form id="f-leave"><div class="grid">${pick('employeeId', 'Employee', withK.map((k) => [k.employee_id, `${k.employee_no} ${k.employee_name}`]))}${pick('leaveType', 'Type', [['annual', 'Annual'], ['sick', 'Sick'], ['unpaid', 'Unpaid'], ['maternity', 'Maternity'], ['parental', 'Parental'], ['compassionate', 'Compassionate'], ['hajj', 'Hajj']])}
@@ -552,7 +568,7 @@ Object.assign(after, {
   async purchasing(m, ok) {
     bindCompanyPick();
     const c = S.company; const f = $('#f-po');
-    f.querySelectorAll('select[name^="t"]').forEach((s) => { s.value = 'SR'; });
+    f.querySelectorAll('select[name^="t"]').forEach((s) => { s.value = defaultTax(); });
     bindForm('f-po', async (b) => {
       const body = { supplierId: b.supplierId, date: b.date, lines: readLines(b, 3, cache.items) };
       if (b.warehouseId) body.warehouseId = b.warehouseId; if (b.expectedDate) body.expectedDate = b.expectedDate;
@@ -577,7 +593,7 @@ Object.assign(after, {
   async sales(m, ok) {
     bindCompanyPick();
     const c = S.company; const f = $('#f-qt');
-    f.querySelectorAll('select[name^="t"]').forEach((s) => { s.value = 'SR'; });
+    f.querySelectorAll('select[name^="t"]').forEach((s) => { s.value = defaultTax(); });
     bindForm('f-lead', async (b) => { await api('POST', '/v1/crm/leads', { ...b, ...(b.countryCode ? { countryCode: b.countryCode.toUpperCase() } : {}) }); ok('Lead added'); });
     bindForm('f-qt', async (b) => {
       const body = { customerId: b.customerId, date: b.date, lines: readLines(b, 3, cache.items) };
@@ -608,17 +624,19 @@ Object.assign(after, {
     });
     bindForm('f-leave', async (b) => { await api('POST', '/v1/hr/leave', b); ok('Leave requested; it now waits for approval'); });
     bindForm('f-pr', async (b) => { const r = await api('POST', `/v1/hr/companies/${c}/payroll`, { period: b.period }); toast(`Payroll ${r.period} calculated`); await show('hr'); showRun(r); });
-    const sa = isSA();
+    const sa = countryOf() !== 'AE';
+    const si = SI_NAME[countryOf()] || 'Social insurance';
     const showRun = (r) => { $('#pr-out').innerHTML = `<h4>Payslips ${esc(r.period)}</h4>` + report(r.payslips, [['employee_no', 'No.'], ['employee_name', 'Employee'], ['unit_name', 'Cost center'], ['paid_days', 'Paid days'], ['basic', 'Basic', 1], ['allowances', 'Allowances', 1], ['additions', 'Additions', 1], ['deductions', 'Deductions', 1],
-      ...(sa ? [['employee_contributions', 'GOSI (employee)', 1], ['employer_contributions', 'GOSI (employer)', 1]] : []), ['net', 'Net', 1], ['gratuity_balance', sa ? 'End-of-service accrued' : 'Gratuity accrued', 1]]); };
+      ...(sa ? [['employee_contributions', `${si} (employee)`, 1], ['employer_contributions', `${si} (employer)`, 1]] : []), ['net', 'Net', 1], ['gratuity_balance', sa ? 'End-of-service accrued' : 'Gratuity accrued', 1]]); };
     bindForm('f-kend', async (b) => { const r = await api('POST', `/v1/hr/contracts/${b.contractId}/end`, { endDate: b.endDate, reason: b.reason }); ok(`Contract ended. End-of-service benefit due: ${money(r.finalGratuity)} ${ccy()}`); });
-    bindForm('f-gosi', async (b) => { await api('PUT', `/v1/hr/companies/${c}/contribution-rules`, { code: b.code, employeePct: Number(b.employeePct), employerPct: Number(b.employerPct), ...(b.monthlyCap ? { monthlyCap: Number(b.monthlyCap) } : {}) }); ok('Rate changed'); });
+    bindForm('f-gosi', async (b) => { await api('PUT', `/v1/hr/companies/${c}/contribution-rules`, { code: b.code, employeePct: Number(b.employeePct), employerPct: Number(b.employerPct), ...(b.monthlyCap ? { monthlyCap: Number(b.monthlyCap) } : {}),
+      ...(b.afterYears || b.employerPctAfter ? { afterYears: Number(b.afterYears), employerPctAfter: Number(b.employerPctAfter) } : {}) }); ok('Rate changed'); });
     const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
     on('pr-view', async (id) => showRun(await api('GET', `/v1/hr/payroll/${id}`)));
     on('pr-post', async (id) => { await api('POST', `/v1/hr/payroll/${id}/post`); ok('Payroll posted to the ledger'); });
     on('k-settle', async (id) => { if (!confirm('Pay the end-of-service benefit from the bank account now?')) return; const r = await api('POST', `/v1/hr/contracts/${id}/settlement`, { date: today() }); ok(r.amount ? `Paid ${money(r.amount)} ${ccy()}` : r.note); });
     on('pr-pay', async (id) => {
-      if (sa) { const r = await api('POST', `/v1/hr/payroll/${id}/pay`, { date: today() }); ok(`Salaries paid: ${money(r.total)} SAR`); return; }
+      if (sa) { const r = await api('POST', `/v1/hr/payroll/${id}/pay`, { date: today() }); ok(`Salaries paid: ${money(r.total)} ${ccy()}${r.note ? `. Note: ${r.note}` : ''}`); return; }
       const employerId = prompt('MOHRE employer (establishment) id, 13 digits', localStorage.getItem('baatsEmployer') || ''); if (!employerId) return;
       const employerBankCode = prompt("Your bank's 9-digit routing code", localStorage.getItem('baatsEmployerBank') || ''); if (!employerBankCode) return;
       localStorage.setItem('baatsEmployer', employerId); localStorage.setItem('baatsEmployerBank', employerBankCode);
@@ -674,6 +692,10 @@ Object.assign(pages, {
     const cs = await companies(); if (!cs.length) return noBooks;
     const rows = await api('GET', `/v1/fin/companies/${S.company}/einvoices`);
     if (isSA()) return companyBar(cs) + zatcaPage(rows);
+    if (countryOf() !== 'AE') {
+      const pack = (await api('GET', '/v1/fin/country-packs')).find((p) => p.country === countryOf());
+      return companyBar(cs) + `<div class="card"><h3>E-invoicing</h3><p>${esc(pack?.einvoice || 'No e-invoicing mandate applies to this company.')}.</p><p class="muted">Posted sales invoices are listed under Finance: sales and purchases. When the country's e-invoicing goes live, it is added here as a new standard, the way the UAE (PINT AE) and Saudi Arabia (ZATCA) are.</p></div>`;
+    }
     return companyBar(cs) + `<div class="card"><h3>Seller details for e-invoices</h3><p class="muted">PINT AE needs the company's address, emirate, trade licence and IBAN. These are checked before every e-invoice is issued.</p>
       <form id="f-seller"><div class="grid">${field('street', 'Street')}${field('city', 'City')}${pick('emirate', 'Emirate', [['', '(choose)'], ['AUH', 'Abu Dhabi'], ['DXB', 'Dubai'], ['SHJ', 'Sharjah'], ['AJM', 'Ajman'], ['UAQ', 'Umm Al Quwain'], ['RAK', 'Ras Al Khaimah'], ['FUJ', 'Fujairah']])}
       ${field('tradeLicenceNo', 'Trade licence no.')}${field('licenceAuthority', 'Licence authority')}${field('iban', 'IBAN (AE...)')}${field('taxRegistrationNo', 'TRN (15 digits)')}${field('email', 'Email')}${field('phone', 'Phone')}</div>
@@ -1896,6 +1918,80 @@ Object.assign(after, {
   },
 });
 
+
+// GCC demo: a company in each of Oman, Bahrain, Qatar and Kuwait, through the public API.
+const GCC_DEMO = [
+  { country: 'OM', currency: 'OMR', code: 'OM-DEMO', name: 'BAATS Oman', legal: 'BAATS Oman LLC', tax: 'OM1100000001', vat: true, price: 1250.750, cost: 480.125,
+    customer: ['OM-C1', 'Muscat Hypermarket'], supplier: ['OM-S1', 'Sohar Steel'], foreign: ['OM-S2', 'Mumbai Cloud Services', 'IN'],
+    staff: [['OM-E1', 'Ahmed', 'Al-Balushi', 'OM', '2021-02-01', 1200.5, 300, 100], ['OM-E2', 'Joseph', 'Mathew', 'IN', '2022-05-01', 450, 100, 50]] },
+  { country: 'BH', currency: 'BHD', code: 'BH-DEMO', name: 'BAATS Bahrain', legal: 'BAATS Bahrain WLL', tax: '200000000000003', vat: true, price: 980.250, cost: 310.375,
+    customer: ['BH-C1', 'Manama Mart'], supplier: ['BH-S1', 'Sitra Supplies'], foreign: ['BH-S2', 'London Cloud Ltd', 'GB'],
+    staff: [['BH-E1', 'Maryam', 'Hasan', 'BH', '2022-01-01', 1500, 300, 100], ['BH-E2', 'Arjun', 'Nair', 'IN', '2019-04-01', 700, 150, 0]] },
+  { country: 'QA', currency: 'QAR', code: 'QA-DEMO', name: 'BAATS Qatar', legal: 'BAATS Qatar WLL', tax: '5000000001', vat: false, price: 12500, cost: 4200,
+    customer: ['QA-C1', 'Doha Retail'], supplier: ['QA-S1', 'Lusail Supplies'],
+    staff: [['QA-E1', 'Hamad', 'Al-Kuwari', 'QA', '2020-09-01', 25000, 8000, 2000], ['QA-E2', 'Maria', 'Santos', 'PH', '2021-02-01', 6000, 2000, 500]] },
+  { country: 'KW', currency: 'KWD', code: 'KW-DEMO', name: 'BAATS Kuwait', legal: 'BAATS Kuwait WLL', tax: null, vat: false, price: 875.500, cost: 290.250,
+    customer: ['KW-C1', 'Salmiya Stores'], supplier: ['KW-S1', 'Shuwaikh Trading'],
+    staff: [['KW-E1', 'Abdullah', 'Al-Mutairi', 'KW', '2021-06-01', 1500, 250, 0], ['KW-E2', 'Ahmed', 'Fathy', 'EG', '2020-10-01', 600, 150, 50]] },
+];
+async function loadGccDemo(step) {
+  const us = await units(); const root = us.find((u) => u.depth === 0) || us[0];
+  const pw = 'Approver-Demo-2026', appEmail = `approver@${S.tenant}.demo`;
+  if (!(await api('GET', '/v1/iam/users')).find((u) => u.email === appEmail)) {
+    const approver = await api('POST', '/v1/iam/users', { email: appEmail, displayName: 'Demo Approver', password: pw });
+    const roles = await api('GET', '/v1/iam/roles');
+    await api('POST', '/v1/iam/assignments', { userId: approver.id, roleId: roles.find((r) => r.code === 'TENANT_ADMIN').id, scopeUnitId: root.id, includeDescendants: true });
+  }
+  const approveAll = async (type) => {
+    const l = await api('POST', '/v1/auth/login', { tenant: S.tenant, email: appEmail, password: pw });
+    const saved = S.token; S.token = (l.session || l).token;
+    try { for (const t of await api('GET', '/v1/wf/inbox')) if (t.entity_type === type) await api('POST', `/v1/wf/tasks/${t.task_id}/approve`, { comment: 'Demo approval' }); }
+    finally { await api('POST', '/v1/auth/logout').catch(() => {}); S.token = saved; }
+  };
+  const d = today(), due = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+  let first = null;
+  for (const g of GCC_DEMO) {
+    let u = (await units()).find((x) => x.code === g.code);
+    if (!u) { step(`${g.name}: adding the company...`); u = await api('POST', '/v1/org/units', { typeCode: 'company', parentId: root.id, code: g.code, name: g.name, countryCode: g.country, currencyCode: g.currency }); }
+    const co = u.id; first ||= co;
+    if (!(await api('GET', `/v1/fin/companies/${co}/accounts`).catch(() => [])).length) {
+      step(`${g.name}: setting up books...`);
+      await api('POST', '/v1/fin/companies', { unitId: co, legalName: g.legal, ...(g.tax ? { taxRegistrationNo: g.tax } : {}), openFrom: yearStart() });
+    }
+    step(`${g.name}: customers and suppliers...`);
+    const existing = await api('GET', '/v1/mdm/parties');
+    const mk = async ([code, name, ctry], isCustomer) => {
+      let p = existing.find((x) => x.code === code);
+      if (!p) p = (await api('POST', '/v1/mdm/parties', { code, name, isCustomer, isSupplier: !isCustomer, countryCode: ctry || g.country, currencyCode: g.currency, ownerUnitId: co })).party;
+      if (p.status === 'draft') await api('POST', `/v1/mdm/parties/${p.id}/submit`);
+      return p;
+    };
+    const cust = await mk(g.customer, true), supp = await mk(g.supplier, false), foreign = g.foreign ? await mk(g.foreign, false) : null;
+    await approveAll('mdm.party');
+    if (!(await api('GET', `/v1/fin/companies/${co}/invoices`).catch(() => [])).length) {
+      step(`${g.name}: capital, a sale and purchases...`);
+      await api('POST', `/v1/fin/companies/${co}/journals`, { date: d, memo: "Owner's capital introduced", lines: [{ account: '1010', debit: 50000 }, { account: '3000', credit: 50000 }] });
+      await approveAll('fin.journal');
+      const tax = g.vat ? 'SR' : 'NV';
+      const inv = async (b) => { const x = await api('POST', `/v1/fin/companies/${co}/invoices`, { date: d, ...b }); return api('POST', `/v1/fin/invoices/${x.id}/post`); };
+      const sale = await inv({ kind: 'sales_invoice', partyId: cust.id, dueDate: due, lines: [{ description: 'Consulting services', quantity: 2, unitPrice: g.price, taxCode: tax }] });
+      await inv({ kind: 'purchase_invoice', partyId: supp.id, supplierRef: `${g.country}-${Date.now().toString().slice(-5)}`, lines: [{ description: 'Office supplies', quantity: 1, unitPrice: g.cost, taxCode: tax, account: '5500' }] });
+      if (foreign) await inv({ kind: 'purchase_invoice', partyId: foreign.id, supplierRef: `${g.country}-RC-${Date.now().toString().slice(-5)}`, lines: [{ description: 'Software subscription (imported service)', quantity: 1, unitPrice: 200, taxCode: 'RC', account: '5300' }] });
+      await api('POST', `/v1/fin/companies/${co}/payments`, { kind: 'receipt', partyId: cust.id, date: d, bankAccount: '1010', amount: g.price, allocations: [{ invoiceId: sale.id, amount: g.price }] });
+    }
+    step(`${g.name}: employees and a payroll with social insurance...`);
+    const emps = await api('GET', '/v1/org/employees');
+    const ks = await api('GET', `/v1/hr/companies/${co}/contracts`);
+    for (const [no, firstName, lastName, nationality, start, basic, housing, transport] of g.staff) {
+      const e = emps.find((x) => x.employee_no === no) || await api('POST', '/v1/org/employees', { employeeNo: no, firstName, lastName, unitId: co, nationality });
+      if (!ks.find((k) => k.employee_id === e.id)) await api('POST', '/v1/hr/contracts', { employeeId: e.id, companyId: co, startDate: start, basic, housing, ...(transport ? { transport } : {}) });
+    }
+    const run = await api('POST', `/v1/hr/companies/${co}/payroll`, { period: d.slice(0, 7) }).catch(() => null);
+    if (run && run.status === 'draft') await api('POST', `/v1/hr/payroll/${run.id}/post`);
+  }
+  S.company = first; cache.companies = null;
+  step('Done. Pick BAATS Oman, Bahrain, Qatar or Kuwait in the company list on any finance or HR page.');
+}
 
 // Saudi demo: a second company in Saudi Arabia, filled through the public API like the main demo.
 async function loadSaudiDemo(step) {

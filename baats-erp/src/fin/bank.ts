@@ -1,7 +1,8 @@
+import { fixed } from '../core/money.ts';
 import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
-import { post, resolveAccount, round2 } from './ledger.ts';
+import { post, resolveAccount, roundMoney } from './ledger.ts';
 
 /**
  * Bank statements and reconciliation (BAATS bankparse.js, re-implemented):
@@ -67,8 +68,8 @@ export function parseCsv(text: string): StatementLine[] {
   }
   return rows.slice(1).map((r) => {
     const c = splitCsv(r, sep);
-    const amount = iAmt >= 0 ? money(c[iAmt]) : round2(money(c[iCr]) - Math.abs(money(c[iDr])));
-    return { date: parseDate(c[iDate]), description: c[iDesc] || '(no description)', amount: round2(amount), reference: iRef >= 0 ? c[iRef] || undefined : undefined };
+    const amount = iAmt >= 0 ? money(c[iAmt]) : roundMoney(money(c[iCr]) - Math.abs(money(c[iDr])));
+    return { date: parseDate(c[iDate]), description: c[iDesc] || '(no description)', amount: roundMoney(amount), reference: iRef >= 0 ? c[iRef] || undefined : undefined };
   }).filter((l) => l.amount !== 0);
 }
 
@@ -90,13 +91,13 @@ export async function importStatement(tx: Tx, ctx: Ctx, input: { companyId: stri
     [input.companyId, acc.id, input.fileName ?? null, dates[0], dates[dates.length - 1], input.closingBalance ?? null, ctx.userId]);
   let added = 0, skipped = 0;
   for (const l of lines) {
-    const fp = [l.date, round2(l.amount).toFixed(2), l.description.trim().toLowerCase(), (l.reference ?? '').trim().toLowerCase()].join('|');
+    const fp = [l.date, fixed(l.amount), l.description.trim().toLowerCase(), (l.reference ?? '').trim().toLowerCase()].join('|');
     const dup = await one(tx, `SELECT 1 FROM fin.bank_lines b JOIN fin.bank_statements s ON s.id = b.statement_id
                                 WHERE s.account_id = $1 AND b.fingerprint = $2`, [acc.id, fp]);
     if (dup) { skipped++; continue; }
     added++;
     await tx.query(`INSERT INTO fin.bank_lines (tenant_id, statement_id, line_no, date, description, reference, amount, fingerprint)
-      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7)`, [st.id, added, l.date, l.description, l.reference ?? null, round2(l.amount), fp]);
+      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7)`, [st.id, added, l.date, l.description, l.reference ?? null, roundMoney(l.amount), fp]);
   }
   const auto = await autoMatch(tx, ctx, input.companyId, acc.id);
   return { statementId: st.id, added, skipped, autoMatched: auto };
@@ -120,7 +121,7 @@ export async function autoMatch(tx: Tx, ctx: Ctx, companyId: string, accountId: 
   let n = 0;
   for (const b of lines) {
     const amt = Number(b.amount), when = b.date.getTime();
-    const cands = open.filter((l) => !used.has(l.id) && round2(l.amount) === amt && Math.abs(l.date.getTime() - when) <= 5 * DAY);
+    const cands = open.filter((l) => !used.has(l.id) && roundMoney(l.amount) === amt && Math.abs(l.date.getTime() - when) <= 5 * DAY);
     if (!cands.length) continue;
     const ref = String(b.reference ?? '').toLowerCase();
     const best = (ref && cands.find((l) => `${l.no} ${l.memo} ${l.description ?? ''}`.toLowerCase().includes(ref)))
@@ -145,7 +146,7 @@ export async function matchLine(tx: Tx, ctx: Ctx, bankLineId: string, journalLin
   if (b.status === 'matched') throw new ConflictError('the statement line is already matched');
   const l = await one(tx, `SELECT l.*, j.status FROM fin.journal_lines l JOIN fin.journals j ON j.id = l.journal_id WHERE l.id = $1`, [journalLineId]);
   if (!l || l.account_id !== b.account_id || l.status !== 'posted') throw new ValidationError('choose a posted ledger line on the same bank account');
-  if (round2(Number(l.debit) - Number(l.credit)) !== Number(b.amount)) throw new ValidationError('the amounts differ; post the difference (for example bank charges) as its own line');
+  if (roundMoney(Number(l.debit) - Number(l.credit)) !== Number(b.amount)) throw new ValidationError('the amounts differ; post the difference (for example bank charges) as its own line');
   await tx.query(`UPDATE fin.bank_lines SET status = 'matched', journal_line_id = $2, matched_by = $3, matched_at = now() WHERE id = $1`, [bankLineId, journalLineId, ctx.userId]);
   return { matched: true };
 }
@@ -189,16 +190,16 @@ export async function reconciliation(tx: Tx, ctx: Ctx, companyId: string, bankAc
   const onStatementOnly = await many(tx, `SELECT b.id, b.date, b.description, b.reference, b.amount::float AS amount FROM fin.bank_lines b
                                             JOIN fin.bank_statements s ON s.id = b.statement_id
                                            WHERE s.account_id = $1 AND b.status = 'unmatched' AND b.date <= $2 ORDER BY b.date, b.line_no`, [acc.id, asOf]);
-  const outstanding = round2(inLedgerOnly.reduce((x, l) => x + l.amount, 0));
-  const unrecorded = round2(onStatementOnly.reduce((x, l) => x + l.amount, 0));
+  const outstanding = roundMoney(inLedgerOnly.reduce((x, l) => x + l.amount, 0));
+  const unrecorded = roundMoney(onStatementOnly.reduce((x, l) => x + l.amount, 0));
   return {
     account: { code: acc.code, name: acc.name }, asOf,
-    ledgerBalance: round2(ledger.b),
-    statementMovements: round2(statement.s), statementLines: statement.n,
+    ledgerBalance: roundMoney(ledger.b),
+    statementMovements: roundMoney(statement.s), statementLines: statement.n,
     statementClosingBalance: lastClosing ? Number(lastClosing.closing_balance) : null,
     outstandingInLedger: outstanding, notYetInLedger: unrecorded,
     // Ledger + items only on the statement - items only in the ledger = what the bank shows.
-    adjustedBalance: round2(ledger.b + unrecorded - outstanding),
+    adjustedBalance: roundMoney(ledger.b + unrecorded - outstanding),
     inLedgerOnly, onStatementOnly,
   };
 }

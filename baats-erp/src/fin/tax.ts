@@ -1,7 +1,8 @@
+import { fixed } from '../core/money.ts';
 import { ConflictError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
-import { company, post, round2, type PostingLine } from './ledger.ts';
+import { company, post, roundMoney, type PostingLine } from './ledger.ts';
 import { fiscalYear } from './reports.ts';
 import { companyPack } from './country.ts';
 
@@ -9,7 +10,8 @@ import { companyPack } from './country.ts';
  * VAT returns and the corporate tax provision, following the BAATS Accounting
  * rules: VAT is computed from the ledger's tax-coded lines, a filed return clears
  * 2100 / 1200 into 2110 (settlement with the tax authority). The form follows the
- * company's country pack: the UAE FTA VAT 201, or the Saudi ZATCA VAT return.
+ * company's country pack: the UAE FTA VAT 201, the Saudi ZATCA, Bahraini NBR or
+ * Omani VAT return. Qatar and Kuwait have no VAT.
  * UAE corporate tax is 9% of accounting profit above AED 375,000 (both configurable).
  */
 
@@ -41,7 +43,10 @@ export const SA_LABELS: Record<string, string> = {
 export async function computeVatReturn(tx: Tx, ctx: Ctx, companyId: string, from: string, to: string): Promise<VatReturn> {
   await authorize(tx, ctx, 'fin.report.read', { unitId: companyId });
   const pack = await companyPack(tx, companyId);
-  const r = pack.country === 'SA' ? await saudiVatReturn(tx, companyId, from, to) : await uaeVatReturn(tx, companyId, from, to);
+  if (!pack.vatForm) throw new ValidationError(pack.noVat ?? `${pack.name} has no VAT`);
+  const make = { AE: uaeVatReturn, SA: saudiVatReturn, BH: bahrainVatReturn, OM: omanVatReturn }[pack.country];
+  if (!make) throw new ValidationError(`the ${pack.name} VAT return is not available`);
+  const r = await make(tx, companyId, from, to);
   return { form: pack.vatForm, formName: pack.vatFormName, authority: pack.taxAuthority, from, to, ...r };
 }
 
@@ -79,61 +84,134 @@ async function uaeVatReturn(tx: Tx, companyId: string, from: string, to: string)
   }
   for (const k of ['1', '3', '4', '5']) { b['8'].amount += b[k].amount; b['8'].vat += b[k].vat; }
   for (const k of ['9', '10']) { b['11'].amount += b[k].amount; b['11'].vat += b[k].vat; }
-  for (const v of Object.values(b)) { v.amount = round2(v.amount); v.vat = round2(v.vat); }
+  for (const v of Object.values(b)) { v.amount = roundMoney(v.amount); v.vat = roundMoney(v.vat); }
   const outputTax = b['8'].vat, inputTax = b['11'].vat;
-  return { boxes: b, labels: AE_LABELS, outputTax, inputTax, netPayable: round2(outputTax - inputTax), notes: [] as string[] };
+  return { boxes: b, labels: AE_LABELS, outputTax, inputTax, netPayable: roundMoney(outputTax - inputTax), notes: [] as string[] };
+}
+
+/** VAT-coded ledger amounts of a period, grouped the way the GCC VAT returns ask for them. */
+interface GccBuckets {
+  standardSales: VatBox; zeroDomestic: number; exports: number; exemptSales: number;
+  standardPurchases: VatBox; reverseCharge: VatBox; zeroPurchases: number; exemptPurchases: number;
+  /** Output VAT self-assessed on imported services; also recovered as input VAT. */
+  reverseChargeDue: number;
 }
 
 /**
- * The ZATCA VAT return. Zero-rated sales to a customer outside Saudi Arabia are
- * exports (box 4); reverse-charge VAT on imported services is declared in box 9
- * and, being both due and recoverable, is added to the VAT due in box 13 as well.
- * Boxes 2, 8, 14 and 15 are not derived from the books and are entered on the
- * ZATCA portal when they apply.
+ * The common GCC VAT framework behind the Saudi, Bahraini and Omani returns.
+ * Zero-rated sales to a customer outside the country are exports.
  */
-async function saudiVatReturn(tx: Tx, companyId: string, from: string, to: string) {
+async function gccBuckets(tx: Tx, companyId: string, country: string, from: string, to: string): Promise<GccBuckets> {
   const rows = await many(tx, `
     SELECT j.type, t.category, coalesce(a.system_role, '') AS role,
-           coalesce((SELECT pt.country_code <> 'SA' FROM fin.invoices i JOIN mdm.parties pt ON pt.id = i.party_id WHERE i.journal_id = j.id LIMIT 1), false) AS abroad,
+           coalesce((SELECT pt.country_code <> $5 FROM fin.invoices i JOIN mdm.parties pt ON pt.id = i.party_id WHERE i.journal_id = j.id LIMIT 1), false) AS abroad,
            sum(l.debit - l.credit)::float AS amount
       FROM fin.journal_lines l
       JOIN fin.journals j ON j.id = l.journal_id AND j.status = 'posted'
       JOIN fin.accounts a ON a.id = l.account_id
       JOIN fin.tax_codes t ON t.id = l.tax_code_id
      WHERE j.company_id = $1 AND j.date BETWEEN $2 AND $3 AND j.type = ANY($4)
-     GROUP BY 1, 2, 3, 4`, [companyId, from, to, [...SALES_TYPES, ...PURCHASE_TYPES]]);
-  const b: Record<string, VatBox> = Object.fromEntries(Array.from({ length: 16 }, (_, i) => [String(i + 1), { amount: 0, vat: 0 }]));
-  let reverseChargeDue = 0;
+     GROUP BY 1, 2, 3, 4`, [companyId, from, to, [...SALES_TYPES, ...PURCHASE_TYPES], country]);
+  const b: GccBuckets = { standardSales: { amount: 0, vat: 0 }, zeroDomestic: 0, exports: 0, exemptSales: 0,
+    standardPurchases: { amount: 0, vat: 0 }, reverseCharge: { amount: 0, vat: 0 }, zeroPurchases: 0, exemptPurchases: 0, reverseChargeDue: 0 };
   for (const r of rows) {
     const isVat = r.role === 'vat_output' || r.role === 'vat_input';
     if (SALES_TYPES.includes(r.type)) {
-      if (r.role === 'vat_output') b['1'].vat += -r.amount;
+      if (r.role === 'vat_output') b.standardSales.vat += -r.amount;
       else if (!isVat) {
         const net = -r.amount;
-        if (r.category === 'standard') b['1'].amount += net;
-        else if (r.category === 'zero') b[r.abroad ? '4' : '3'].amount += net;
-        else if (r.category === 'exempt') b['5'].amount += net;
+        if (r.category === 'standard') b.standardSales.amount += net;
+        else if (r.category === 'zero') { if (r.abroad) b.exports += net; else b.zeroDomestic += net; }
+        else if (r.category === 'exempt') b.exemptSales += net;
       }
     } else if (r.role === 'vat_input') {
-      b[r.category === 'reverse_charge' ? '9' : '7'].vat += r.amount;
+      (r.category === 'reverse_charge' ? b.reverseCharge : b.standardPurchases).vat += r.amount;
     } else if (r.role === 'vat_output') {
-      reverseChargeDue += -r.amount;
+      b.reverseChargeDue += -r.amount;
     } else if (!isVat) {
-      if (r.category === 'standard') b['7'].amount += r.amount;
-      else if (r.category === 'reverse_charge') b['9'].amount += r.amount;
-      else if (r.category === 'zero') b['10'].amount += r.amount;
-      else if (r.category === 'exempt') b['11'].amount += r.amount;
+      if (r.category === 'standard') b.standardPurchases.amount += r.amount;
+      else if (r.category === 'reverse_charge') b.reverseCharge.amount += r.amount;
+      else if (r.category === 'zero') b.zeroPurchases += r.amount;
+      else if (r.category === 'exempt') b.exemptPurchases += r.amount;
     }
   }
+  return b;
+}
+
+const boxes = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [String(i + 1), { amount: 0, vat: 0 }])) as Record<string, VatBox>;
+const tidy = (b: Record<string, VatBox>) => { for (const v of Object.values(b)) { v.amount = roundMoney(v.amount); v.vat = roundMoney(v.vat); } };
+
+/**
+ * The ZATCA VAT return. Reverse-charge VAT on imported services is declared in
+ * box 9 and, being both due and recoverable, is added to the VAT due in box 13 as
+ * well. Boxes 2, 8, 14 and 15 are not derived from the books and are entered on
+ * the ZATCA portal when they apply.
+ */
+async function saudiVatReturn(tx: Tx, companyId: string, from: string, to: string) {
+  const g = await gccBuckets(tx, companyId, 'SA', from, to);
+  const b = boxes(16);
+  b['1'] = { ...g.standardSales }; b['3'].amount = g.zeroDomestic; b['4'].amount = g.exports; b['5'].amount = g.exemptSales;
+  b['7'] = { ...g.standardPurchases }; b['9'] = { ...g.reverseCharge }; b['10'].amount = g.zeroPurchases; b['11'].amount = g.exemptPurchases;
   for (const k of ['1', '2', '3', '4', '5']) { b['6'].amount += b[k].amount; b['6'].vat += b[k].vat; }
   for (const k of ['7', '8', '9', '10', '11']) { b['12'].amount += b[k].amount; b['12'].vat += b[k].vat; }
-  const outputTax = round2(b['6'].vat + reverseChargeDue), inputTax = round2(b['12'].vat);
-  b['13'].vat = round2(outputTax - inputTax);
+  const outputTax = roundMoney(b['6'].vat + g.reverseChargeDue), inputTax = roundMoney(b['12'].vat);
+  b['13'].vat = roundMoney(outputTax - inputTax);
   b['16'].vat = b['13'].vat;
-  for (const v of Object.values(b)) { v.amount = round2(v.amount); v.vat = round2(v.vat); }
-  return { boxes: b, labels: SA_LABELS, outputTax, inputTax, netPayable: round2(outputTax - inputTax),
-    notes: [`Box 13 includes ${round2(reverseChargeDue).toFixed(2)} of reverse-charge VAT due on imported services, which box 9 recovers.`,
+  tidy(b);
+  return { boxes: b, labels: SA_LABELS, outputTax, inputTax, netPayable: roundMoney(outputTax - inputTax),
+    notes: [`Box 13 includes ${fixed(g.reverseChargeDue)} of reverse-charge VAT due on imported services, which box 9 recovers.`,
       'Boxes 2 (GCC sales), 8 (VAT paid at customs), 14 (corrections) and 15 (credit carried forward) are not taken from the books; enter them on the ZATCA portal when they apply.'] };
+}
+
+export const BH_LABELS: Record<string, string> = {
+  '1': 'Standard rated sales', '2': 'Sales to registered taxpayers in other GCC states', '3': 'Sales subject to the domestic reverse charge',
+  '4': 'Zero rated domestic sales', '5': 'Exports', '6': 'Exempt sales', '7': 'Total sales',
+  '8': 'Standard rated domestic purchases', '9': 'Imports subject to VAT paid at customs', '10': 'Imports subject to VAT accounted for through the reverse charge',
+  '11': 'Purchases subject to the domestic reverse charge', '12': 'Purchases from non-registered suppliers, zero rated and exempt purchases',
+  '13': 'Total purchases', '14': 'Total VAT due for the current period', '15': 'Corrections from previous periods',
+  '16': 'VAT credit carried forward from previous periods', '17': 'Net VAT due (or reclaimed)',
+};
+
+/** The NBR VAT return (Bahrain), on the same GCC framework as the Saudi return. */
+async function bahrainVatReturn(tx: Tx, companyId: string, from: string, to: string) {
+  const g = await gccBuckets(tx, companyId, 'BH', from, to);
+  const b = boxes(17);
+  b['1'] = { ...g.standardSales }; b['4'].amount = g.zeroDomestic; b['5'].amount = g.exports; b['6'].amount = g.exemptSales;
+  b['8'] = { ...g.standardPurchases }; b['10'] = { ...g.reverseCharge }; b['12'].amount = g.zeroPurchases + g.exemptPurchases;
+  for (const k of ['1', '2', '3', '4', '5', '6']) { b['7'].amount += b[k].amount; b['7'].vat += b[k].vat; }
+  for (const k of ['8', '9', '10', '11', '12']) { b['13'].amount += b[k].amount; b['13'].vat += b[k].vat; }
+  const outputTax = roundMoney(b['7'].vat + g.reverseChargeDue), inputTax = roundMoney(b['13'].vat);
+  b['14'].vat = roundMoney(outputTax - inputTax);
+  b['17'].vat = b['14'].vat;
+  tidy(b);
+  return { boxes: b, labels: BH_LABELS, outputTax, inputTax, netPayable: roundMoney(outputTax - inputTax),
+    notes: [`Box 14 includes ${fixed(g.reverseChargeDue)} of reverse-charge VAT due on imported services, which box 10 recovers.`,
+      'Boxes 2 (GCC sales), 3 and 11 (domestic reverse charge), 9 (VAT paid at customs), 15 (corrections) and 16 (credit carried forward) are not taken from the books; enter them on the NBR portal when they apply.'] };
+}
+
+export const OM_LABELS: Record<string, string> = {
+  '1a': 'Supplies of goods and services taxed at 5%', '1c': 'Zero rated supplies (domestic)', '1d': 'Exempt supplies',
+  '2a': 'Purchases subject to the reverse charge (imported services)', '3a': 'Exports of goods and services',
+  '4b': 'Imports of goods (VAT paid at customs or postponed)', '5': 'Total VAT due',
+  '6a': 'Input VAT on purchases (except imports)', '6b': 'Input VAT on imports (goods and reverse charge)', '6e': 'Total input VAT', '7': 'Net VAT payable (or refundable)',
+};
+
+/** The Oman VAT return, by its sections: supplies, reverse charge, exports, imports, VAT due, input VAT. */
+async function omanVatReturn(tx: Tx, companyId: string, from: string, to: string) {
+  const g = await gccBuckets(tx, companyId, 'OM', from, to);
+  const b: Record<string, VatBox> = Object.fromEntries(Object.keys(OM_LABELS).map((k) => [k, { amount: 0, vat: 0 }]));
+  b['1a'] = { ...g.standardSales }; b['1c'].amount = g.zeroDomestic; b['1d'].amount = g.exemptSales;
+  b['2a'] = { amount: g.reverseCharge.amount, vat: g.reverseChargeDue }; b['3a'].amount = g.exports;
+  const outputTax = roundMoney(g.standardSales.vat + g.reverseChargeDue);
+  b['5'].vat = outputTax;
+  b['6a'] = { ...g.standardPurchases }; b['6b'] = { ...g.reverseCharge };
+  const inputTax = roundMoney(g.standardPurchases.vat + g.reverseCharge.vat);
+  b['6e'] = { amount: g.standardPurchases.amount + g.reverseCharge.amount, vat: inputTax };
+  b['7'].vat = roundMoney(outputTax - inputTax);
+  tidy(b);
+  return { boxes: b, labels: OM_LABELS, outputTax, inputTax, netPayable: roundMoney(outputTax - inputTax),
+    notes: ['Box 4b (imports of goods) is not taken from the books; enter it from the customs declarations on the Tax Authority portal.',
+      'The box references follow the Oman VAT return sections; check them against the form on the portal before filing.'] };
 }
 
 /** File a VAT return: clear the period's output and input VAT into the FTA settlement account. */
@@ -177,10 +255,10 @@ export async function provideCorporateTax(tx: Tx, ctx: Ctx, companyId: string, f
       JOIN fin.journals j ON j.id = l.journal_id AND j.status = 'posted' AND j.type <> 'closing'
       JOIN fin.accounts a ON a.id = l.account_id
      WHERE j.company_id = $1 AND j.date BETWEEN $2 AND $3`, [companyId, fy.from, fy.to]);
-  const profit = round2(r.revenue - r.expenses);
-  const taxable = Math.max(0, round2(profit - Number(c.corporate_tax_threshold)));
-  const tax = round2(taxable * Number(c.corporate_tax_rate) / 100);
-  const change = round2(tax - r.provided);
+  const profit = roundMoney(r.revenue - r.expenses);
+  const taxable = Math.max(0, roundMoney(profit - Number(c.corporate_tax_threshold)));
+  const tax = roundMoney(taxable * Number(c.corporate_tax_rate) / 100);
+  const change = roundMoney(tax - r.provided);
   let journal = null;
   if (change !== 0) {
     journal = await post(tx, ctx, {
@@ -192,5 +270,5 @@ export async function provideCorporateTax(tx: Tx, ctx: Ctx, companyId: string, f
     });
   }
   return { fiscalYear: fy, accountingProfit: profit, threshold: Number(c.corporate_tax_threshold), rate: Number(c.corporate_tax_rate),
-    taxableAmount: taxable, tax, previouslyProvided: round2(r.provided), posted: change, journalNo: journal?.no ?? null };
+    taxableAmount: taxable, tax, previouslyProvided: roundMoney(r.provided), posted: change, journalNo: journal?.no ?? null };
 }

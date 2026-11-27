@@ -1,7 +1,8 @@
 import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
-import { company, nextNumber, post, resolveAccount, round2, type PostingLine } from './ledger.ts';
+import { company, nextNumber, post, resolveAccount, roundMoney, type PostingLine } from './ledger.ts';
+import { roundIn } from '../core/money.ts';
 
 /**
  * Receivables and payables. Posting rules follow BAATS Accounting:
@@ -96,9 +97,9 @@ export async function createInvoice(tx: Tx, ctx: Ctx, input: InvoiceInput) {
       if (!p || p.company_id !== input.companyId) throw new ValidationError(`line ${i + 1}: the project does not belong to this company`);
       if (p.status === 'closed') throw new ValidationError(`line ${i + 1}: project ${p.code} is closed`);
     }
-    const lineNet = round2(l.quantity * l.unitPrice - (l.discount ?? 0));
+    const lineNet = roundIn(currency, l.quantity * l.unitPrice - (l.discount ?? 0));
     if (lineNet < 0) throw new ValidationError(`line ${i + 1}: discount is larger than the line amount`);
-    const lineTax = round2(lineNet * Number(tc.rate) / 100);
+    const lineTax = roundIn(currency, lineNet * Number(tc.rate) / 100);
     await tx.query(`INSERT INTO fin.invoice_lines (tenant_id, invoice_id, line_no, item_id, description, quantity, unit_price, discount,
                       account_id, tax_code_id, unit_id, net_amount, tax_amount, source_line_id, project_id)
       VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
@@ -110,16 +111,16 @@ export async function createInvoice(tx: Tx, ctx: Ctx, input: InvoiceInput) {
   const rcTax = (await one(tx, `SELECT coalesce(sum(l.tax_amount), 0)::float AS t FROM fin.invoice_lines l
                                    JOIN fin.tax_codes t ON t.id = l.tax_code_id WHERE l.invoice_id = $1 AND t.category = 'reverse_charge'`, [inv.id])).t;
   return one(tx, `UPDATE fin.invoices SET net_total = $2, tax_total = $3, gross_total = $4 WHERE id = $1 RETURNING *`,
-    [inv.id, round2(net), round2(tax), round2(net + tax - rcTax)]);
+    [inv.id, roundIn(currency, net), roundIn(currency, tax), roundIn(currency, net + tax - rcTax)]);
 }
 
 /** Amount still open on a posted document, in its own currency. */
 export async function outstanding(tx: Tx, invoiceId: string): Promise<number> {
-  const r = await one(tx, `SELECT i.gross_total
+  const r = await one(tx, `SELECT i.currency, i.gross_total
       - coalesce((SELECT sum(amount) FROM fin.allocations WHERE invoice_id = i.id), 0)
       - coalesce((SELECT sum(amount) FROM fin.allocations WHERE credit_id = i.id), 0) AS open
     FROM fin.invoices i WHERE i.id = $1`, [invoiceId]);
-  return round2(Number(r.open));
+  return roundIn(r.currency, Number(r.open));
 }
 
 export async function postInvoice(tx: Tx, ctx: Ctx, invoiceId: string) {
@@ -127,7 +128,7 @@ export async function postInvoice(tx: Tx, ctx: Ctx, invoiceId: string) {
   if (!inv) throw new NotFoundError('document');
   if (inv.status !== 'draft') throw new ConflictError(`document is already ${inv.status}`);
   const fx = Number(inv.fx_rate);
-  await authorize(tx, ctx, 'fin.invoice.post', { unitId: inv.company_id, attrs: { amount: round2(Number(inv.gross_total) * fx), kind: inv.kind } });
+  await authorize(tx, ctx, 'fin.invoice.post', { unitId: inv.company_id, attrs: { amount: roundMoney(Number(inv.gross_total) * fx), kind: inv.kind } });
   await activeParty(tx, inv.party_id, inv.kind);
   const lines = await many(tx, `SELECT l.*, t.category, t.code AS tax_code FROM fin.invoice_lines l
                                   JOIN fin.tax_codes t ON t.id = l.tax_code_id WHERE invoice_id = $1 ORDER BY line_no`, [invoiceId]);
@@ -140,7 +141,7 @@ export async function postInvoice(tx: Tx, ctx: Ctx, invoiceId: string) {
 
   if (credit) {
     const open = await outstanding(tx, inv.credit_of);
-    if (Number(inv.gross_total) > open + 0.001) throw new ValidationError(`credit note exceeds what is still open on the original (${open})`);
+    if (Number(inv.gross_total) > open + 0.0005) throw new ValidationError(`credit note exceeds what is still open on the original (${open})`);
   }
 
   const postLines: PostingLine[] = [];
@@ -155,8 +156,8 @@ export async function postInvoice(tx: Tx, ctx: Ctx, invoiceId: string) {
     taxByCode.set(l.tax_code_id, t);
   }
   for (const t of taxByCode.values()) {
-    const tax = round2(t.tax);
-    const base = round2(t.base * fx) * (credit ? -1 : 1);
+    const tax = roundIn(inv.currency, t.tax);
+    const base = roundMoney(t.base * fx) * (credit ? -1 : 1);
     if (tax === 0) continue;
     if (sales) {
       postLines.push({ account: 'role:vat_output', ...sideOf(tax, -1), taxCodeId: t.codeId, taxBase: base, description: 'Output VAT' });
@@ -233,8 +234,8 @@ export async function recordPayment(tx: Tx, ctx: Ctx, input: PaymentInput) {
   const currency = input.currency ?? c.base_currency;
   const fx = currency === c.base_currency ? 1 : input.fxRate;
   if (!fx) throw new ValidationError(`an exchange rate to ${c.base_currency} is needed for ${currency}`);
-  const amount = round2(input.amount);
-  await authorize(tx, ctx, 'fin.payment.post', { unitId: input.companyId, attrs: { amount: round2(amount * fx), kind: input.kind } });
+  const amount = roundIn(currency, input.amount);
+  await authorize(tx, ctx, 'fin.payment.post', { unitId: input.companyId, attrs: { amount: roundMoney(amount * fx), kind: input.kind } });
   const party = await one(tx, 'SELECT * FROM mdm.parties WHERE id = $1', [input.partyId]);
   if (!party || !['active', 'blocked'].includes(party.status)) throw new ValidationError('unknown or unapproved partner');
   if (input.kind === 'payment' && party.status === 'blocked') throw new ValidationError(`${party.name} is blocked; payments to it are stopped`);
@@ -255,17 +256,17 @@ export async function recordPayment(tx: Tx, ctx: Ctx, input: PaymentInput) {
       throw new ValidationError(`allocation must be to a posted ${docKind.replace('_', ' ')} of this partner`);
     }
     if (inv.currency !== currency) throw new ValidationError(`invoice ${inv.no} is in ${inv.currency}; allocate payments in the same currency`);
-    const amt = round2(a.amount);
-    if (!(amt > 0) || amt > await outstanding(tx, inv.id) + 0.001) throw new ValidationError(`allocation to ${inv.no} is more than is open on it`);
+    const amt = roundIn(currency, a.amount);
+    if (!(amt > 0) || amt > await outstanding(tx, inv.id) + 0.0005) throw new ValidationError(`allocation to ${inv.no} is more than is open on it`);
     allocated += amt;
-    controlBase += round2(amt * Number(inv.fx_rate));
+    controlBase += roundMoney(amt * Number(inv.fx_rate));
     checked.push({ invoiceId: inv.id, amount: amt });
   }
-  allocated = round2(allocated);
-  if (allocated > amount + 0.001) throw new ValidationError('allocations exceed the amount');
-  const unallocated = round2(amount - allocated);
-  controlBase = round2(controlBase + unallocated * fx);
-  const bankBase = round2(amount * fx);
+  allocated = roundIn(currency, allocated);
+  if (allocated > amount + 0.0005) throw new ValidationError('allocations exceed the amount');
+  const unallocated = roundIn(currency, amount - allocated);
+  controlBase = roundMoney(controlBase + unallocated * fx);
+  const bankBase = roundMoney(amount * fx);
 
   // receipt: Dr bank, Cr AR; payment: Dr AP, Cr bank. FX line balances the base currency.
   const s = receipt ? 1 : -1;
@@ -274,7 +275,7 @@ export async function recordPayment(tx: Tx, ctx: Ctx, input: PaymentInput) {
     { account: receipt ? 'role:receivable' : 'role:payable', ...(receipt ? { credit: amount } : { debit: amount }),
       baseAmount: -s * controlBase, partyId: input.partyId },
   ];
-  const fxDiff = round2(-(s * bankBase - s * controlBase));
+  const fxDiff = roundMoney(-(s * bankBase - s * controlBase));
   if (fxDiff !== 0) lines.push({ account: 'role:fx_gain_loss', baseAmount: fxDiff, description: 'Realised exchange difference' });
 
   const no = await nextNumber(tx, input.companyId, input.kind, receipt ? 'RV' : 'PV', input.date);
@@ -299,17 +300,17 @@ export async function allocateAdvance(tx: Tx, ctx: Ctx, input: { paymentId: stri
   if (!pay) throw new NotFoundError('payment');
   await authorize(tx, ctx, 'fin.payment.post', { unitId: pay.company_id, attrs: { amount: 0, kind: pay.kind } });
   const used = Number((await one(tx, 'SELECT coalesce(sum(amount),0) AS s FROM fin.allocations WHERE payment_id = $1', [pay.id])).s);
-  const amt = round2(input.amount);
-  if (amt > round2(Number(pay.amount) - used) + 0.001) throw new ValidationError('more than the unallocated part of the payment');
+  const amt = roundIn(pay.currency, input.amount);
+  if (amt > roundIn(pay.currency, Number(pay.amount) - used) + 0.0005) throw new ValidationError('more than the unallocated part of the payment');
   const inv = await one(tx, 'SELECT * FROM fin.invoices WHERE id = $1 FOR UPDATE', [input.invoiceId]);
   const receipt = pay.kind === 'receipt';
   if (!inv || inv.status !== 'posted' || inv.party_id !== pay.party_id || inv.kind !== (receipt ? 'sales_invoice' : 'purchase_invoice')) {
     throw new ValidationError('allocate to a posted invoice of the same partner');
   }
   if (inv.currency !== pay.currency) throw new ValidationError('currencies differ');
-  if (amt > await outstanding(tx, inv.id) + 0.001) throw new ValidationError('more than is open on the invoice');
+  if (amt > await outstanding(tx, inv.id) + 0.0005) throw new ValidationError('more than is open on the invoice');
   // The advance sits on AR/AP at the payment rate; the invoice at its own rate. Clear the difference.
-  const residual = round2(amt * Number(inv.fx_rate) - amt * Number(pay.fx_rate));
+  const residual = roundMoney(amt * Number(inv.fx_rate) - amt * Number(pay.fx_rate));
   if (residual !== 0) {
     const s = receipt ? -1 : 1;
     await post(tx, ctx, {

@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
-import { round2 } from './ledger.ts';
+import { roundMoney } from './ledger.ts';
+import { fixed } from '../core/money.ts';
 
 /**
  * Saudi e-invoicing (ZATCA Fatoora, phase 2 data model): a posted sales invoice
@@ -25,7 +26,7 @@ export const FIRST_PIH = Buffer.from(createHash('sha256').update('0').digest('he
 
 const UNIT_MAP: Record<string, string> = { EA: 'PCE', PCS: 'PCE', PC: 'PCE', UNIT: 'PCE', HR: 'HUR', HOUR: 'HUR', DAY: 'DAY', MON: 'MON', KG: 'KGM', L: 'LTR', M: 'MTR' };
 const isVat = (t?: string | null) => !!t && /^3\d{13}3$/.test(t);
-const a2 = (n: number) => round2(n).toFixed(2);
+const a2 = (n: number) => roundMoney(n).toFixed(2);
 const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 const d10 = (v: Date | string | null) => (v === null ? null : typeof v === 'string' ? v.slice(0, 10) : v.toISOString().slice(0, 10));
 
@@ -59,8 +60,8 @@ export async function zatcaModel(tx: Tx, invoiceId: string) {
       cat: l.cat as string, rate: Number(l.rate), price: Math.round(net / qty * 1e4) / 1e4,
       code: l.exemption_reason_code as string | null, reason: l.exemption_reason as string | null };
   });
-  const lineExt = round2(mLines.reduce((x, l) => x + l.net, 0));
-  const tax = round2(mLines.reduce((x, l) => x + l.vat, 0));
+  const lineExt = roundMoney(mLines.reduce((x, l) => x + l.net, 0));
+  const tax = roundMoney(mLines.reduce((x, l) => x + l.vat, 0));
   const fx = Number(inv.fx_rate);
   return {
     inv,
@@ -72,9 +73,9 @@ export async function zatcaModel(tx: Tx, invoiceId: string) {
         city: c.city, postal: c.postal_code, ctry: c.country_code as string },
       buyer: { name: p.name, vat: p.tax_registration_no, crn: a.cr_no, street: a.street, building: a.building_no, district: a.district, city: a.city,
         postal: a.postal_code, ctry: p.country_code as string },
-      subs: [...subs.values()].map((s) => ({ ...s, base: round2(s.base), tax: round2(s.tax) })),
+      subs: [...subs.values()].map((s) => ({ ...s, base: roundMoney(s.base), tax: roundMoney(s.tax) })),
       lines: mLines,
-      totals: { lineExt, tax, taxIncl: round2(lineExt + tax), payable: Number(inv.gross_total), taxSar: round2(tax * fx), totalSar: round2((lineExt + tax) * fx) },
+      totals: { lineExt, tax, taxIncl: roundMoney(lineExt + tax), payable: Number(inv.gross_total), taxSar: roundMoney(tax * fx), totalSar: roundMoney((lineExt + tax) * fx) },
     },
   };
 }
@@ -107,7 +108,7 @@ export function validateZatca(m: ZatcaModel): Problem[] {
     if (!l.cat) E('BR-KSA-18', `Line ${l.k}: the tax code has no e-invoice category`);
   }
   if (m.cur !== 'SAR' && !(m.rate > 0)) E('BR-KSA-68', 'An exchange rate to SAR is required');
-  if (round2(m.subs.reduce((x, t) => x + t.tax, 0)) !== m.totals.tax) E('BR-CO-14', 'VAT total must equal the sum of the VAT breakdown');
+  if (roundMoney(m.subs.reduce((x, t) => x + t.tax, 0)) !== m.totals.tax) E('BR-CO-14', 'VAT total must equal the sum of the VAT breakdown');
   return out;
 }
 
@@ -140,7 +141,7 @@ export function zatcaXml(m: ZatcaModel, ids: { uuid: string; counter: number; pi
   };
   const open = (n: string, at?: Record<string, string>) => { o.push(`${ind()}<${n}${at ? Object.entries(at).map(([k, x]) => ` ${k}="${esc(x)}"`).join('') : ''}>`); d++; };
   const close = (n: string) => { d--; o.push(`${ind()}</${n}>`); };
-  const amt = (n: string, v: number, c = cur) => el(n, a2(v), { currencyID: c });
+  const amt = (n: string, v: number, c = cur) => el(n, fixed(v, c), { currencyID: c });
   const scheme = () => { open('cac:TaxScheme'); el('cbc:ID', 'VAT'); close('cac:TaxScheme'); };
   const addr = (p: ZatcaModel['seller']) => {
     open('cac:PostalAddress'); el('cbc:StreetName', p.street); el('cbc:BuildingNumber', p.building); el('cbc:CitySubdivisionName', p.district);

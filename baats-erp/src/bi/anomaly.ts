@@ -1,3 +1,4 @@
+import { fixed, moneyDp, useBaseCurrency } from '../core/money.ts';
 import { ConflictError, ForbiddenError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
@@ -43,12 +44,14 @@ async function findings(tx: Tx, companyId: string, from: string, to: string) {
   [companyId, from, to]);
   for (const d of dups) {
     add('duplicate_bill', [d.a_id, d.b_id].sort().join(':'),
-      `${d.supplier}: ${d.a_no} (${d.a_ref ?? 'no ref'}) and ${d.b_no} (${d.b_ref ?? 'no ref'}), ${d.same_ref ? 'same supplier reference' : `same amount ${d.amount.toFixed(2)} ${d.currency} within 14 days`}`,
+      `${d.supplier}: ${d.a_no} (${d.a_ref ?? 'no ref'}) and ${d.b_no} (${d.b_ref ?? 'no ref'}), ${d.same_ref ? 'same supplier reference' : `same amount ${fixed(d.amount, d.currency)} ${d.currency} within 14 days`}`,
       d.amount, [{ type: 'fin.invoice', id: d.a_id, no: d.a_no }, { type: 'fin.invoice', id: d.b_id, no: d.b_no }], [d.a_by, d.b_by]);
   }
 
   // Manual journals: weekends and round amounts
-  const country = (await one(tx, 'SELECT country_code FROM fin.companies WHERE unit_id = $1', [companyId]))?.country_code ?? 'AE';
+  const coRow = await one(tx, 'SELECT country_code, base_currency FROM fin.companies WHERE unit_id = $1', [companyId]);
+  if (coRow) useBaseCurrency(coRow.base_currency);
+  const country = coRow?.country_code ?? 'AE';
   const weekend = WEEKEND[country] ?? [0, 6];
   const manual = await many(tx, `SELECT j.id, j.no, j.date, j.memo, j.created_by, extract(dow FROM j.date)::int AS dow, max(l.debit)::float AS biggest,
         bool_or(l.debit >= 10000 AND mod(l.debit, 1000) = 0) AS round
@@ -58,7 +61,7 @@ async function findings(tx: Tx, companyId: string, from: string, to: string) {
   for (const j of manual) {
     const ref = [{ type: 'fin.journal', id: j.id, no: j.no }];
     if (weekend.includes(j.dow)) add('weekend_journal', j.id, `${j.no} dated ${dayName[j.dow]} ${j.date.toISOString().slice(0, 10)}: ${j.memo}`, j.biggest, ref, [j.created_by]);
-    if (j.round) add('round_amount', j.id, `${j.no}: ${j.memo}, largest line ${j.biggest.toFixed(2)}`, j.biggest, ref, [j.created_by]);
+    if (j.round) add('round_amount', j.id, `${j.no}: ${j.memo}, largest line ${j.biggest.toFixed(moneyDp())}`, j.biggest, ref, [j.created_by]);
   }
 
   // Late postings
@@ -76,7 +79,7 @@ async function findings(tx: Tx, companyId: string, from: string, to: string) {
      WHERE i.company_id = $1 AND i.status = 'posted' AND i.kind IN ('sales_invoice','sales_credit') AND i.date BETWEEN $2 AND $3 GROUP BY p.id, p.name`, [companyId, from, to]);
   for (const c of credits) {
     if (c.credits >= 1000 && c.credits > 0.2 * c.sales) {
-      add('credit_ratio', `${c.id}:${from}:${to}`, `${c.name}: credit notes ${c.credits.toFixed(2)} against sales ${c.sales.toFixed(2)} (${c.sales ? Math.round(c.credits / c.sales * 100) : 100}%)`,
+      add('credit_ratio', `${c.id}:${from}:${to}`, `${c.name}: credit notes ${c.credits.toFixed(moneyDp())} against sales ${c.sales.toFixed(moneyDp())} (${c.sales ? Math.round(c.credits / c.sales * 100) : 100}%)`,
         c.credits, [{ type: 'mdm.party', id: c.id, no: null }]);
     }
   }
@@ -86,7 +89,7 @@ async function findings(tx: Tx, companyId: string, from: string, to: string) {
         (y.amount - coalesce((SELECT sum(a.amount) FROM fin.allocations a WHERE a.payment_id = y.id), 0))::float AS open
       FROM fin.payments y JOIN mdm.parties p ON p.id = y.party_id
      WHERE y.company_id = $1 AND y.kind = 'payment' AND y.date BETWEEN $2 AND $3 AND y.date < $3::date - 30`, [companyId, from, to]);
-  for (const y of pays) if (y.open > 0.005) add('unallocated_payment', y.id, `${y.no} to ${y.name} on ${y.date.toISOString().slice(0, 10)}: ${y.open.toFixed(2)} ${y.currency} not matched to any bill`, y.open, [{ type: 'fin.payment', id: y.id, no: y.no }], [y.created_by]);
+  for (const y of pays) if (y.open > 0.0005) add('unallocated_payment', y.id, `${y.no} to ${y.name} on ${y.date.toISOString().slice(0, 10)}: ${fixed(y.open, y.currency)} ${y.currency} not matched to any bill`, y.open, [{ type: 'fin.payment', id: y.id, no: y.no }], [y.created_by]);
 
   // Benford's law on first digits of bills and supplier payments
   const amounts = await many(tx, `SELECT gross_total::float AS v FROM fin.invoices WHERE company_id = $1 AND kind = 'purchase_invoice' AND status = 'posted' AND date BETWEEN $2 AND $3 AND gross_total >= 10

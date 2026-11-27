@@ -1,7 +1,8 @@
+import { useBaseCurrency } from '../core/money.ts';
 import { NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize, decide } from '../iam/authz.ts';
-import { round2 } from '../fin/ledger.ts';
+import { roundMoney } from '../fin/ledger.ts';
 import { esgTotals } from './esg.ts';
 
 /**
@@ -46,7 +47,7 @@ async function flow(tx: Tx, companyId: string, from: string, to: string, where: 
       JOIN fin.journals j ON j.id = l.journal_id AND j.status = 'posted' AND j.type <> 'closing'
       JOIN fin.accounts a ON a.id = l.account_id LEFT JOIN fin.accounts p ON p.id = a.parent_id
      WHERE j.company_id = $1 AND j.date BETWEEN $2 AND $3 AND ${where}`, [companyId, from, to]);
-  return round2(num(r.v));
+  return roundMoney(num(r.v));
 }
 
 /** Debit minus credit balance at a date. */
@@ -55,7 +56,7 @@ async function level(tx: Tx, companyId: string, asOf: string, where: string) {
       JOIN fin.journals j ON j.id = l.journal_id AND j.status = 'posted'
       JOIN fin.accounts a ON a.id = l.account_id LEFT JOIN fin.accounts p ON p.id = a.parent_id
      WHERE j.company_id = $1 AND j.date <= $2 AND ${where}`, [companyId, asOf]);
-  return round2(num(r.v));
+  return roundMoney(num(r.v));
 }
 
 const revenue = (tx: Tx, c: string, f: string, t: string) => flow(tx, c, f, t, ACC.revenue);
@@ -65,7 +66,7 @@ const opex = async (tx: Tx, c: string, f: string, t: string) => -(await flow(tx,
 async function purchases(tx: Tx, companyId: string, from: string, to: string) {
   const r = await one(tx, `SELECT coalesce(sum(CASE WHEN kind = 'purchase_credit' THEN -1 ELSE 1 END * net_total * fx_rate), 0) AS v FROM fin.invoices
                             WHERE company_id = $1 AND kind IN ('purchase_invoice','purchase_credit') AND status = 'posted' AND date BETWEEN $2 AND $3`, [companyId, from, to]);
-  return round2(num(r.v));
+  return roundMoney(num(r.v));
 }
 
 async function headcount(tx: Tx, companyId: string, asOf: string) {
@@ -79,13 +80,13 @@ export const KPIS: KpiDef[] = [
   { code: 'revenue', name: 'Revenue', module: 'finance', unit: 'money', better: 'up', kind: 'flow', permission: 'fin.report.read',
     description: 'Income on revenue accounts from posted journals', compute: (tx, _c, co, f, t) => revenue(tx, co, f, t) },
   { code: 'gross_profit', name: 'Gross profit', module: 'finance', unit: 'money', better: 'up', kind: 'flow', permission: 'fin.report.read',
-    description: 'Revenue less direct costs (account group 52)', compute: async (tx, _c, co, f, t) => round2(await revenue(tx, co, f, t) - await directCosts(tx, co, f, t)) },
+    description: 'Revenue less direct costs (account group 52)', compute: async (tx, _c, co, f, t) => roundMoney(await revenue(tx, co, f, t) - await directCosts(tx, co, f, t)) },
   { code: 'gross_margin_pct', name: 'Gross margin', module: 'finance', unit: 'pct', better: 'up', kind: 'flow', permission: 'fin.report.read',
     description: 'Gross profit as a share of revenue', compute: async (tx, _c, co, f, t) => { const r = await revenue(tx, co, f, t); return ratio(r - await directCosts(tx, co, f, t), r, 100); } },
   { code: 'operating_expenses', name: 'Operating expenses', module: 'finance', unit: 'money', better: 'down', kind: 'flow', permission: 'fin.report.read',
     description: 'Expenses outside direct costs, including depreciation and tax', compute: (tx, _c, co, f, t) => opex(tx, co, f, t) },
   { code: 'net_profit', name: 'Net profit', module: 'finance', unit: 'money', better: 'up', kind: 'flow', permission: 'fin.report.read',
-    description: 'Revenue less all expenses', compute: async (tx, _c, co, f, t) => round2(await revenue(tx, co, f, t) - await directCosts(tx, co, f, t) - await opex(tx, co, f, t)) },
+    description: 'Revenue less all expenses', compute: async (tx, _c, co, f, t) => roundMoney(await revenue(tx, co, f, t) - await directCosts(tx, co, f, t) - await opex(tx, co, f, t)) },
   { code: 'net_margin_pct', name: 'Net margin', module: 'finance', unit: 'pct', better: 'up', kind: 'flow', permission: 'fin.report.read',
     description: 'Net profit as a share of revenue',
     compute: async (tx, _c, co, f, t) => { const r = await revenue(tx, co, f, t); return ratio(r - await directCosts(tx, co, f, t) - await opex(tx, co, f, t), r, 100); } },
@@ -106,7 +107,7 @@ export const KPIS: KpiDef[] = [
     compute: async (tx, _c, co, _f, t) => ratio(await level(tx, co, t, ACC.currentAssets), -(await level(tx, co, t, ACC.currentLiabilities))) },
   { code: 'overdue_receivables', name: 'Overdue receivables', module: 'finance', unit: 'money', better: 'down', kind: 'level', permission: 'fin.report.read',
     description: 'Open customer invoices past their due date, in base currency',
-    compute: async (tx, _c, co, _f, t) => round2(num((await one(tx, `SELECT sum(o.open * i.fx_rate) AS v FROM fin.invoices i,
+    compute: async (tx, _c, co, _f, t) => roundMoney(num((await one(tx, `SELECT sum(o.open * i.fx_rate) AS v FROM fin.invoices i,
         LATERAL (SELECT i.gross_total - coalesce((SELECT sum(a.amount) FROM fin.allocations a WHERE a.invoice_id = i.id AND a.date <= $2), 0) AS open) o
        WHERE i.company_id = $1 AND i.kind = 'sales_invoice' AND i.status = 'posted' AND i.date <= $2 AND i.due_date < $2 AND o.open > 0`, [co, t])).v)) },
   { code: 'purchases', name: 'Bills received', module: 'purchasing', unit: 'money', better: 'neutral', kind: 'flow', permission: 'fin.report.read',
@@ -114,11 +115,11 @@ export const KPIS: KpiDef[] = [
   // Sales and CRM
   { code: 'sales_orders', name: 'Sales orders taken', module: 'sales', unit: 'money', better: 'up', kind: 'flow', permission: 'sal.order.manage',
     description: 'Confirmed sales orders dated in the period, net of VAT, base currency',
-    compute: async (tx, _c, co, f, t) => round2(num((await one(tx, `SELECT sum(net_total * fx_rate) AS v FROM sal.orders WHERE company_id = $1 AND date BETWEEN $2 AND $3
+    compute: async (tx, _c, co, f, t) => roundMoney(num((await one(tx, `SELECT sum(net_total * fx_rate) AS v FROM sal.orders WHERE company_id = $1 AND date BETWEEN $2 AND $3
         AND status IN ('confirmed','closed')`, [co, f, t])).v)) },
   { code: 'pipeline', snapshot: true, name: 'Weighted pipeline', module: 'sales', unit: 'money', better: 'up', kind: 'level', permission: 'crm.manage',
     description: 'Open opportunities x their probability, for units under the company',
-    compute: async (tx, _c, co) => round2(num((await one(tx, `SELECT sum(o.amount * o.probability / 100.0) AS v FROM crm.opportunities o JOIN org.units u ON u.id = o.owner_unit_id
+    compute: async (tx, _c, co) => roundMoney(num((await one(tx, `SELECT sum(o.amount * o.probability / 100.0) AS v FROM crm.opportunities o JOIN org.units u ON u.id = o.owner_unit_id
         WHERE o.stage NOT IN ('won','lost') AND u.path LIKE (SELECT path FROM org.units WHERE id = $1) || '%'`, [co])).v)) },
   { code: 'win_rate', name: 'Opportunity win rate', module: 'sales', unit: 'pct', better: 'up', kind: 'flow', permission: 'crm.manage',
     description: 'Won / (won + lost) among opportunities created in the period',
@@ -142,7 +143,7 @@ export const KPIS: KpiDef[] = [
     description: 'Salaries, end-of-service benefit and project labour expense', compute: async (tx, _c, co, f, t) => -(await flow(tx, co, f, t, ACC.payroll)) },
   { code: 'revenue_per_employee', name: 'Revenue per employee', module: 'hr', unit: 'money', better: 'up', kind: 'flow', permission: 'hr.manage',
     description: 'Revenue / headcount at the end of the period',
-    compute: async (tx, ctx, co, f, t) => { const h = await headcount(tx, co, t); return h && (await decide(tx, ctx.userId!, 'fin.report.read', { unitId: co })).allowed ? round2(await revenue(tx, co, f, t) / h) : null; } },
+    compute: async (tx, ctx, co, f, t) => { const h = await headcount(tx, co, t); return h && (await decide(tx, ctx.userId!, 'fin.report.read', { unitId: co })).allowed ? roundMoney(await revenue(tx, co, f, t) / h) : null; } },
   // Operations
   { code: 'projects_active', snapshot: true, name: 'Active projects', module: 'projects', unit: 'count', better: 'neutral', kind: 'level', permission: 'prj.manage',
     description: 'Projects open at the end of the period',
@@ -155,7 +156,7 @@ export const KPIS: KpiDef[] = [
     compute: async (tx, _c, co) => (await one(tx, `SELECT count(*)::int AS n FROM mnt.work_orders WHERE company_id = $1 AND status IN ('open','in_progress')`, [co])).n },
   { code: 'fuel_cost', name: 'Fuel cost', module: 'fleet', unit: 'money', better: 'down', kind: 'flow', permission: 'flt.manage',
     description: 'Fuel bought for the fleet, net of reclaimable VAT',
-    compute: async (tx, _c, co, f, t) => round2(num((await one(tx, `SELECT sum(l.amount - l.vat_amount) AS v FROM flt.fuel_logs l JOIN flt.vehicles v ON v.id = l.vehicle_id
+    compute: async (tx, _c, co, f, t) => roundMoney(num((await one(tx, `SELECT sum(l.amount - l.vat_amount) AS v FROM flt.fuel_logs l JOIN flt.vehicles v ON v.id = l.vehicle_id
         WHERE v.company_id = $1 AND l.date BETWEEN $2 AND $3`, [co, f, t])).v)) },
   // Corporate
   { code: 'tickets_open', snapshot: true, name: 'Open service tickets', module: 'service desk', unit: 'count', better: 'down', kind: 'level', permission: 'svc.agent',
@@ -247,6 +248,7 @@ export async function kpiTrend(tx: Tx, ctx: Ctx, companyId: string, code: string
 export async function dashboard(tx: Tx, ctx: Ctx, companyId: string, asOf: string) {
   await authorize(tx, ctx, 'bi.dashboard', { unitId: companyId });
   const co = await one(tx, `SELECT c.legal_name, c.base_currency, u.code FROM fin.companies c JOIN org.units u ON u.id = c.unit_id WHERE c.unit_id = $1`, [companyId]);
+  if (co) useBaseCurrency(co.base_currency);
   if (!co) throw new NotFoundError('company books');
   const mtdFrom = monthStart(asOf), ytdFrom = await fiscalYearStart(tx, companyId, asOf);
   const prevMonthTo = addDays(mtdFrom, -1);
@@ -279,24 +281,24 @@ export async function dashboard(tx: Tx, ctx: Ctx, companyId: string, asOf: strin
         JOIN fin.accounts a ON a.id = l.account_id LEFT JOIN fin.accounts p ON p.id = a.parent_id
        WHERE j.company_id = $1 AND j.date <= $2 AND ${ACC.cash} GROUP BY 1 ORDER BY 1`, [companyId, asOf]);
     let cash = 0; const cashAt = new Map<string, number>();
-    for (const r of cashRows) { cash += r.movement; cashAt.set(r.month, round2(cash)); }
+    for (const r of cashRows) { cash += r.movement; cashAt.set(r.month, roundMoney(cash)); }
     let running = cashRows.filter((r) => r.month < from.slice(0, 7)).reduce((s, r) => s + r.movement, 0);
     trend = [];
     for (let i = 0; i < 12; i++) {
       const m = addMonths(from, i).slice(0, 7);
       const r = rows.find((x) => x.month === m) ?? { revenue: 0, direct: 0, opex: 0 };
       if (cashAt.has(m)) running = cashAt.get(m)!;
-      trend.push({ month: m, revenue: round2(r.revenue), costs: round2(r.direct + r.opex), netProfit: round2(r.revenue - r.direct - r.opex), cash: round2(running) });
+      trend.push({ month: m, revenue: roundMoney(r.revenue), costs: roundMoney(r.direct + r.opex), netProfit: roundMoney(r.revenue - r.direct - r.opex), cash: roundMoney(running) });
     }
     topCustomers = (await many(tx, `SELECT p.name, sum(CASE WHEN i.kind = 'sales_credit' THEN -1 ELSE 1 END * i.net_total * i.fx_rate)::float AS revenue
         FROM fin.invoices i JOIN mdm.parties p ON p.id = i.party_id
        WHERE i.company_id = $1 AND i.kind IN ('sales_invoice','sales_credit') AND i.status = 'posted' AND i.date BETWEEN $2 AND $3
-       GROUP BY p.name ORDER BY 2 DESC LIMIT 5`, [companyId, ytdFrom, asOf])).map((r) => ({ name: r.name, revenue: round2(r.revenue) }));
+       GROUP BY p.name ORDER BY 2 DESC LIMIT 5`, [companyId, ytdFrom, asOf])).map((r) => ({ name: r.name, revenue: roundMoney(r.revenue) }));
     overdue = (await many(tx, `SELECT p.name, sum(o.open * i.fx_rate)::float AS amount, max($2::date - i.due_date)::int AS oldest_days
         FROM fin.invoices i JOIN mdm.parties p ON p.id = i.party_id,
         LATERAL (SELECT i.gross_total - coalesce((SELECT sum(a.amount) FROM fin.allocations a WHERE a.invoice_id = i.id AND a.date <= $2), 0) AS open) o
        WHERE i.company_id = $1 AND i.kind = 'sales_invoice' AND i.status = 'posted' AND i.due_date < $2 AND o.open > 0
-       GROUP BY p.name ORDER BY 2 DESC LIMIT 5`, [companyId, asOf])).map((r) => ({ name: r.name, amount: round2(r.amount), oldestDays: r.oldest_days }));
+       GROUP BY p.name ORDER BY 2 DESC LIMIT 5`, [companyId, asOf])).map((r) => ({ name: r.name, amount: roundMoney(r.amount), oldestDays: r.oldest_days }));
   }
   return { company: { id: companyId, code: co.code, name: co.legal_name, currency: co.base_currency }, asOf, periods: { mtd: [mtdFrom, asOf], ytd: [ytdFrom, asOf] },
     kpis, trend, topCustomers, overdue, hidden: KPIS.length - visible.length };

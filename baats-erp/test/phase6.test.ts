@@ -172,7 +172,7 @@ describe('interactive dashboard', () => {
 
 describe('country packs', () => {
   it('lists the packs and refuses a country without one', async () => {
-    assert.deepEqual(country.packSummary().map((p) => p.country), ['AE', 'SA']);
+    assert.deepEqual(country.packSummary().map((p) => p.country), ['AE', 'SA', 'OM', 'BH', 'QA', 'KW']);
     await assert.rejects(tx(admin, (q) => setup.setupCompany(q, admin, { unitId: s.units.uk, legalName: 'Acme UK Ltd', openFrom: '2026-01-01' })), /GB localisation pack is not available/);
   });
 

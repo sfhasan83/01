@@ -1,7 +1,8 @@
+import { useBaseCurrency } from '../core/money.ts';
 import { NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize, decide } from '../iam/authz.ts';
-import { round2 } from '../fin/ledger.ts';
+import { roundMoney } from '../fin/ledger.ts';
 import { esgTotals } from './esg.ts';
 import { ACC, KPIS, addDays, addMonths, fiscalYearStart, kpiDef, meta, monthEnd, monthStart, type KpiDef } from './kpi.ts';
 
@@ -71,6 +72,7 @@ const judge = (k: KpiDef, a: number | null, b: number | null) =>
 
 async function companyHeader(tx: Tx, companyId: string) {
   const co = await one(tx, `SELECT c.legal_name, c.base_currency, u.code FROM fin.companies c JOIN org.units u ON u.id = c.unit_id WHERE c.unit_id = $1`, [companyId]);
+  if (co) useBaseCurrency(co.base_currency);
   if (!co) throw new NotFoundError('company books');
   return { id: companyId, code: co.code, name: co.legal_name, currency: co.base_currency };
 }
@@ -139,10 +141,10 @@ interface Records { title: string; columns: { key: string; label: string; type: 
 
 /** The largest rows, the rest folded into "Other", with each row's share of the total. */
 function topRows(rows: Row[], n = 10): Breakdown['rows'] {
-  const clean = rows.map((r) => ({ label: r.label, value: round2(num(r.value)) })).filter((r) => r.value !== 0).sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+  const clean = rows.map((r) => ({ label: r.label, value: roundMoney(num(r.value)) })).filter((r) => r.value !== 0).sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
   const total = clean.reduce((s, r) => s + r.value, 0);
   const head = clean.slice(0, n);
-  if (clean.length > n) head.push({ label: `Other (${clean.length - n})`, value: round2(clean.slice(n).reduce((s, r) => s + r.value, 0)) });
+  if (clean.length > n) head.push({ label: `Other (${clean.length - n})`, value: roundMoney(clean.slice(n).reduce((s, r) => s + r.value, 0)) });
   return head.map((r) => ({ ...r, share: total ? Math.round((r.value / total) * 1000) / 10 : null }));
 }
 const bd = (key: string, title: string, rows: Row[], unit: Breakdown['unit'] = 'money'): Breakdown => ({ key, title, unit, rows: topRows(rows) });
@@ -171,7 +173,7 @@ async function lineRecords(tx: Tx, co: string, from: string, to: string, where: 
      ORDER BY abs(l.credit - l.debit) DESC, j.date DESC LIMIT 50`, [co, from, to, sign]);
   return { title, total: rows[0]?.total ?? 0, columns: [{ key: 'date', label: 'Date', type: 'date' }, { key: 'no', label: 'Journal', type: 'text' },
     { key: 'memo', label: 'Description', type: 'text' }, { key: 'account', label: 'Account', type: 'text' }, { key: 'party', label: 'Party', type: 'text' },
-    { key: 'amount', label: 'Amount', type: 'money' }], rows: rows.map(({ total: _t, ...r }) => ({ ...r, amount: round2(r.amount) })) };
+    { key: 'amount', label: 'Amount', type: 'money' }], rows: rows.map(({ total: _t, ...r }) => ({ ...r, amount: roundMoney(r.amount) })) };
 }
 
 const OPEN = `LATERAL (SELECT i.gross_total - coalesce((SELECT sum(x.amount) FROM fin.allocations x WHERE x.invoice_id = i.id AND x.date <= $2), 0) AS open) o`;
@@ -185,7 +187,7 @@ async function openInvoices(tx: Tx, co: string, asOf: string, kind: 'sales_invoi
     ...(kind === 'purchase_invoice' ? [{ key: 'supplier_ref', label: 'Supplier ref', type: 'text' as const }] : []),
     { key: 'party', label: kind === 'sales_invoice' ? 'Customer' : 'Supplier', type: 'text' }, { key: 'date', label: 'Date', type: 'date' },
     { key: 'due_date', label: 'Due', type: 'date' }, { key: 'days_overdue', label: 'Days overdue', type: 'number' }, { key: 'open', label: 'Open', type: 'money' }],
-    rows: rows.map(({ total: _t, ...r }) => ({ ...r, open: round2(r.open) })) };
+    rows: rows.map(({ total: _t, ...r }) => ({ ...r, open: roundMoney(r.open) })) };
 }
 async function invoicesBy(tx: Tx, co: string, from: string, to: string, kinds: [string, string]) {
   return (await many(tx, `SELECT p.name AS label, sum(CASE WHEN i.kind = $5 THEN -1 ELSE 1 END * i.net_total * i.fx_rate)::float AS value
@@ -247,7 +249,7 @@ const DRILLS: Record<string, Drill> = {
     return { breakdowns: [bd('supplier', 'By supplier', await invoicesBy(tx, co, f, t, ['purchase_invoice', 'purchase_credit']))],
       records: { title: 'Supplier bills and credit notes', total: rows[0]?.total ?? 0, columns: [{ key: 'no', label: 'Bill', type: 'text' }, { key: 'supplier_ref', label: 'Supplier ref', type: 'text' },
         { key: 'party', label: 'Supplier', type: 'text' }, { key: 'date', label: 'Date', type: 'date' }, { key: 'net', label: 'Net', type: 'money' }],
-      rows: rows.map(({ total: _t, ...r }) => ({ ...r, net: round2(r.net) })) } };
+      rows: rows.map(({ total: _t, ...r }) => ({ ...r, net: roundMoney(r.net) })) } };
   },
   sales_orders: async (tx, _c, co, f, t) => {
     const where = `o.company_id = $1 AND o.date BETWEEN $2 AND $3 AND o.status IN ('confirmed','closed')`;
@@ -258,7 +260,7 @@ const DRILLS: Record<string, Drill> = {
     return { breakdowns: [bd('customer', 'By customer', byCustomer as Row[]), bd('center', 'By profit center', byCenter as Row[])],
       records: { title: 'Sales orders', total: rows[0]?.total ?? 0, columns: [{ key: 'no', label: 'Order', type: 'text' }, { key: 'party', label: 'Customer', type: 'text' },
         { key: 'date', label: 'Date', type: 'date' }, { key: 'status', label: 'Status', type: 'text' }, { key: 'net', label: 'Net', type: 'money' }],
-      rows: rows.map(({ total: _t, ...r }) => ({ ...r, net: round2(r.net) })) } };
+      rows: rows.map(({ total: _t, ...r }) => ({ ...r, net: roundMoney(r.net) })) } };
   },
   inventory_value: async (tx, _c, co, f, t) => ({ breakdowns: [bd('account', 'By account', await levelBy(tx, co, t, ACC.inventory, 1, 'account'))],
     records: await lineRecords(tx, co, f, t, ACC.inventory, -1, 'Stock movements in the period (additions are positive)', false) }),
@@ -282,7 +284,7 @@ const DRILLS: Record<string, Drill> = {
         FROM flt.fuel_logs l JOIN flt.vehicles v ON v.id = l.vehicle_id WHERE ${where} ORDER BY l.date DESC LIMIT 50`, [co, f, t]);
     return { breakdowns: [bd('vehicle', 'By vehicle', by as Row[])], records: { title: 'Fuel bought', total: rows[0]?.total ?? 0,
       columns: [{ key: 'date', label: 'Date', type: 'date' }, { key: 'vehicle', label: 'Vehicle', type: 'text' }, { key: 'station', label: 'Station', type: 'text' },
-        { key: 'litres', label: 'Litres', type: 'number' }, { key: 'net', label: 'Net cost', type: 'money' }], rows: rows.map(({ total: _t, ...r }) => ({ ...r, net: round2(r.net) })) } };
+        { key: 'litres', label: 'Litres', type: 'number' }, { key: 'net', label: 'Net cost', type: 'money' }], rows: rows.map(({ total: _t, ...r }) => ({ ...r, net: roundMoney(r.net) })) } };
   },
   emissions: async (tx, _c, co, f, t) => {
     const e = await esgTotals(tx, co, f, t);

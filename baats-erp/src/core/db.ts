@@ -1,5 +1,6 @@
 import pg from 'pg';
 import { ForbiddenError, fromPg } from './errors.ts';
+import { moneyScope } from './money.ts';
 
 // Ledger dates are calendar dates. node-postgres turns a date column into a
 // Date at local midnight, so on a computer east of UTC (Dubai is UTC+4) the
@@ -45,7 +46,8 @@ export class Db {
       await client.query('BEGIN');
       await client.query(`SELECT set_config('app.tenant_id', $1, true), set_config('app.user_id', $2, true)`,
         [ctx.tenantId, ctx.userId ?? '']);
-      const result = await fn(client);
+      // Each transaction has its own money precision; loading a company's books sets it.
+      const result = await moneyScope(() => fn(client));
       await client.query('COMMIT');
       return result;
     } catch (err) {

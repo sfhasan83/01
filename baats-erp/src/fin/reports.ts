@@ -1,7 +1,7 @@
 import { ConflictError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
-import { company, post, resolveAccount, round2, type PostingLine } from './ledger.ts';
+import { company, post, resolveAccount, roundMoney, type PostingLine } from './ledger.ts';
 
 /** Financial statements and ledgers, computed from posted journals only. */
 
@@ -11,7 +11,7 @@ export function fiscalYear(startMonth: number, startYear: number): { from: strin
   return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
 }
 
-const n = (v: unknown) => round2(Number(v));
+const n = (v: unknown) => roundMoney(Number(v));
 
 export async function trialBalance(tx: Tx, ctx: Ctx, companyId: string, to: string, from?: string) {
   await authorize(tx, ctx, 'fin.report.read', { unitId: companyId });
@@ -27,11 +27,11 @@ export async function trialBalance(tx: Tx, ctx: Ctx, companyId: string, to: stri
      GROUP BY a.code, a.name, a.type ORDER BY a.code`, [companyId, to, from ?? '0001-01-01']);
   const lines = rows.map((r) => {
     const opening = n(r.opening), debit = n(r.debit), credit = n(r.credit);
-    return { code: r.code, name: r.name, type: r.type, opening, debit, credit, closing: round2(opening + debit - credit) };
+    return { code: r.code, name: r.name, type: r.type, opening, debit, credit, closing: roundMoney(opening + debit - credit) };
   }).filter((r) => r.opening || r.debit || r.credit);
   const totals = lines.reduce((t, r) => ({
-    debit: round2(t.debit + r.debit), credit: round2(t.credit + r.credit),
-    closingDebit: round2(t.closingDebit + Math.max(r.closing, 0)), closingCredit: round2(t.closingCredit + Math.max(-r.closing, 0)),
+    debit: roundMoney(t.debit + r.debit), credit: roundMoney(t.credit + r.credit),
+    closingDebit: roundMoney(t.closingDebit + Math.max(r.closing, 0)), closingCredit: roundMoney(t.closingCredit + Math.max(-r.closing, 0)),
   }), { debit: 0, credit: 0, closingDebit: 0, closingCredit: 0 });
   return { from: from ?? null, to, lines, totals, balanced: totals.closingDebit === totals.closingCredit };
 }
@@ -49,12 +49,12 @@ export async function profitAndLoss(tx: Tx, ctx: Ctx, companyId: string, from: s
      GROUP BY 1,2,3,4,5 ORDER BY a.code`, [companyId, from, to]);
   const revenue = rows.filter((r) => r.type === 'revenue').map((r) => ({ code: r.code, name: r.name, amount: n(r.amount) }));
   const exp = rows.filter((r) => r.type === 'expense').map((r) => ({ code: r.code, name: r.name, group: r.group_code, groupName: r.group_name, amount: n(-r.amount) }));
-  const sum = (xs: Array<{ amount: number }>) => round2(xs.reduce((s, x) => s + x.amount, 0));
+  const sum = (xs: Array<{ amount: number }>) => roundMoney(xs.reduce((s, x) => s + x.amount, 0));
   const directCosts = exp.filter((e) => e.group === '52');
   const otherExpenses = exp.filter((e) => e.group !== '52');
-  const totalRevenue = sum(revenue), totalDirect = sum(directCosts), grossProfit = round2(totalRevenue - totalDirect);
+  const totalRevenue = sum(revenue), totalDirect = sum(directCosts), grossProfit = roundMoney(totalRevenue - totalDirect);
   return { from, to, revenue, totalRevenue, directCosts, totalDirectCosts: totalDirect, grossProfit,
-    expenses: otherExpenses, totalExpenses: sum(otherExpenses), netProfit: round2(grossProfit - sum(otherExpenses)) };
+    expenses: otherExpenses, totalExpenses: sum(otherExpenses), netProfit: roundMoney(grossProfit - sum(otherExpenses)) };
 }
 
 export async function balanceSheet(tx: Tx, ctx: Ctx, companyId: string, asOf: string) {
@@ -66,13 +66,13 @@ export async function balanceSheet(tx: Tx, ctx: Ctx, companyId: string, asOf: st
       JOIN fin.accounts a ON a.id = l.account_id
      WHERE j.company_id = $1 GROUP BY 1,2,3 ORDER BY 1`, [companyId, asOf]);
   const pick = (t: string, sign: number) => rows.filter((r) => r.type === t && n(r.bal) !== 0).map((r) => ({ code: r.code, name: r.name, amount: n(sign * r.bal) }));
-  const sum = (xs: Array<{ amount: number }>) => round2(xs.reduce((s, x) => s + x.amount, 0));
+  const sum = (xs: Array<{ amount: number }>) => roundMoney(xs.reduce((s, x) => s + x.amount, 0));
   const assets = pick('asset', 1), liabilities = pick('liability', -1), equity = pick('equity', -1);
   // Profit not yet closed to retained earnings.
-  const unclosed = round2(-rows.filter((r) => r.type === 'revenue' || r.type === 'expense').reduce((s, r) => s + Number(r.bal), 0));
-  const totalEquity = round2(sum(equity) + unclosed);
+  const unclosed = roundMoney(-rows.filter((r) => r.type === 'revenue' || r.type === 'expense').reduce((s, r) => s + Number(r.bal), 0));
+  const totalEquity = roundMoney(sum(equity) + unclosed);
   return { asOf, assets, totalAssets: sum(assets), liabilities, totalLiabilities: sum(liabilities), equity, currentEarnings: unclosed,
-    totalEquity, balanced: sum(assets) === round2(sum(liabilities) + totalEquity) };
+    totalEquity, balanced: sum(assets) === roundMoney(sum(liabilities) + totalEquity) };
 }
 
 export async function accountLedger(tx: Tx, ctx: Ctx, companyId: string, accountRef: string, from: string, to: string) {
@@ -85,7 +85,7 @@ export async function accountLedger(tx: Tx, ctx: Ctx, companyId: string, account
       LEFT JOIN mdm.parties p ON p.id = l.party_id
      WHERE l.account_id = $1 AND j.date BETWEEN $2 AND $3 ORDER BY j.date, j.no, l.line_no`, [acc.id, from, to]);
   let bal = opening;
-  const lines = rows.map((r) => { bal = round2(bal + Number(r.debit) - Number(r.credit)); return { ...r, debit: n(r.debit), credit: n(r.credit), balance: bal }; });
+  const lines = rows.map((r) => { bal = roundMoney(bal + Number(r.debit) - Number(r.credit)); return { ...r, debit: n(r.debit), credit: n(r.credit), balance: bal }; });
   return { account: acc.code, from, to, opening, lines, closing: bal };
 }
 
@@ -99,7 +99,7 @@ export async function partyStatement(tx: Tx, ctx: Ctx, companyId: string, partyI
   let bal = 0, opening = 0;
   const lines = [];
   for (const r of rows) {
-    bal = round2(bal + Number(r.debit) - Number(r.credit));
+    bal = roundMoney(bal + Number(r.debit) - Number(r.credit));
     if (r.date.toISOString().slice(0, 10) < from) { opening = bal; continue; }
     lines.push({ date: r.date, no: r.no, memo: r.memo, debit: n(r.debit), credit: n(r.credit), balance: bal });
   }
@@ -133,14 +133,14 @@ export async function ageing(tx: Tx, ctx: Ctx, companyId: string, side: 'receiva
     if (open <= 0) continue;
     const row = get(d.party_id, d.party, d.currency);
     const b = bucket(Number(d.days));
-    row[b] = round2(row[b] + open); row.total = round2(row.total + open);
+    row[b] = roundMoney(row[b] + open); row.total = roundMoney(row.total + open);
     row.documents.push({ no: d.no, supplierRef: d.supplier_ref, dueDate: d.due_date, daysOverdue: Math.max(0, Number(d.days)), open });
   }
   for (const a of adv) {
     const open = n(a.open);
     if (open <= 0) continue;
     const row = get(a.party_id, a.party, a.currency);
-    row.advances = round2(row.advances + open); row.total = round2(row.total - open);
+    row.advances = roundMoney(row.advances + open); row.total = roundMoney(row.total - open);
   }
   return { side, asOf, partners: [...byParty.values()].sort((x, y) => y.total - x.total) };
 }
@@ -165,7 +165,7 @@ export async function closeYear(tx: Tx, ctx: Ctx, companyId: string, fyStartYear
     const b = n(r.bal);
     return { account: r.account_id, ...(b > 0 ? { credit: b } : { debit: -b }) };
   });
-  const profit = round2(-rows.reduce((s, r) => s + Number(r.bal), 0));
+  const profit = roundMoney(-rows.reduce((s, r) => s + Number(r.bal), 0));
   lines.push({ account: 'role:retained_earnings', ...(profit >= 0 ? { credit: profit } : { debit: -profit }), description: 'Profit for the year' });
   const j = await post(tx, ctx, { companyId, type: 'closing', date: fy.to, memo: `Year-end close ${fy.from} to ${fy.to}`, lines });
   await tx.query(`UPDATE fin.periods SET status = 'closed', closed_at = now(), closed_by = $4

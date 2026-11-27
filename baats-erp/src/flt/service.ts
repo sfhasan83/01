@@ -1,7 +1,7 @@
 import { NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
-import { company, post, resolveAccount, round2 } from '../fin/ledger.ts';
+import { company, post, resolveAccount, roundMoney } from '../fin/ledger.ts';
 import { ensureRoleAccount } from '../fin/setup.ts';
 
 /**
@@ -70,9 +70,9 @@ export async function logFuel(tx: Tx, ctx: Ctx, input: { vehicleId: string; date
   if (!(input.litres > 0) || !(input.amount > 0)) throw new ValidationError('litres and amount must be positive');
   const last = await one(tx, 'SELECT max(odometer)::float AS km FROM flt.fuel_logs WHERE vehicle_id = $1 AND date <= $2', [v.id, input.date]);
   if (last.km !== null && input.odometer < last.km) throw new ValidationError(`the odometer (${input.odometer}) is below the last fill-up (${last.km})`);
-  const vat = round2(input.vatAmount ?? 0);
-  if (vat < 0 || vat > round2(input.amount * 5 / 105) + 0.01) throw new ValidationError('the VAT is more than 5% VAT included in the amount');
-  const net = round2(input.amount - vat);
+  const vat = roundMoney(input.vatAmount ?? 0);
+  if (vat < 0 || vat > roundMoney(input.amount * 5 / 105) + 0.01) throw new ValidationError('the VAT is more than 5% VAT included in the amount');
+  const net = roundMoney(input.amount - vat);
   const paid = await resolveAccount(tx, v.company_id, input.paidFrom ?? 'role:cash');
   const pa = await one(tx, 'SELECT control, type, is_group FROM fin.accounts WHERE id = $1', [paid.id]);
   if (pa.control || pa.is_group || !['asset', 'liability'].includes(pa.type)) throw new ValidationError('pay fuel from a cash, bank or card account');
@@ -124,14 +124,14 @@ export async function vehicleSummary(tx: Tx, ctx: Ctx, id: string) {
   if (fuel.length >= 2) {
     const km = Number(fuel[fuel.length - 1].odometer) - Number(fuel[0].odometer);
     const litres = fuel.slice(1).reduce((s, f) => s + Number(f.litres), 0);
-    economy = km > 0 ? round2(litres / km * 100) : null;
+    economy = km > 0 ? roundMoney(litres / km * 100) : null;
   }
-  const fuelCost = round2(fuel.reduce((s, f) => s + Number(f.amount) - Number(f.vat_amount), 0));
-  const maintenanceCost = round2(maintenance.reduce((s, m) => s + Number(m.parts_cost), 0));
+  const fuelCost = roundMoney(fuel.reduce((s, f) => s + Number(f.amount) - Number(f.vat_amount), 0));
+  const maintenanceCost = roundMoney(maintenance.reduce((s, m) => s + Number(m.parts_cost), 0));
   const firstKm = fuel.length ? Number(fuel[0].odometer) : null;
   const km = firstKm !== null ? Number(v.odometer) - firstKm : 0;
   return { vehicle: v, fuel: fuel.reverse(), trips, maintenance, litresPer100km: economy, fuelCost, maintenanceCost,
-    costPerKm: km > 0 ? round2((fuelCost + maintenanceCost) / km) : null };
+    costPerKm: km > 0 ? roundMoney((fuelCost + maintenanceCost) / km) : null };
 }
 
 export async function listVehicles(tx: Tx, ctx: Ctx, companyId: string) {

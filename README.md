@@ -15,3 +15,7 @@ Latest report: [daily-reports/2026-11-25.md](daily-reports/2026-11-25.md)
 ## Grocery shop software
 
 [grocery-app/](grocery-app/) holds **Shop Books**, an offline accounting and stock app for the Sharjah grocery shop. Open `grocery-app/shop-books.html` in a browser. Instructions are in [grocery-app/README.md](grocery-app/README.md).
+
+## KSF Foods website
+
+[ksf-website/](ksf-website/) holds the KSF Food Industries marketing website (potato chips & pops, Lahore). Open `ksf-website/index.html` in a browser. Details in [ksf-website/README.md](ksf-website/README.md).

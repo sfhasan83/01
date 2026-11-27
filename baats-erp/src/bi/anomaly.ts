@@ -14,7 +14,7 @@ export const RULES: Record<string, { title: string; severity: 'high' | 'medium' 
   duplicate_bill: { title: 'Possible duplicate supplier bill', severity: 'high', why: 'Same supplier and amount within 14 days, or the same supplier reference twice: a classic double payment.' },
   weekend_journal: { title: 'Manual journal dated on a weekend', severity: 'medium', why: 'Manual entries on non-working days deserve a second look.' },
   round_amount: { title: 'Large round-amount manual journal', severity: 'medium', why: 'Estimates and plugs are often round thousands.' },
-  late_posting: { title: 'Posted long after its date', severity: 'low', why: 'Entries booked more than 30 days back can move closed results.' },
+  late_posting: { title: 'Posted long after its date', severity: 'low', why: 'Journals, invoices and payments booked more than 30 days back can move closed results (scheduled runs such as depreciation are left out).' },
   credit_ratio: { title: 'High credit notes for a customer', severity: 'medium', why: 'Credits above 20% of a customer\'s sales can hide revenue reversals or kickbacks.' },
   unallocated_payment: { title: 'Supplier payment not matched to bills', severity: 'medium', why: 'Money paid out more than 30 days ago with nothing to show for it.' },
   benford: { title: 'Amounts do not follow Benford\'s law', severity: 'low', why: 'In natural populations about 30% of amounts start with 1; large deviations can point to invented figures.' },
@@ -64,7 +64,7 @@ async function findings(tx: Tx, companyId: string, from: string, to: string) {
   // Late postings
   const late = await many(tx, `SELECT j.id, j.no, j.type, j.date, j.posted_at::date AS posted, (j.posted_at::date - j.date) AS lag, j.created_by,
         (SELECT sum(debit)::float FROM fin.journal_lines WHERE journal_id = j.id) AS amount
-      FROM fin.journals j WHERE j.company_id = $1 AND j.status = 'posted' AND j.type NOT IN ('opening','closing') AND j.date BETWEEN $2 AND $3
+      FROM fin.journals j WHERE j.company_id = $1 AND j.status = 'posted' AND j.type IN ('manual','sales_invoice','sales_credit','purchase_invoice','purchase_credit','receipt','payment','write_off','reversal') AND j.date BETWEEN $2 AND $3
        AND j.posted_at IS NOT NULL AND j.posted_at::date - j.date > 30`, [companyId, from, to]);
   for (const j of late) add('late_posting', j.id, `${j.no} (${j.type}) dated ${j.date.toISOString().slice(0, 10)}, posted ${j.lag} days later`, j.amount, [{ type: 'fin.journal', id: j.id, no: j.no }], [j.created_by]);
 

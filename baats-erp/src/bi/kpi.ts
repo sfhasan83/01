@@ -18,6 +18,8 @@ export type Unit = 'money' | 'pct' | 'days' | 'count' | 'ratio' | 'tco2e' | 'num
 export interface KpiDef {
   code: string; name: string; module: string; unit: Unit; better: 'up' | 'down' | 'neutral'; kind: 'flow' | 'level';
   permission: string; description: string;
+  /** The source only knows the position now, so the KPI cannot be restated for a past date. */
+  snapshot?: boolean;
   compute: (tx: Tx, ctx: Ctx, companyId: string, from: string, to: string) => Promise<number | null>;
 }
 
@@ -114,7 +116,7 @@ export const KPIS: KpiDef[] = [
     description: 'Confirmed sales orders dated in the period, net of VAT, base currency',
     compute: async (tx, _c, co, f, t) => round2(num((await one(tx, `SELECT sum(net_total * fx_rate) AS v FROM sal.orders WHERE company_id = $1 AND date BETWEEN $2 AND $3
         AND status IN ('confirmed','closed')`, [co, f, t])).v)) },
-  { code: 'pipeline', name: 'Weighted pipeline', module: 'sales', unit: 'money', better: 'up', kind: 'level', permission: 'crm.manage',
+  { code: 'pipeline', snapshot: true, name: 'Weighted pipeline', module: 'sales', unit: 'money', better: 'up', kind: 'level', permission: 'crm.manage',
     description: 'Open opportunities x their probability, for units under the company',
     compute: async (tx, _c, co) => round2(num((await one(tx, `SELECT sum(o.amount * o.probability / 100.0) AS v FROM crm.opportunities o JOIN org.units u ON u.id = o.owner_unit_id
         WHERE o.stage NOT IN ('won','lost') AND u.path LIKE (SELECT path FROM org.units WHERE id = $1) || '%'`, [co])).v)) },
@@ -129,7 +131,7 @@ export const KPIS: KpiDef[] = [
   { code: 'inventory_turns', name: 'Inventory turns (a year)', module: 'inventory', unit: 'ratio', better: 'up', kind: 'flow', permission: 'inv.read',
     description: 'Direct costs in the period, annualised, / inventory value at the end',
     compute: async (tx, _c, co, f, t) => ratio(await directCosts(tx, co, f, t) * 365 / days(f, t), await level(tx, co, t, ACC.inventory)) },
-  { code: 'below_reorder', name: 'Items below minimum', module: 'inventory', unit: 'count', better: 'down', kind: 'level', permission: 'inv.read',
+  { code: 'below_reorder', snapshot: true, name: 'Items below minimum', module: 'inventory', unit: 'count', better: 'down', kind: 'level', permission: 'inv.read',
     description: 'Reorder rules whose warehouse stock is under the minimum now',
     compute: async (tx, _c, co) => (await one(tx, `SELECT count(*)::int AS n FROM inv.reorder_rules r JOIN inv.warehouses w ON w.id = r.warehouse_id
         LEFT JOIN inv.stock s ON s.warehouse_id = r.warehouse_id AND s.item_id = r.item_id WHERE w.company_id = $1 AND coalesce(s.qty, 0) < r.min_qty`, [co])).n },
@@ -142,13 +144,13 @@ export const KPIS: KpiDef[] = [
     description: 'Revenue / headcount at the end of the period',
     compute: async (tx, ctx, co, f, t) => { const h = await headcount(tx, co, t); return h && (await decide(tx, ctx.userId!, 'fin.report.read', { unitId: co })).allowed ? round2(await revenue(tx, co, f, t) / h) : null; } },
   // Operations
-  { code: 'projects_active', name: 'Active projects', module: 'projects', unit: 'count', better: 'neutral', kind: 'level', permission: 'prj.manage',
+  { code: 'projects_active', snapshot: true, name: 'Active projects', module: 'projects', unit: 'count', better: 'neutral', kind: 'level', permission: 'prj.manage',
     description: 'Projects open at the end of the period',
     compute: async (tx, _c, co) => (await one(tx, `SELECT count(*)::int AS n FROM prj.projects WHERE company_id = $1 AND status = 'active'`, [co])).n },
   { code: 'work_orders_completed', name: 'Work orders completed', module: 'manufacturing', unit: 'count', better: 'up', kind: 'flow', permission: 'mfg.produce',
     description: 'Production work orders completed in the period',
     compute: async (tx, _c, co, f, t) => (await one(tx, `SELECT count(*)::int AS n FROM mfg.work_orders WHERE company_id = $1 AND status = 'completed' AND completed_date BETWEEN $2 AND $3`, [co, f, t])).n },
-  { code: 'maintenance_backlog', name: 'Maintenance backlog', module: 'maintenance', unit: 'count', better: 'down', kind: 'level', permission: 'mnt.manage',
+  { code: 'maintenance_backlog', snapshot: true, name: 'Maintenance backlog', module: 'maintenance', unit: 'count', better: 'down', kind: 'level', permission: 'mnt.manage',
     description: 'Maintenance work orders open or in progress',
     compute: async (tx, _c, co) => (await one(tx, `SELECT count(*)::int AS n FROM mnt.work_orders WHERE company_id = $1 AND status IN ('open','in_progress')`, [co])).n },
   { code: 'fuel_cost', name: 'Fuel cost', module: 'fleet', unit: 'money', better: 'down', kind: 'flow', permission: 'flt.manage',
@@ -156,7 +158,7 @@ export const KPIS: KpiDef[] = [
     compute: async (tx, _c, co, f, t) => round2(num((await one(tx, `SELECT sum(l.amount - l.vat_amount) AS v FROM flt.fuel_logs l JOIN flt.vehicles v ON v.id = l.vehicle_id
         WHERE v.company_id = $1 AND l.date BETWEEN $2 AND $3`, [co, f, t])).v)) },
   // Corporate
-  { code: 'tickets_open', name: 'Open service tickets', module: 'service desk', unit: 'count', better: 'down', kind: 'level', permission: 'svc.agent',
+  { code: 'tickets_open', snapshot: true, name: 'Open service tickets', module: 'service desk', unit: 'count', better: 'down', kind: 'level', permission: 'svc.agent',
     description: 'Tickets not yet resolved or closed',
     compute: async (tx) => (await one(tx, `SELECT count(*)::int AS n FROM svc.tickets WHERE status NOT IN ('resolved','closed')`)).n },
   { code: 'sla_met_pct', name: 'Tickets resolved in time', module: 'service desk', unit: 'pct', better: 'up', kind: 'flow', permission: 'svc.agent',
@@ -167,13 +169,13 @@ export const KPIS: KpiDef[] = [
     description: 'Actions still open after their due date',
     compute: async (tx, _c, co, _f, t) => (await one(tx, `SELECT count(*)::int AS n FROM grc.actions a JOIN org.units u ON u.id = a.unit_id
         WHERE a.status = 'open' AND a.due_date < $2 AND u.path LIKE (SELECT path FROM org.units WHERE id = $1) || '%'`, [co, t])).n },
-  { code: 'high_risks', name: 'Risks over appetite', module: 'governance', unit: 'count', better: 'down', kind: 'level', permission: 'grc.manage',
+  { code: 'high_risks', snapshot: true, name: 'Risks over appetite', module: 'governance', unit: 'count', better: 'down', kind: 'level', permission: 'grc.manage',
     description: 'Open risks whose residual score exceeds their appetite',
     compute: async (tx, _c, co) => (await one(tx, `SELECT count(*)::int AS n FROM grc.risks r JOIN org.units u ON u.id = r.unit_id
         WHERE r.status = 'open' AND u.path LIKE (SELECT path FROM org.units WHERE id = $1) || '%'
           AND greatest(1, r.likelihood - (SELECT count(*) FROM grc.controls c WHERE c.risk_id = r.id AND c.status = 'active'
               AND (SELECT x.result FROM grc.control_tests x WHERE x.control_id = c.id ORDER BY x.tested_on DESC, x.recorded_at DESC LIMIT 1) = 'effective')) * r.impact > r.appetite`, [co])).n },
-  { code: 'ncr_open', name: 'Open non-conformances', module: 'quality', unit: 'count', better: 'down', kind: 'level', permission: 'qms.manage',
+  { code: 'ncr_open', snapshot: true, name: 'Open non-conformances', module: 'quality', unit: 'count', better: 'down', kind: 'level', permission: 'qms.manage',
     description: 'NCRs not yet closed', compute: async (tx, _c, co) => (await one(tx, `SELECT count(*)::int AS n FROM qms.ncrs WHERE company_id = $1 AND status <> 'closed'`, [co])).n },
   { code: 'rejection_pct', name: 'Inspection rejection rate', module: 'quality', unit: 'pct', better: 'down', kind: 'flow', permission: 'qms.manage',
     description: 'Quantity rejected / quantity inspected',
@@ -201,7 +203,7 @@ export async function kpiCatalog(tx: Tx, ctx: Ctx, companyId: string) {
   for (const k of KPIS) if ((await decide(tx, ctx.userId!, k.permission, { unitId: companyId })).allowed) out.push(meta(k));
   return out;
 }
-const meta = (k: KpiDef) => ({ code: k.code, name: k.name, module: k.module, unit: k.unit, better: k.better, kind: k.kind, description: k.description });
+const meta = (k: KpiDef) => ({ code: k.code, name: k.name, module: k.module, unit: k.unit, better: k.better, kind: k.kind, snapshot: !!k.snapshot, description: k.description });
 
 export async function kpiValue(tx: Tx, ctx: Ctx, companyId: string, code: string, from: string, to: string) {
   const k = kpiDef(code);
@@ -255,9 +257,9 @@ export async function dashboard(tx: Tx, ctx: Ctx, companyId: string, asOf: strin
   const kpis = [];
   for (const k of visible) {
     const mtd = await k.compute(tx, ctx, companyId, mtdFrom, asOf);
-    const mtdPrior = await k.compute(tx, ctx, companyId, monthStart(prevMonthTo), prevMtdTo);
+    const mtdPrior = k.snapshot ? null : await k.compute(tx, ctx, companyId, monthStart(prevMonthTo), prevMtdTo);
     const ytd = k.kind === 'flow' ? await k.compute(tx, ctx, companyId, ytdFrom, asOf) : mtd;
-    const ytdPrior = await k.compute(tx, ctx, companyId, lastYear(ytdFrom), lastYear(asOf));
+    const ytdPrior = k.snapshot ? null : await k.compute(tx, ctx, companyId, lastYear(ytdFrom), lastYear(asOf));
     const change = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : Math.round(((a - b) / Math.abs(b)) * 1000) / 10);
     kpis.push({ ...meta(k), mtd, mtdPrior, mtdChangePct: change(mtd, mtdPrior), ytd, ytdPrior, ytdChangePct: change(ytd, ytdPrior) });
   }

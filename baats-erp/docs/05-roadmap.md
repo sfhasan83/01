@@ -57,6 +57,8 @@ Legal and contracts, GRC, audit management, administration and facilities, IT se
 
 ### Phase 5: Intelligence
 
+**Built and tested (5a, analytics):** a KPI engine of 36 measures computed live from the ledger and every module, each guarded by its source module's permission; the executive dashboard (month and year to date against prior periods, 12-month trends, top customers, overdue balances); a report builder over a governed dataset catalogue (grouping, totals, filters, sort, CSV export, saved and shared reports) that only returns rows from the units a user's roles cover; a strategy scorecard of objectives and KPI targets with pro-rated red, amber and green status; ESG scope 1 and 2 emissions from fuel logs and meter readings with overridable factors, resource use and intensity; anomaly checks over the whole ledger (duplicate bills, weekend and round-amount manual journals, late postings, credit-note ratios, unmatched payments, Benford's law) with independent review. Next (5b): the BAATS AI assistant (permission-aware questions over these KPIs and datasets, document reading, forecasting). Still open: R&D management, board packs, a data warehouse for very large tenants.
+
 Data warehouse and BI, dashboard and report builders, executive and board dashboards, strategy and performance, R&D, ESG, the BAATS AI assistant (permission-aware queries, document processing, forecasting, anomaly and fraud detection, automated reconciliation, predictive maintenance, decision support).
 
 ### Phase 6: Reach

@@ -28,6 +28,15 @@ th{color:var(--muted);font-weight:600}.muted{color:var(--muted)}.empty{color:var
 .auth{max-width:520px;margin:40px auto}.pill{display:inline-block;padding:2px 8px;border-radius:99px;background:var(--chip);font-size:12px;margin:2px}
 pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:var(--bg);padding:10px;border-radius:6px;max-height:400px;overflow:auto}
 @media (max-width:760px){.wrap{flex-direction:column}nav{width:auto;display:flex;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line)}nav button{width:auto}main{padding:12px}}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:12px}.tile{border:1px solid var(--line);border-radius:8px;padding:10px 12px}.tl{color:var(--muted);font-size:12px}.tv{font-size:22px;font-weight:600;margin:2px 0}.ts{font-size:12px;color:var(--muted)}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:12px}.chart{min-width:0}.ctitle{font-weight:600;margin-bottom:4px}.cwrap{position:relative}.chart svg{width:100%;height:auto;display:block}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-bottom:4px}.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+:root{--s1:#257de0;--s2:#f47230;--s3:#00b894;--warn:#b54708}@media (prefers-color-scheme:dark){:root{--s1:#338ced;--s2:#e76624;--s3:#00a888;--warn:#fdb022}}
+.sw.s1{background:var(--s1)}.sw.s2{background:var(--s2)}.sw.s3{background:var(--s3)}.ln{stroke-width:2;stroke-linejoin:round;stroke-linecap:round}.ln.s1{stroke:var(--s1)}.ln.s2{stroke:var(--s2)}.ln.s3{stroke:var(--s3)}
+.dot{stroke:var(--panel);stroke-width:2}.dot.s1{fill:var(--s1)}.dot.s2{fill:var(--s2)}.dot.s3{fill:var(--s3)}.grid{stroke:var(--line);stroke-width:1}.grid.zero{stroke:var(--muted)}.axis{fill:var(--muted);font-size:11px}
+.hit{fill:transparent;cursor:crosshair}.xhair{stroke:var(--muted);stroke-dasharray:3 3}.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:5;min-width:150px}
+.bar{display:grid;grid-template-columns:minmax(90px,35%) 1fr auto;gap:8px;align-items:center;padding:3px 0;font-size:13px}.bl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bt{height:12px}.bf{display:block;height:12px;border-radius:0 4px 4px 0;background:var(--s1)}.bv{font-variant-numeric:tabular-nums}
+.rag{font-weight:600;white-space:nowrap}.rag-green{color:var(--ok)}.rag-amber{color:var(--warn)}.rag-red{color:var(--bad)}.checks{display:flex;flex-wrap:wrap;gap:6px 14px}.ck{flex-direction:row!important;align-items:center;gap:6px;display:flex}
 </style>
 </head>
 <body>
@@ -111,7 +120,7 @@ const pages = {
   async overview() {
     const me = await api('GET', '/v1/me');
     return `<div class="card"><h3>Welcome, ${esc(me.user.display_name)}</h3><p class="muted">Signed in to <b>${esc(S.tenant)}</b> as ${esc(me.user.email)}. MFA: ${me.user.mfa_enabled ? 'on' : 'off'}.</p>
-      <p>This console lets you try what BAATS can do today. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
+      <p>This console lets you try what BAATS can do today. Phase 5: an executive dashboard computed live from the books, a report builder over governed datasets with CSV export, a strategy scorecard with KPI targets, ESG emissions and resource use, and anomaly checks on the whole ledger. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
       <div class="card"><h3>Your approvals waiting (${me.inbox.length})</h3>${table(me.inbox)}</div>
       <div class="card"><h3>Your permissions (${me.permissions.length})</h3>${me.permissions.map((p) => `<span class="pill">${esc(typeof p === 'string' ? p : p.permission || JSON.stringify(p))}</span>`).join('')}</div>`;
   },
@@ -175,7 +184,7 @@ const pages = {
       <label style="margin-top:10px">JSON body<textarea name="body"></textarea></label><div class="row"><button class="btn">Send</button></div></form><pre id="api-out"></pre></div>`;
   },
 };
-const MENU = [['overview', 'Overview'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audit', 'Audit trail'], ['apitester', 'API tester']];
+const MENU = [['overview', 'Overview'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audit', 'Audit trail'], ['apitester', 'API tester']];
 let current = 'overview';
 const after = {};
 
@@ -1335,6 +1344,265 @@ async function loadPhase4Demo(step, co, root, asApprover) {
   await api('POST', '/v1/fac/bookings', { spaceId: mr.id, startsAt: at(10), endsAt: at(11), purpose: 'Supplier review', attendees: 6 });
 }
 
+// ---------- Intelligence (Phase 5) ----------
+const fmtKpi = (v, unit) => v === null || v === undefined ? 'n/a' : unit === 'money' ? money(v) : unit === 'pct' ? `${Number(v).toFixed(1)}%` : unit === 'days' ? `${v} days`
+  : unit === 'ratio' ? Number(v).toFixed(2) : unit === 'tco2e' ? `${Number(v).toFixed(2)} t` : Number(v).toLocaleString();
+const changeTag = (pct, better) => {
+  if (pct === null || pct === undefined) return null;
+  if (pct === 0) return '<span class="muted">no change</span>';
+  const good = better === 'neutral' ? null : (pct > 0) === (better === 'up');
+  return `<span style="color:${good === null ? 'var(--muted)' : good ? 'var(--ok)' : 'var(--bad)'}">${pct > 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(1)}%</span>`;
+};
+const MODULE_NAMES = { finance: 'Finance', purchasing: 'Purchasing', sales: 'Sales and CRM', inventory: 'Inventory', hr: 'People', projects: 'Projects', manufacturing: 'Manufacturing',
+  maintenance: 'Maintenance', fleet: 'Fleet', 'service desk': 'Service desk', governance: 'Governance and risk', quality: 'Quality', safety: 'Health and safety', sustainability: 'Sustainability' };
+const ragTag = (s) => s ? `<span class="rag rag-${s}">${{ green: '● On track', amber: '◐ At risk', red: '○ Off track' }[s]}</span>` : '<span class="muted">no data</span>';
+const compact = (v) => { const a = Math.abs(v); return a >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : a >= 1e3 ? `${(v / 1e3).toFixed(0)}k` : String(Math.round(v)); };
+function niceStep(v) { const p = 10 ** Math.floor(Math.log10(v)); return [1, 2, 2.5, 5, 10].map((m) => m * p).find((x) => x >= v); }
+function niceMax(v) { if (v <= 0) return 1; const p = 10 ** Math.floor(Math.log10(v)); return Math.ceil(v / p) * p; }
+/** Line chart on one axis: series [{key,label,cls}], points [{month,...}]. Hover columns carry a tooltip. */
+function lineChart(points, series, title) {
+  const W = 640, H = 220, L = 52, R = 12, T = 12, B = 26, w = W - L - R, h = H - T - B;
+  const vals = points.flatMap((p) => series.map((s) => p[s.key]));
+  const vmax = Math.max(0, ...vals), vmin = Math.min(0, ...vals), step = niceStep((vmax - vmin) / 4 || 1);
+  const hi = Math.ceil(vmax / step) * step || step, lo = Math.floor(vmin / step) * step;
+  const x = (i) => L + (points.length === 1 ? w / 2 : (i * w) / (points.length - 1)), y = (v) => T + h - ((v - lo) / (hi - lo)) * h;
+  const ticks = []; for (let v = lo; v <= hi + step / 2; v += step) ticks.push(v);
+  const grid = ticks.map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="grid${v === 0 ? ' zero' : ''}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" class="axis">${compact(v)}</text>`).join('');
+  const xl = points.map((p, i) => (i % 2 === (points.length - 1) % 2 ? `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" class="axis">${p.month.slice(2).replace('-', '/')}</text>` : '')).join('');
+  const lines = series.map((s) => `<polyline fill="none" class="ln ${s.cls}" points="${points.map((p, i) => `${x(i)},${y(p[s.key])}`).join(' ')}"/>`
+    + `<circle class="dot ${s.cls}" cx="${x(points.length - 1)}" cy="${y(points.at(-1)[s.key])}" r="4"/>`).join('');
+  const hits = points.map((p, i) => `<rect class="hit" x="${x(i) - w / points.length / 2}" y="${T}" width="${w / points.length}" height="${h}" data-tip="${esc(`<b>${p.month}</b>` + series.map((s) => `<div><i class="sw ${s.cls}"></i>${s.label}: ${money(p[s.key])}</div>`).join(''))}" data-x="${x(i)}"/>`).join('');
+  const legend = series.length > 1 ? `<div class="legend">${series.map((s) => `<span><i class="sw ${s.cls}"></i>${s.label}</span>`).join('')}</div>` : '';
+  return `<div class="chart"><div class="ctitle">${title}</div>${legend}<div class="cwrap"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}">${grid}${xl}${lines}<line class="xhair" y1="${T}" y2="${T + h}" x1="0" x2="0" style="display:none"/>${hits}</svg><div class="tip" style="display:none"></div></div></div>`;
+}
+function bindCharts(m) {
+  m.querySelectorAll('.cwrap').forEach((c) => {
+    const tip = c.querySelector('.tip'), xh = c.querySelector('.xhair');
+    c.querySelectorAll('[data-tip]').forEach((r) => {
+      r.addEventListener('mouseenter', () => { tip.innerHTML = r.dataset.tip; tip.style.display = 'block'; if (xh && r.dataset.x) { xh.setAttribute('x1', r.dataset.x); xh.setAttribute('x2', r.dataset.x); xh.style.display = ''; } });
+      r.addEventListener('mousemove', (e) => { const b = c.getBoundingClientRect(); tip.style.left = Math.min(e.clientX - b.left + 12, b.width - 190) + 'px'; tip.style.top = (e.clientY - b.top + 12) + 'px'; });
+      r.addEventListener('mouseleave', () => { tip.style.display = 'none'; if (xh) xh.style.display = 'none'; });
+    });
+  });
+}
+/** Horizontal bars for a ranked list (one series, so one colour). */
+function barList(rows, label, value, title, fmt = money) {
+  if (!rows.length) return `<div class="chart"><div class="ctitle">${title}</div><div class="empty">Nothing yet.</div></div>`;
+  const max = Math.max(...rows.map((r) => Math.abs(r[value]))) || 1;
+  return `<div class="chart"><div class="ctitle">${title}</div><div class="cwrap">${rows.map((r) => `<div class="bar" data-tip="${esc(`<b>${esc(r[label])}</b><div>${fmt(r[value])}</div>`)}"><span class="bl">${esc(r[label])}</span><span class="bt"><span class="bf" style="width:${Math.max(1, Math.abs(r[value]) / max * 100)}%"></span></span><span class="bv">${fmt(r[value])}</span></div>`).join('')}<div class="tip" style="display:none"></div></div></div>`;
+}
+
+const REPORT_AGGS = [['sum', 'Sum'], ['count', 'Count'], ['avg', 'Average'], ['min', 'Minimum'], ['max', 'Maximum']];
+const REPORT_OPS = [['eq', 'is'], ['ne', 'is not'], ['contains', 'contains'], ['gt', 'more than'], ['gte', 'at least'], ['lt', 'less than'], ['lte', 'at most'], ['is_empty', 'is empty'], ['not_empty', 'is not empty']];
+
+Object.assign(pages, {
+  async dashboard() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    S.dashAsOf = S.dashAsOf || today();
+    const d = await api('GET', `/v1/bi/companies/${S.company}/dashboard?asOf=${S.dashAsOf}`);
+    const heads = ['revenue', 'net_profit', 'cash', 'receivables', 'gross_margin_pct', 'dso'];
+    const tiles = (list) => list.map((k) => `<div class="tile"><div class="tl">${esc(k.name)}</div><div class="tv">${fmtKpi(k.kind === 'flow' ? k.ytd : k.mtd, k.unit)}</div>
+      <div class="ts">${k.kind === 'flow'
+        ? `Year to date${changeTag(k.ytdChangePct, k.better) ? ` · ${changeTag(k.ytdChangePct, k.better)} on last year` : ''}<br>This month ${fmtKpi(k.mtd, k.unit)}${changeTag(k.mtdChangePct, k.better) ? ` · ${changeTag(k.mtdChangePct, k.better)} on last month` : ''}`
+        : k.snapshot ? 'Position now' : `At ${S.dashAsOf}${changeTag(k.mtdChangePct, k.better) ? ` · ${changeTag(k.mtdChangePct, k.better)} on a month ago` : ''}`}</div></div>`).join('');
+    const headline = d.kpis.filter((k) => heads.includes(k.code)).sort((a, b) => heads.indexOf(a.code) - heads.indexOf(b.code));
+    const rest = d.kpis.filter((k) => !heads.includes(k.code));
+    const modules = [...new Set(rest.map((k) => k.module))];
+    return companyBar(cs) + `<div class="card"><div class="row" style="justify-content:space-between;align-items:flex-end"><div><h3 style="margin:0">${esc(d.company.name)}</h3><div class="muted">Year to date ${d.periods.ytd[0]} to ${d.periods.ytd[1]} · amounts in ${esc(d.company.currency)} · computed live from the books</div></div>
+      <label>As of<input type="date" id="dash-asof" value="${S.dashAsOf}"></label></div>
+      ${headline.length ? `<div class="tiles">${tiles(headline)}</div>` : ''}${d.hidden ? `<p class="muted">${d.hidden} KPIs are hidden because your roles do not cover their source data.</p>` : ''}</div>
+    ${d.trend ? `<div class="card"><div class="charts">${lineChart(d.trend, [{ key: 'revenue', label: 'Revenue', cls: 's1' }, { key: 'costs', label: 'Costs', cls: 's2' }, { key: 'netProfit', label: 'Net profit', cls: 's3' }], 'Last 12 months')}
+      ${lineChart(d.trend, [{ key: 'cash', label: 'Cash and bank', cls: 's1' }], 'Cash and bank at month end')}</div>
+      <div class="charts">${barList(d.topCustomers, 'name', 'revenue', 'Top customers this year')}${barList(d.overdue, 'name', 'amount', 'Largest overdue balances')}</div>
+      <details><summary class="muted">Show the numbers as a table</summary>${report(d.trend, [['month', 'Month'], ['revenue', 'Revenue', 1], ['costs', 'Costs', 1], ['netProfit', 'Net profit', 1], ['cash', 'Cash', 1]])}</details></div>` : ''}
+    ${modules.map((mod) => `<div class="card"><h3>${esc(MODULE_NAMES[mod] || mod)}</h3><div class="tiles">${tiles(rest.filter((k) => k.module === mod))}</div></div>`).join('')}`;
+  },
+
+  async reportbuilder() {
+    const [sets, saved] = await Promise.all([api('GET', '/v1/bi/datasets'), api('GET', '/v1/bi/reports')]);
+    if (!sets.length) return '<div class="card"><h3>Report builder</h3><p>Your roles do not cover any report data yet.</p></div>';
+    if (!sets.find((x) => x.code === S.rbSet)) { S.rbSet = sets[0].code; S.rbSpec = null; }
+    const ds = sets.find((x) => x.code === S.rbSet);
+    const spec = S.rbSpec || { columns: ds.fields.slice(0, 6).map((f) => f.key) };
+    const fopts = ds.fields.map((f) => [f.key, f.label]);
+    const numeric = ds.fields.filter((f) => ['money', 'number'].includes(f.type)).map((f) => [f.key, f.label]);
+    const g = spec.groupBy || [], ms = spec.measures || [], fl = spec.filters || [];
+    const res = S.rbResult;
+    return `<div class="card"><h3>Report builder</h3><p class="muted">Pick what to report on, then either plain columns or groups with totals. You only ever see rows from the units your roles cover, and only datasets your roles allow.</p>
+      <form id="f-rb"><div class="grid">${pick('dataset', 'Report on', sets.map((x) => [x.code, x.name]), 'id="rb-set"')}<label>Mode<select name="mode"><option value="list" ${g.length ? '' : 'selected'}>List rows</option><option value="group" ${g.length ? 'selected' : ''}>Group and total</option></select></label></div>
+      <p class="muted">${esc(ds.description)}</p>
+      <div class="rb-list"${g.length ? ' style="display:none"' : ''}><h4>Columns</h4><div class="checks">${ds.fields.map((f) => `<label class="ck"><input type="checkbox" name="col_${f.key}" ${(spec.columns || []).includes(f.key) ? 'checked' : ''}>${esc(f.label)}</label>`).join('')}</div></div>
+      <div class="rb-group"${g.length ? '' : ' style="display:none"'}><h4>Group by</h4><div class="grid">${[0, 1].map((i) => pick(`g${i}`, `Group ${i + 1}`, [['', '(none)'], ...fopts])).join('')}</div>
+        <h4>Totals</h4><div class="grid">${[0, 1, 2].map((i) => `${pick(`ma${i}`, `Total ${i + 1}`, [['', '(none)'], ...REPORT_AGGS])}${pick(`mf${i}`, 'of', [...numeric, ...fopts.filter((f) => !numeric.find((n) => n[0] === f[0]))])}`).join('')}</div></div>
+      <h4>Filters</h4><div class="grid">${[0, 1, 2].map((i) => `${pick(`ff${i}`, `Filter ${i + 1}`, [['', '(none)'], ...fopts])}${pick(`fo${i}`, 'condition', REPORT_OPS)}${field(`fv${i}`, 'value')}`).join('')}</div>
+      <div class="grid">${pick('sortBy', 'Sort by', [['', '(default)'], ...fopts, ...ms.map((m) => [`${m.agg}_${m.field}`, `${m.agg} of ${m.field}`])])}${pick('sortDir', 'Direction', [['asc', 'Ascending'], ['desc', 'Descending']])}${field('limit', 'Up to rows', 'type="number" min="1" max="5000" value="' + (spec.limit || 1000) + '"')}</div>
+      <div class="row"><button class="btn">Run</button> <button class="btn sec" type="button" id="rb-csv">Download CSV</button></div></form></div>
+    ${res ? `<div class="card"><h3>${res.rows.length} rows${res.truncated ? ' (more exist: raise the row limit or add filters)' : ''}</h3>${report(res.rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v === null ? '' : v]))), res.columns.map((c) => [c.key, c.label, c.type === 'money' ? 1 : 0]))}
+      ${Object.keys(res.totals).length ? `<p>${Object.entries(res.totals).map(([k, v]) => `${esc(res.columns.find((c) => c.key === k)?.label || k)}: <b>${money(v)}</b>`).join(' · ')}</p>` : ''}
+      <form id="f-rbsave"><div class="grid">${field('name', 'Save as', 'required')}${check('shared', 'Share with everyone (they still see only their own units)')}</div><div class="row"><button class="btn sec">Save report</button></div></form></div>` : ''}
+    <div class="card"><h3>Saved reports</h3>${saved.length ? '<div class="tbl"><table><tr><th>name</th><th>data</th><th>owner</th><th>shared</th><th></th></tr>' + saved.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.datasetName)}</td><td>${esc(r.owner)}</td><td>${r.shared ? 'yes' : 'no'}</td><td>${act('Run', 'rb-run', r.id)} ${act('CSV', 'rb-dl', r.id, 1)} ${r.mine ? act('Delete', 'rb-del', r.id, 1) : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No saved reports yet.</div>'}</div>`;
+  },
+
+  async scorecard() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    S.scYear = S.scYear || Number(today().slice(0, 4));
+    const [sc, cat, emps] = await Promise.all([api('GET', `/v1/bi/companies/${S.company}/scorecard?year=${S.scYear}&asOf=${today()}`), api('GET', `/v1/bi/companies/${S.company}/kpis`), api('GET', '/v1/org/employees')]);
+    const kOpts = cat.filter((k) => k.better !== 'neutral').map((k) => [k.code, `${k.name} (${k.module})`]);
+    const persp = { financial: 'Financial', customer: 'Customer', process: 'Internal process', people: 'People and learning', sustainability: 'Sustainability' };
+    return companyBar(cs) + `<div class="card"><div class="row" style="justify-content:space-between;align-items:flex-end"><div><h3 style="margin:0">Strategy scorecard ${sc.year}</h3><div class="muted">${sc.from} to ${sc.yearEnds} · ${sc.elapsedPct}% of the year gone · amounts and counts are judged against the target pro-rated to date</div></div>
+      <label>Year<input type="number" id="sc-year" value="${sc.year}" min="2000" max="2100" style="width:100px"></label></div>
+      <p>${ragTag('green')} ${sc.summary.green} &nbsp; ${ragTag('amber')} ${sc.summary.amber} &nbsp; ${ragTag('red')} ${sc.summary.red}${sc.summary.hidden ? ` &nbsp; <span class="muted">${sc.summary.hidden} measures hidden by your permissions</span>` : ''}</p></div>
+    ${sc.objectives.length ? Object.entries(persp).filter(([p]) => sc.objectives.some((o) => o.perspective === p)).map(([p, label]) => `<div class="card"><h3>${label}</h3>${sc.objectives.filter((o) => o.perspective === p).map((o) => `
+      <div style="border-top:1px solid var(--line);padding:8px 0"><div class="row" style="justify-content:space-between"><div><b>${esc(o.code)} ${esc(o.title)}</b>${o.owner ? ` <span class="muted">· ${esc(o.owner)}</span>` : ''}</div><div>${ragTag(o.status)} ${act('Retire', 'obj-retire', o.id, 1)}</div></div>
+      ${o.measures.length ? '<div class="tbl"><table><tr><th>measure</th><th style="text-align:right">target for the year</th><th style="text-align:right">due to date</th><th style="text-align:right">actual</th><th style="text-align:right">projected</th><th>status</th><th></th></tr>' + o.measures.map((m) => `<tr><td>${esc(m.name)} <span class="muted">${m.better === 'up' ? 'higher is better' : 'lower is better'}, ±${m.tolerancePct}%</span></td><td style="text-align:right">${fmtKpi(m.target, m.unit)}</td><td style="text-align:right">${fmtKpi(m.dueToDate, m.unit)}</td><td style="text-align:right"><b>${fmtKpi(m.actual, m.unit)}</b></td><td style="text-align:right">${m.projected === null ? '' : fmtKpi(m.projected, m.unit)}</td><td>${ragTag(m.status)}</td><td>${act('Remove', 'tg-del', m.targetId, 1)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No targets for this year.</div>'}
+      <form class="f-target" data-obj="${o.id}"><div class="grid">${pick('kpiCode', 'KPI', kOpts)}${field('target', 'Target for the year', 'type="number" step="any" required')}${field('tolerancePct', 'Amber band (%)', 'type="number" min="0" max="100" value="10"')}</div><div class="row"><button class="btn sec">Set target</button></div></form></div>`).join('')}</div>`).join('') : '<div class="card"><div class="empty">No objectives yet.</div></div>'}
+    <div class="card"><h3>Add an objective</h3><form id="f-obj"><div class="grid">${field('code', 'Code', 'required placeholder="F1"')}${field('title', 'Objective', 'required placeholder="Grow profitably"')}${pick('perspective', 'Perspective', Object.entries(persp))}${pick('ownerEmployeeId', 'Owner', [['', '(none)'], ...empOpts(emps)])}</div><div class="row"><button class="btn">Add objective</button></div></form></div>`;
+  },
+
+  async esg() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const from = yearStart(), to = today();
+    const [r, readings, us] = await Promise.all([api('GET', `/v1/bi/companies/${S.company}/esg?from=${from}&to=${to}`), api('GET', `/v1/bi/companies/${S.company}/esg/readings?from=${from}&to=${to}`), units()]);
+    const t = r.totals;
+    const metrics = [['electricity_kwh', 'Grid electricity (kWh)'], ['solar_kwh', 'Solar generated and used (kWh)'], ['water_m3', 'Water (m³)'], ['waste_kg', 'Waste to landfill (kg)'], ['recycled_kg', 'Waste recycled (kg)'], ['lpg_kg', 'LPG (kg)'], ['refrigerant_kg', 'Refrigerant topped up (kg)']];
+    return companyBar(cs) + `<div class="card"><h3>Emissions this year</h3><p class="muted">Scope 1: fleet fuel (from the fuel logs), LPG and refrigerant leaks. Scope 2: purchased electricity, location based. Tonnes of CO₂ equivalent.</p>
+      <div class="tiles"><div class="tile"><div class="tl">Scope 1</div><div class="tv">${t.scope1.toFixed(2)} t</div><div class="ts">${t.diesel_l.toLocaleString()} L diesel, ${t.petrol_l.toLocaleString()} L petrol</div></div>
+      <div class="tile"><div class="tl">Scope 2</div><div class="tv">${t.scope2.toFixed(2)} t</div><div class="ts">${t.electricity_kwh.toLocaleString()} kWh from the grid</div></div>
+      <div class="tile"><div class="tl">Total</div><div class="tv">${t.total.toFixed(2)} t</div><div class="ts">${r.intensity.perMillionRevenue === null ? '' : `${r.intensity.perMillionRevenue} t per million of revenue<br>`}${r.intensity.perEmployee === null ? '' : `${r.intensity.perEmployee} t per employee`}</div></div>
+      <div class="tile"><div class="tl">Waste recycled</div><div class="tv">${r.recycledPct === null ? 'n/a' : r.recycledPct + '%'}</div><div class="ts">Renewable electricity ${r.renewablePct === null ? 'n/a' : r.renewablePct + '%'} · water ${t.water_m3.toLocaleString()} m³</div></div></div>
+      ${r.months.length ? report(r.months.map((m) => ({ ...m, scope1: m.scope1.toFixed(3), scope2: m.scope2.toFixed(3), total: m.total.toFixed(3) })), [['month', 'Month'], ['diesel_l', 'Diesel L'], ['petrol_l', 'Petrol L'], ['electricity_kwh', 'Grid kWh'], ['water_m3', 'Water m³'], ['waste_kg', 'Waste kg'], ['recycled_kg', 'Recycled kg'], ['scope1', 'Scope 1 t'], ['scope2', 'Scope 2 t'], ['total', 'Total t']]) : '<div class="empty">No fuel or readings this year yet.</div>'}</div>
+    <div class="card"><h3>Record a monthly reading</h3><p class="muted">Recording the same metric for the same month again corrects it.</p><form id="f-esg"><div class="grid">${field('month', 'Month', `type="month" required value="${today().slice(0, 7)}"`)}${pick('metric', 'What', metrics)}${field('value', 'Amount', 'type="number" step="any" min="0" required')}${pick('unitId', 'Site', [['', '(whole company)'], ...unitOpts(us)])}${field('note', 'Note')}</div><div class="row"><button class="btn">Record</button></div></form>
+      ${readings.length ? `<h4>Readings this year</h4>${report(readings.map((x) => ({ ...x, month: d10(x.month).slice(0, 7), value: +x.value })), [['month', 'Month'], ['metric', 'Metric'], ['site_code', 'Site'], ['value', 'Amount'], ['note', 'Note']])}` : ''}</div>
+    <div class="card"><h3>Emission factors</h3><p class="muted">Replace the defaults with your utility's and regulator's published factors; the source is kept with the figure.</p>
+      ${report(Object.entries(r.factors).map(([k, f]) => ({ key: k, label: f.label, value: f.value, source: f.source + (f.overridden ? '' : ' (default)') })), [['label', 'Factor'], ['value', 'Value'], ['source', 'Source']])}
+      <form id="f-factor"><div class="grid">${pick('key', 'Factor', Object.entries(r.factors).map(([k, f]) => [k, f.label]))}${field('value', 'Value', 'type="number" step="any" min="0" required')}${field('source', 'Source', 'required')}</div><div class="row"><button class="btn sec">Save factor</button></div></form></div>`;
+  },
+
+  async anomalies() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    S.anFrom = S.anFrom || yearStart(); S.anTo = S.anTo || today();
+    const a = await api('GET', `/v1/bi/companies/${S.company}/anomalies?from=${S.anFrom}&to=${S.anTo}`);
+    const sev = (s) => `<span class="pill">${s}</span>`;
+    return companyBar(cs) + `<div class="card"><div class="row" style="justify-content:space-between;align-items:flex-end"><div><h3 style="margin:0">Anomaly checks (${a.open} to review)</h3><div class="muted">Each rule runs over every document in the period, not a sample. Someone other than the person who entered a document must explain it.</div></div>
+      <div class="row"><label>From<input type="date" id="an-from" value="${S.anFrom}"></label><label>To<input type="date" id="an-to" value="${S.anTo}"></label></div></div>
+      ${report(a.rules.map((r) => ({ ...r, found: `${r.found} (${r.open} open)` })), [['title', 'Rule'], ['severity', 'Severity'], ['found', 'Found'], ['why', 'Why it matters']])}</div>
+    <div class="card"><h3>Findings</h3>${a.findings.length ? '<div class="tbl"><table><tr><th>finding</th><th>severity</th><th>detail</th><th style="text-align:right">amount</th><th>review</th></tr>' + a.findings.map((f) => `<tr><td>${esc(f.title)}</td><td>${sev(f.severity)}</td><td style="white-space:normal;max-width:480px">${esc(f.detail)}</td><td style="text-align:right">${f.amount === null ? '' : money(f.amount)}</td><td>${f.review ? `${esc(f.review.outcome)} by ${esc(f.review.reviewer)}<div class="muted">${esc(f.review.note)}</div>` : `${act('Explained', 'an-ok', `${f.rule}|${f.key}`)} ${act('Confirmed problem', 'an-bad', `${f.rule}|${f.key}`, 1)}`}</td></tr>`).join('') + '</table></div>' : '<div class="empty">Nothing unusual in this period.</div>'}</div>
+    <div class="card"><h3>Benford's law</h3><p class="muted">First digits of ${a.benford.sample} supplier bills and payments.${a.benford.enough ? ` Mean absolute deviation ${a.benford.mad} (conformity limit ${a.benford.threshold}).` : ' At least 100 amounts are needed for a meaningful test.'}</p>
+      ${barList(a.benford.digits.map((d) => ({ label: `${d.digit}: expected ${d.expectedPct}%`, v: d.actualPct })), 'label', 'v', 'Share of amounts starting with each digit', (v) => `${v}%`)}</div>`;
+  },
+});
+
+Object.assign(after, {
+  async dashboard(m) {
+    bindCompanyPick(); bindCharts(m);
+    const a = $('#dash-asof'); if (a) a.onchange = () => { S.dashAsOf = a.value || today(); show('dashboard'); };
+  },
+  async reportbuilder(m, ok) {
+    const f = $('#f-rb'); if (!f) return;
+    const mode = f.querySelector('[name=mode]');
+    const spec0 = S.rbSpec || {};
+    (spec0.groupBy || []).forEach((g, i) => { const el = f.querySelector(`[name=g${i}]`); if (el) el.value = g; });
+    (spec0.measures || []).forEach((x, i) => { const a = f.querySelector(`[name=ma${i}]`), b = f.querySelector(`[name=mf${i}]`); if (a) { a.value = x.agg; b.value = x.field; } });
+    (spec0.filters || []).forEach((x, i) => { const a = f.querySelector(`[name=ff${i}]`); if (a) { a.value = x.field; f.querySelector(`[name=fo${i}]`).value = x.op; f.querySelector(`[name=fv${i}]`).value = x.value ?? ''; } });
+    if (spec0.sort?.[0]) { f.querySelector('[name=sortBy]').value = spec0.sort[0].by; f.querySelector('[name=sortDir]').value = spec0.sort[0].dir || 'asc'; }
+    mode.onchange = () => { f.querySelector('.rb-list').style.display = mode.value === 'list' ? '' : 'none'; f.querySelector('.rb-group').style.display = mode.value === 'group' ? '' : 'none'; };
+    $('#rb-set').onchange = (e) => { S.rbSet = e.target.value; S.rbSpec = null; S.rbResult = null; show('reportbuilder'); };
+    const build = () => {
+      const b = Object.fromEntries([...f.querySelectorAll('[name]')].map((i) => [i.name, i.type === 'checkbox' ? i.checked : i.value.trim()]));
+      const spec = {};
+      if (b.mode === 'group') {
+        spec.groupBy = [b.g0, b.g1].filter(Boolean);
+        spec.measures = [0, 1, 2].filter((i) => b[`ma${i}`]).map((i) => ({ agg: b[`ma${i}`], field: b[`mf${i}`] }));
+        if (!spec.groupBy.length) throw new Error('Choose at least one field to group by');
+      } else spec.columns = Object.keys(b).filter((k) => k.startsWith('col_') && b[k]).map((k) => k.slice(4));
+      spec.filters = [0, 1, 2].filter((i) => b[`ff${i}`]).map((i) => ({ field: b[`ff${i}`], op: b[`fo${i}`], ...(['is_empty', 'not_empty'].includes(b[`fo${i}`]) ? {} : { value: b[`fv${i}`] }) }));
+      if (b.sortBy) spec.sort = [{ by: b.sortBy, dir: b.sortDir }];
+      if (b.limit) spec.limit = Number(b.limit);
+      return spec;
+    };
+    bindForm('f-rb', async () => { const spec = build(); S.rbSpec = spec; S.rbResult = await api('POST', '/v1/bi/query', { dataset: S.rbSet, spec }); show('reportbuilder'); });
+    const csvDl = async (path, body, name) => {
+      const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { authorization: 'Bearer ' + S.token, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+      if (!r.ok) { let msg = 'HTTP ' + r.status; try { msg = (await r.json()).message || msg; } catch { /* text */ } throw new Error(msg); }
+      const url = URL.createObjectURL(await r.blob()); const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+    };
+    $('#rb-csv').onclick = async () => { try { await csvDl('/v1/bi/query.csv', { dataset: S.rbSet, spec: build() }, `${S.rbSet}.csv`); } catch (e) { toast(e.message, false); } };
+    bindForm('f-rbsave', async (b) => { await api('POST', '/v1/bi/reports', { name: b.name, dataset: S.rbSet, spec: S.rbSpec || build(), shared: !!b.shared }); ok('Report saved'); });
+    onAct(m, 'rb-run', async (id) => { const r = await api('GET', `/v1/bi/reports/${id}/run`); S.rbSet = r.report.dataset; S.rbSpec = r.report.spec; S.rbResult = r; show('reportbuilder'); });
+    onAct(m, 'rb-dl', async (id) => csvDl(`/v1/bi/reports/${id}/csv`, null, 'report.csv'));
+    onAct(m, 'rb-del', async (id) => { if (!confirm('Delete this saved report?')) return; await api('DELETE', `/v1/bi/reports/${id}`); ok('Deleted'); });
+  },
+  async scorecard(m, ok) {
+    bindCompanyPick();
+    const y = $('#sc-year'); if (y) y.onchange = () => { S.scYear = Number(y.value) || Number(today().slice(0, 4)); show('scorecard'); };
+    bindForm('f-obj', async (b) => { await api('POST', `/v1/bi/companies/${S.company}/objectives`, b); ok('Objective added: now give it targets'); });
+    m.querySelectorAll('form.f-target').forEach((el) => el.addEventListener('submit', async (ev) => { ev.preventDefault();
+      try { const b = num(form(el), 'target', 'tolerancePct'); await api('PUT', `/v1/bi/objectives/${el.dataset.obj}/targets`, { ...b, year: S.scYear }); ok('Target set'); } catch (e) { toast(e.message, false); } }));
+    onAct(m, 'tg-del', async (id) => { await api('DELETE', `/v1/bi/targets/${id}`); ok('Target removed'); });
+    onAct(m, 'obj-retire', async (id) => { if (!confirm('Retire this objective? It leaves the scorecard.')) return; await api('POST', `/v1/bi/objectives/${id}/retire`); ok('Retired'); });
+  },
+  async esg(m, ok) {
+    bindCompanyPick();
+    bindForm('f-esg', async (b) => { await api('PUT', `/v1/bi/companies/${S.company}/esg/readings`, num(b, 'value')); ok('Reading recorded'); });
+    bindForm('f-factor', async (b) => { await api('PUT', `/v1/bi/companies/${S.company}/esg/factors`, num(b, 'value')); ok('Factor saved'); });
+  },
+  async anomalies(m, ok) {
+    bindCompanyPick(); bindCharts(m);
+    for (const id of ['an-from', 'an-to']) { const el = $('#' + id); if (el) el.onchange = () => { S.anFrom = $('#an-from').value || yearStart(); S.anTo = $('#an-to').value || today(); show('anomalies'); }; }
+    const review = async (v, outcome) => { const [rule, ...k] = v.split('|'); const note = prompt(outcome === 'explained' ? 'What explains it?' : 'What is wrong, and what happens next?'); if (!note) return;
+      await api('POST', `/v1/bi/companies/${S.company}/anomalies/review`, { rule, key: k.join('|'), outcome, note, from: S.anFrom, to: S.anTo }); ok('Review recorded'); };
+    onAct(m, 'an-ok', (v) => review(v, 'explained'));
+    onAct(m, 'an-bad', (v) => review(v, 'confirmed'));
+  },
+});
+
+async function loadPhase5Demo(step, co, root, asApprover) {
+  const d = today();
+  const objs = await api('GET', `/v1/bi/companies/${co}/scorecard?year=${d.slice(0, 4)}&asOf=${d}`);
+  if (objs.objectives.find((o) => o.code === 'DEMO-F1')) return;
+  const emps = await api('GET', '/v1/org/employees');
+  const e1 = emps.find((e) => e.employee_no === 'DEMO-001'), e2 = emps.find((e) => e.employee_no === 'DEMO-002');
+  step('Intelligence: a strategy scorecard with targets...');
+  const y = Number(d.slice(0, 4));
+  const f1 = await api('POST', `/v1/bi/companies/${co}/objectives`, { code: 'DEMO-F1', title: 'Grow profitable revenue', perspective: 'financial', ownerEmployeeId: e1.id });
+  await api('PUT', `/v1/bi/objectives/${f1.id}/targets`, { kpiCode: 'revenue', year: y, target: 250000 });
+  await api('PUT', `/v1/bi/objectives/${f1.id}/targets`, { kpiCode: 'gross_margin_pct', year: y, target: 45, tolerancePct: 10 });
+  await api('PUT', `/v1/bi/objectives/${f1.id}/targets`, { kpiCode: 'dso', year: y, target: 45, tolerancePct: 20 });
+  const c1 = await api('POST', `/v1/bi/companies/${co}/objectives`, { code: 'DEMO-C1', title: 'Fast, reliable service', perspective: 'customer', ownerEmployeeId: e2.id });
+  await api('PUT', `/v1/bi/objectives/${c1.id}/targets`, { kpiCode: 'sla_met_pct', year: y, target: 95, tolerancePct: 5 });
+  const p1 = await api('POST', `/v1/bi/companies/${co}/objectives`, { code: 'DEMO-P1', title: 'Zero harm', perspective: 'people', ownerEmployeeId: e1.id });
+  await api('PUT', `/v1/bi/objectives/${p1.id}/targets`, { kpiCode: 'lost_time_injuries', year: y, target: 0, tolerancePct: 0 });
+  const s1 = await api('POST', `/v1/bi/companies/${co}/objectives`, { code: 'DEMO-S1', title: 'Cut emissions', perspective: 'sustainability' });
+  await api('PUT', `/v1/bi/objectives/${s1.id}/targets`, { kpiCode: 'emissions', year: y, target: 20, tolerancePct: 10 });
+
+  step('Intelligence: ESG meter readings for this month and last...');
+  const lastMonth = (() => { const x = new Date(); x.setUTCDate(1); x.setUTCMonth(x.getUTCMonth() - 1); return x.toISOString().slice(0, 7); })();
+  for (const [mo, kwh, water, waste, rec] of [[lastMonth, 6200, 48, 420, 180], [d.slice(0, 7), 5100, 41, 380, 210]]) {
+    await api('PUT', `/v1/bi/companies/${co}/esg/readings`, { month: mo, metric: 'electricity_kwh', value: kwh });
+    await api('PUT', `/v1/bi/companies/${co}/esg/readings`, { month: mo, metric: 'water_m3', value: water });
+    await api('PUT', `/v1/bi/companies/${co}/esg/readings`, { month: mo, metric: 'waste_kg', value: waste });
+    await api('PUT', `/v1/bi/companies/${co}/esg/readings`, { month: mo, metric: 'recycled_kg', value: rec });
+  }
+  await api('PUT', `/v1/bi/companies/${co}/esg/readings`, { month: d.slice(0, 7), metric: 'solar_kwh', value: 900, note: 'Rooftop panels' });
+
+  step('Intelligence: a duplicate supplier bill for the anomaly checks...');
+  const supp = (await api('GET', '/v1/mdm/parties')).find((p) => p.code === 'DEMO-S1');
+  const bills = await api('GET', `/v1/fin/companies/${co}/invoices?kind=purchase_invoice&status=posted&partyId=${supp.id}`).catch(() => []);
+  const first = bills[0];
+  if (first) {
+    const dup = await api('POST', `/v1/fin/companies/${co}/invoices`, { kind: 'purchase_invoice', partyId: supp.id, supplierRef: (first.supplier_ref || 'DOS') + '-COPY', date: d,
+      lines: [{ description: 'Paper and toner', quantity: 4, unitPrice: 500, taxCode: 'SR', account: '5500' }] });
+    await api('POST', `/v1/fin/invoices/${dup.id}/post`);
+  }
+
+  step('Intelligence: saved reports...');
+  await api('POST', '/v1/bi/reports', { name: 'Revenue by customer and month', dataset: 'sales_invoices', shared: true,
+    spec: { groupBy: ['customer', 'month'], measures: [{ field: 'net', agg: 'sum' }, { field: 'no', agg: 'count' }], sort: [{ by: 'sum_net', dir: 'desc' }] } });
+  await api('POST', '/v1/bi/reports', { name: 'Expenses by account', dataset: 'gl_lines', shared: true,
+    spec: { groupBy: ['account_code', 'account_name'], measures: [{ field: 'net', agg: 'sum' }], filters: [{ field: 'account_type', op: 'eq', value: 'expense' }], sort: [{ by: 'sum_net', dir: 'desc' }] } });
+  await api('POST', '/v1/bi/reports', { name: 'Stock by warehouse', dataset: 'stock', shared: true, spec: { columns: ['warehouse', 'item_code', 'item_name', 'qty', 'unit_cost', 'value'], sort: [{ by: 'value', dir: 'desc' }] } });
+}
+
 // Demo: everything through the public API, as the signed-in admin plus a second approver user.
 async function loadDemo(step) {
   const me = await api('GET', '/v1/me');
@@ -1389,6 +1657,7 @@ async function loadDemo(step) {
   await loadFinanceExtrasDemo(step, co);
   await loadPhase3Demo(step, co, root);
   await loadPhase4Demo(step, co, root, asApprover);
+  await loadPhase5Demo(step, co, root, asApprover);
   step(`Done. Second user: ${appEmail} / ${pw}`);
   toast(`Demo loaded. The approver can sign in as ${appEmail} with password ${pw}`);
 }

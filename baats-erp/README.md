@@ -4,7 +4,7 @@
 
 BAATS Enterprise ERP is a multi-tenant enterprise business operating system: one platform where every department runs as an integrated module on shared engines for organization, identity, workflow, master data, audit and rules.
 
-This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (finance built on BAATS Accounting, UAE edition, plus inventory, procurement, sales and CRM, HR and payroll), **Phase 3 operations** (projects, manufacturing with MRP, maintenance, fleet), **Phase 4 corporate functions** (documents, legal and contracts, risk, compliance and internal audit, corrective actions, service desk, quality, health and safety, facilities), a Windows trial installer, and the foundation documents for the full programme.
+This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (finance built on BAATS Accounting, UAE edition, plus inventory, procurement, sales and CRM, HR and payroll), **Phase 3 operations** (projects, manufacturing with MRP, maintenance, fleet), **Phase 4 corporate functions** (documents, legal and contracts, risk, compliance and internal audit, corrective actions, service desk, quality, health and safety, facilities), **Phase 5 analytics** (KPI engine, executive dashboard, report builder, strategy scorecard, ESG, anomaly checks), a Windows trial installer, and the foundation documents for the full programme.
 
 ## Documents
 
@@ -46,6 +46,11 @@ This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (fi
 | Quality (Phase 4) | Inspections on supplier receipts, work orders or stock; rejects raise NCRs; scrap and return dispositions post the write-off (Dr 5070, Cr 1300) and returns draft the supplier credit note at the billed price; supplier rejection rates |
 | Health and safety (Phase 4) | Anyone can report incidents and near misses; investigation with root cause and actions; closure only with verified actions; LTIFR, TRIR, days lost and days since the last lost-time injury |
 | Facilities (Phase 4) | Rooms, desks, offices and parking per site; bookings with clash, capacity and 12-hour checks; utilisation by space |
+| KPIs and dashboard (Phase 5) | 36 KPIs computed live from the ledger and modules (revenue, margins, cash, DSO, DPO, current ratio, overdue, pipeline, inventory turns, headcount, payroll, SLA, risks, NCRs, LTIs, emissions...), each shown only to people who may read its source; month and year to date against prior periods; 12-month trends, top customers, overdue balances |
+| Report builder (Phase 5) | Governed datasets (ledger lines, sales and supplier invoices, stock, sales orders, payslips, tickets, incidents, timesheets); columns or groups with totals, filters and sort; CSV export with formula neutralising; saved and shared reports; rows limited to the units a user's roles cover |
+| Strategy scorecard (Phase 5) | Objectives by balanced scorecard perspective with KPI targets per year; amounts judged pro rata to date and projected to year end, rates as they stand; red, amber and green with a tolerance band |
+| ESG (Phase 5) | Scope 1 from fleet fuel logs, LPG and refrigerant; scope 2 from grid electricity; water, waste, recycling and solar; overridable emission factors with their source; intensity per revenue and per employee |
+| Anomaly checks (Phase 5) | Whole-ledger rules: duplicate supplier bills, weekend and round-amount manual journals, late postings, high customer credit notes, unmatched supplier payments, Benford's law; review outcomes recorded, and nobody can explain away their own document |
 | API | REST `/v1` with schema validation for all of the above |
 
 ## Run it

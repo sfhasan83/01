@@ -36,7 +36,12 @@ pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:var(--bg
 .dot{stroke:var(--panel);stroke-width:2}.dot.s1{fill:var(--s1)}.dot.s2{fill:var(--s2)}.dot.s3{fill:var(--s3)}.grid{stroke:var(--line);stroke-width:1}.grid.zero{stroke:var(--muted)}.axis{fill:var(--muted);font-size:11px}
 .hit{fill:transparent;cursor:crosshair}.xhair{stroke:var(--muted);stroke-dasharray:3 3}.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:5;min-width:150px}
 .bar{display:grid;grid-template-columns:minmax(90px,35%) 1fr auto;gap:8px;align-items:center;padding:3px 0;font-size:13px}.bl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bt{height:12px}.bf{display:block;height:12px;border-radius:0 4px 4px 0;background:var(--s1)}.bv{font-variant-numeric:tabular-nums}
-.rag{font-weight:600;white-space:nowrap}.rag-green{color:var(--ok)}.rag-amber{color:var(--warn)}.rag-red{color:var(--bad)}.checks{display:flex;flex-wrap:wrap;gap:6px 14px}.ck{flex-direction:row!important;align-items:center;gap:6px;display:flex}
+.atiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-top:12px}.atile{display:flex;flex-direction:column;text-align:left;font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;cursor:pointer;min-width:0}
+.atile:hover{border-color:var(--brand)}.atile.on{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}.atile:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.spark{width:100%;height:30px;margin-top:8px;overflow:visible}.spark polyline{fill:none;stroke:var(--s1);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}.spark circle{fill:var(--s1);stroke:var(--panel);stroke-width:2}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}.tab{padding:5px 10px;border:1px solid var(--line);border-radius:99px;background:var(--panel);color:var(--ink);cursor:pointer;font:inherit;font-size:13px}.tab.on{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.ana-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}.ana-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 14px}.ana-order{display:flex;flex-direction:column;gap:4px;margin:8px 0}.ana-order div{display:flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:4px 8px}.ana-order span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ana-order button{padding:2px 8px}
+.share{color:var(--muted);font-size:12px;margin-left:6px}.rag{font-weight:600;white-space:nowrap}.rag-green{color:var(--ok)}.rag-amber{color:var(--warn)}.rag-red{color:var(--bad)}.checks{display:flex;flex-wrap:wrap;gap:6px 14px}.ck{flex-direction:row!important;align-items:center;gap:6px;display:flex}
 .ai-wrap{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start}.ai-side{position:sticky;top:12px}.ai-list{display:flex;flex-direction:column;gap:4px;margin-top:10px;max-height:60vh;overflow:auto}
 .ai-item{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:8px 10px;cursor:pointer;font:inherit}.ai-item.on{border-color:var(--brand);background:var(--chip)}.ai-item span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .ai-thread{max-height:62vh;overflow:auto;padding:8px 2px;display:flex;flex-direction:column;gap:10px}.ai-msg{display:flex}.ai-msg.me{justify-content:flex-end}.ai-bubble{max-width:85%;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--line);overflow-wrap:anywhere}.ai-msg.me .ai-bubble{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
@@ -128,7 +133,7 @@ const pages = {
   async overview() {
     const me = await api('GET', '/v1/me');
     return `<div class="card"><h3>Welcome, ${esc(me.user.display_name)}</h3><p class="muted">Signed in to <b>${esc(S.tenant)}</b> as ${esc(me.user.email)}. MFA: ${me.user.mfa_enabled ? 'on' : 'off'}.</p>
-      <p>This console lets you try what BAATS can do today. Phase 5: an AI assistant that answers questions from your books and proposes changes for you to confirm (an administrator turns it on under Assistant settings, with Claude or a model on this computer), an executive dashboard computed live from the books, a report builder over governed datasets with CSV export, a strategy scorecard with KPI targets, ESG emissions and resource use, and anomaly checks on the whole ledger. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
+      <p>This console lets you try what BAATS can do today. Phase 6a: an interactive dashboard (pick any period and a comparison, click a KPI to see its trend, breakdowns and the records behind it, and keep your own tiles), and country packs with Saudi Arabia beside the UAE: 15% VAT, the ZATCA VAT return, ZATCA e-invoices chained by hash with QR codes, GOSI and the Saudi end-of-service award (try it with Load Saudi demo under Finance: setup). Phase 5: an AI assistant that answers questions from your books and proposes changes for you to confirm (an administrator turns it on under Assistant settings, with Claude or a model on this computer), an executive dashboard computed live from the books, a report builder over governed datasets with CSV export, a strategy scorecard with KPI targets, ESG emissions and resource use, and anomaly checks on the whole ledger. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
       <div class="card"><h3>Your approvals waiting (${me.inbox.length})</h3>${table(me.inbox)}</div>
       <div class="card"><h3>Your permissions (${me.permissions.length})</h3>${me.permissions.map((p) => `<span class="pill">${esc(typeof p === 'string' ? p : p.permission || JSON.stringify(p))}</span>`).join('')}</div>`;
   },
@@ -145,10 +150,10 @@ const pages = {
   },
   async employees() {
     const [us, emps] = await Promise.all([units(), api('GET', '/v1/org/employees')]);
-    return `<div class="card"><h3>Employees</h3>${table(emps, ['employee_no', 'first_name', 'last_name', 'email', 'designation', 'status', 'hire_date'].filter((c) => !emps[0] || c in emps[0]))}</div>
+    return `<div class="card"><h3>Employees</h3>${table(emps, ['employee_no', 'first_name', 'last_name', 'email', 'designation', 'nationality', 'status', 'hire_date'].filter((c) => !emps[0] || c in emps[0]))}</div>
     <div class="card"><h3>Add an employee</h3><form id="f-emp"><div class="grid">
       ${field('employeeNo', 'Employee no.', 'required')}${field('firstName', 'First name', 'required')}${field('lastName', 'Last name', 'required')}${field('email', 'Email', 'type="email"')}
-      ${pick('unitId', 'Unit', unitOpts(us))}${pick('managerId', 'Manager', [['', '(none)'], ...emps.map((e) => [e.id, `${e.first_name} ${e.last_name}`])])}${field('hireDate', 'Hire date', 'type="date"')}
+      ${pick('unitId', 'Unit', unitOpts(us))}${pick('managerId', 'Manager', [['', '(none)'], ...emps.map((e) => [e.id, `${e.first_name} ${e.last_name}`])])}${field('hireDate', 'Hire date', 'type="date"')}${field('nationality', 'Nationality (2-letter code, e.g. SA, IN)', 'maxlength="2" pattern="[A-Za-z]{2}"')}
       </div><div class="row"><button class="btn">Add employee</button></div></form></div>`;
   },
   async access() {
@@ -168,7 +173,7 @@ const pages = {
     return `<div class="card"><h3>Customers and suppliers</h3><p class="muted">New records start as drafts. "Submit" sends one for approval, and someone other than you must approve it. So before submitting, add a second user under Users and roles and give them the Tenant administrator role.</p>
       ${parties.length ? '<div class="tbl"><table><tr><th>code</th><th>name</th><th>customer</th><th>supplier</th><th>country</th><th>credit limit</th><th>status</th><th></th></tr>' + parties.map((p) => `<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${p.is_customer ? 'yes' : ''}</td><td>${p.is_supplier ? 'yes' : ''}</td><td>${esc(p.country_code)}</td><td>${esc(p.credit_limit)}</td><td>${esc(p.status)}${p.blocked ? ' (blocked)' : ''}</td><td>${p.status === 'draft' ? `<button class="btn sec" data-submit="${p.id}">Submit</button>` : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">Nothing here yet.</div>'}
       <form id="f-party"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${check('isCustomer', 'Customer', true)}${check('isSupplier', 'Supplier')}
-      ${field('countryCode', 'Country', 'required value="AE" maxlength="2"')}${field('currencyCode', 'Currency', 'maxlength="3"')}${field('taxRegistrationNo', 'Tax reg. no.')}${field('creditLimit', 'Credit limit', 'type="number" min="0"')}${pick('ownerUnitId', 'Owning unit', unitOpts(us))}${field('street', 'Street (for e-invoices)')}${field('city', 'City')}${field('emirate', 'Emirate code (DXB, AUH...)', 'maxlength="3"')}
+      ${field('countryCode', 'Country', 'required value="AE" maxlength="2"')}${field('currencyCode', 'Currency', 'maxlength="3"')}${field('taxRegistrationNo', 'Tax reg. no.')}${field('creditLimit', 'Credit limit', 'type="number" min="0"')}${pick('ownerUnitId', 'Owning unit', unitOpts(us))}${field('street', 'Street (for e-invoices)')}${field('city', 'City')}${field('emirate', 'Emirate code (UAE: DXB, AUH...)', 'maxlength="3"')}${field('building_no', 'Building no. (Saudi, 4 digits)', 'pattern="[0-9]{4}"')}${field('district', 'District (Saudi)')}${field('postal_code', 'Postal code (Saudi, 5 digits)', 'pattern="[0-9]{5}"')}${field('cr_no', 'Commercial registration no. (Saudi)')}
       </div><div class="row"><button class="btn">Add customer / supplier</button></div></form></div>
     <div class="card"><h3>Items</h3>${table(items, ['code', 'name', 'item_type', 'base_uom', 'barcode', 'status'].filter((c) => !items[0] || c in items[0]))}
       <form id="f-item"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${pick('itemType', 'Type', [['stock', 'Stock'], ['service', 'Service'], ['non_stock', 'Non-stock'], ['asset', 'Asset']])}${uoms.length ? pick('baseUom', 'Unit of measure', uoms.map((u) => [u.code, `${u.code} - ${u.name}`])) : '<label>Unit of measure<input disabled placeholder="Add one below first"></label>'}${field('barcode', 'Barcode')}</div><div class="row"><button class="btn">Add item</button></div></form></div>
@@ -192,7 +197,7 @@ const pages = {
       <label style="margin-top:10px">JSON body<textarea name="body"></textarea></label><div class="row"><button class="btn">Send</button></div></form><pre id="api-out"></pre></div>`;
   },
 };
-const MENU = [['overview', 'Overview'], ['assistant', 'AI assistant'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['aisettings', 'Assistant settings'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audittrail', 'Audit trail'], ['apitester', 'API tester']];
+const MENU = [['overview', 'Overview'], ['assistant', 'AI assistant'], ['analytics', 'Interactive dashboard'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['aisettings', 'Assistant settings'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audittrail', 'Audit trail'], ['apitester', 'API tester']];
 let current = 'overview';
 const after = {};
 
@@ -206,7 +211,7 @@ async function show(page) {
   bindForm('f-unit', async (b) => { await api('POST', '/v1/org/units', b); ok('Unit added'); });
   bindForm('f-type', async (b) => { await api('POST', '/v1/org/unit-types', { ...b, rank: Number(b.rank) }); ok('Level added'); });
   bindForm('f-desig', async (b) => { await api('POST', '/v1/org/designations', b); ok('Designation added'); });
-  bindForm('f-emp', async (b) => { await api('POST', '/v1/org/employees', b); ok('Employee added'); });
+  bindForm('f-emp', async (b) => { if (b.nationality) b.nationality = b.nationality.toUpperCase(); await api('POST', '/v1/org/employees', b); ok('Employee added'); });
   bindForm('f-user', async (b) => { await api('POST', '/v1/iam/users', b); ok('User added'); });
   bindForm('f-role', async (b) => { await api('POST', '/v1/iam/roles', b); ok('Role added'); });
   bindForm('f-perm', async (b) => { await api('PUT', `/v1/iam/roles/${b.roleId}/permissions/${encodeURIComponent(b.perm)}`, {}); ok('Permission granted'); });
@@ -214,7 +219,7 @@ async function show(page) {
   bindForm('f-check', async (b) => { const r = await api('POST', '/v1/iam/check', b); const o = $('#check-out'); o.style.display = 'block'; o.textContent = JSON.stringify(r, null, 2); });
   bindForm('f-party', async (b) => {
     if (b.creditLimit) b.creditLimit = Number(b.creditLimit);
-    const attributes = {}; for (const k of ['street', 'city', 'emirate']) if (b[k]) { attributes[k] = k === 'emirate' ? b[k].toUpperCase() : b[k]; delete b[k]; }
+    const attributes = {}; for (const k of ['street', 'city', 'emirate', 'building_no', 'district', 'postal_code', 'cr_no']) if (b[k]) { attributes[k] = k === 'emirate' ? b[k].toUpperCase() : b[k]; delete b[k]; }
     await api('POST', '/v1/mdm/parties', { ...b, attributes }); ok('Saved as draft');
   });
   bindForm('f-item', async (b) => { await api('POST', '/v1/mdm/items', b); ok('Item added'); });
@@ -241,7 +246,7 @@ const quarter = () => { const d = new Date(); const q = Math.floor(d.getMonth() 
 async function companies() {
   const us = await units();
   const out = [];
-  for (const u of us.filter((x) => x.country_code === 'AE' && x.currency_code)) {
+  for (const u of us.filter((x) => PACK_COUNTRIES.includes(x.country_code) && x.currency_code)) {
     try { const acc = await api('GET', `/v1/fin/companies/${u.id}/accounts`); if (acc.length) out.push({ ...u, accounts: acc }); } catch { /* not a company with books */ }
   }
   cache.companies = out;
@@ -249,6 +254,9 @@ async function companies() {
   return out;
 }
 const company = () => cache.companies.find((c) => c.id === S.company);
+const PACK_COUNTRIES = ['AE', 'SA'];
+const isSA = () => company()?.country_code === 'SA';
+const ccy = () => company()?.currency_code || 'AED';
 function companyBar(cs) {
   return cs.length > 1 ? `<div class="card"><label>Company<select id="co-pick">${cs.map((c) => `<option value="${c.id}" ${c.id === S.company ? 'selected' : ''}>${esc(c.code)} - ${esc(c.name)}</option>`).join('')}</select></label></div>` : '';
 }
@@ -273,20 +281,24 @@ Object.assign(pages, {
     const types = await api('GET', '/v1/org/unit-types');
     const legal = new Set(types.filter((t) => t.is_legal_entity).map((t) => t.code));
     const candidates = us.filter((u) => legal.has(u.type) && !cs.find((c) => c.id === u.id));
+    const packs = await api('GET', '/v1/fin/country-packs').catch(() => []);
     return `<div class="card"><h3>Try finance in one click</h3><p class="muted">Loads a small demo: sets up books for your head company (if needed), adds a second user who can approve, a customer and a supplier, invoices, a receipt, an owner's capital journal, a warehouse, a purchase order through approval, receipt and bill, a lead and a sales order delivered and invoiced, two employment contracts and this month's payroll, e-invoices, a reconciled bank statement and a depreciating asset, then two projects with billed timesheets, a manufactured desk, and a van with fuel, trips and maintenance. Takes about 45 seconds.</p>
       <div class="row"><button class="btn" id="demo">Load demo data</button><span id="demo-out" class="muted"></span></div></div>
+    <div class="card"><h3>Try Saudi Arabia</h3><p class="muted">Adds a Saudi company (BAATS Arabia, in SAR) beside your head company and fills it: books with 15% VAT, a standard and a simplified sale, an export, an exempt sale and a reverse-charge bill, ZATCA e-invoices chained by hash with QR codes, and a payroll with GOSI for a Saudi and a non-Saudi employee. Run the main demo first. Takes about 20 seconds.</p>
+      <div class="row"><button class="btn sec" id="demo-sa">Load Saudi demo</button><span id="demo-sa-out" class="muted"></span></div></div>
+    ${packs.length ? `<div class="card"><h3>Country packs</h3><div class="tbl"><table><tr><th>country</th><th>currency</th><th>VAT return</th><th>e-invoices</th><th>end of service</th><th>social insurance</th><th>corporate tax</th></tr>${packs.map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.currency)}</td><td>${esc(p.vatForm)}</td><td>${esc(p.einvoice)}</td><td title="${esc(p.endOfService)}">${esc(p.endOfService)}</td><td>${p.contributions.length ? esc(p.contributions.map((c) => c.name).join(', ')) : 'none set'}</td><td>${esc(p.corporateTax)}</td></tr>`).join('')}</table></div></div>` : ''}
     ${cs.length ? companyBar(cs) + `<div class="card"><h3>Chart of accounts: ${esc(company().name)}</h3>${table(company().accounts, ['code', 'name', 'type', 'parent_code', 'is_group', 'control'])}
       <form id="f-acct"><div class="grid">${field('code', 'New account code (3-10 digits)', 'required')}${field('name', 'Name', 'required')}${pick('parentCode', 'Under group', company().accounts.filter((a) => a.is_group).map((a) => [a.code, `${a.code} ${a.name}`]))}</div><div class="row"><button class="btn sec">Add account</button></div></form></div>` : ''}
     <div class="card"><h3>Set up books for a company</h3>
-      ${candidates.length ? `<p class="muted">Books can be kept by a legal-entity unit with country AE and a currency (UAE is the first country pack). The BAATS UAE chart of accounts, VAT codes and 12 open months are created.</p>
+      ${candidates.length ? `<p class="muted">Books can be kept by a legal-entity unit whose country has a pack: AE (United Arab Emirates, in AED) or SA (Saudi Arabia, in SAR). The country's chart of accounts, VAT codes, payroll rules and 12 open months are created.</p>
       <form id="f-books"><div class="grid">${pick('unitId', 'Unit', candidates.map((u) => [u.id, `${u.code} - ${u.name} (${u.country_code || 'no country'}, ${u.currency_code || 'no currency'})`]))}
-      ${field('legalName', 'Legal name', 'required')}${field('taxRegistrationNo', 'TRN (15 digits, optional)', 'pattern="[0-9]{15}"')}${field('openFrom', 'Books open from', `type="date" required value="${yearStart()}"`)}
+      ${field('legalName', 'Legal name', 'required')}${field('taxRegistrationNo', 'TRN or Saudi VAT no. (15 digits, optional)', 'pattern="[0-9]{15}"')}${field('openFrom', 'Books open from', `type="date" required value="${yearStart()}"`)}
       ${pick('vatPeriod', 'VAT period', [['quarterly', 'Quarterly'], ['monthly', 'Monthly']])}</div><div class="row"><button class="btn">Set up books</button></div></form>`
       : '<p class="muted">Every legal-entity unit already has books. Add a Company unit under Organization to set up another one.</p>'}</div>`;
   },
   async invoices() {
     const cs = await companies(); if (!cs.length) return noBooks;
-    const [invs, custs, supps, taxes] = await Promise.all([api('GET', `/v1/fin/companies/${S.company}/invoices`), activeParties('customer'), activeParties('supplier'), api('GET', '/v1/fin/tax-codes')]);
+    const [invs, custs, supps, taxes] = await Promise.all([api('GET', `/v1/fin/companies/${S.company}/invoices`), activeParties('customer'), activeParties('supplier'), api('GET', `/v1/fin/tax-codes?country=${company().country_code}`)]);
     cache.parties = { customer: custs, supplier: supps };
     const taxOpts = taxes.map((t) => [t.code, `${t.code} - ${t.name}`]);
     const line = (i) => `<div class="grid" style="margin-top:6px">${field(`d${i}`, `Line ${i + 1}: description`, i ? '' : 'required')}${field(`q${i}`, 'Quantity', `type="number" step="any" ${i ? '' : 'required value="1"'}`)}${field(`p${i}`, 'Unit price', `type="number" step="any" ${i ? '' : 'required'}`)}${pick(`t${i}`, 'VAT', taxOpts)}<label>Account<select name="a${i}" class="acct"></select></label></div>`;
@@ -315,7 +327,7 @@ Object.assign(pages, {
   async vat() {
     const cs = await companies(); if (!cs.length) return noBooks;
     const [f, t] = quarter();
-    return companyBar(cs) + `<div class="card"><h3>UAE VAT return (VAT 201)</h3><form id="f-vat"><div class="grid">${field('from', 'From', `type="date" required value="${f}"`)}${field('to', 'To', `type="date" required value="${t}"`)}</div>
+    return companyBar(cs) + `<div class="card"><h3>${isSA() ? 'Saudi VAT return (ZATCA)' : 'UAE VAT return (VAT 201)'}</h3><form id="f-vat"><div class="grid">${field('from', 'From', `type="date" required value="${f}"`)}${field('to', 'To', `type="date" required value="${t}"`)}</div>
       <div class="row"><button class="btn">Calculate</button><button class="btn sec" type="button" id="vat-file">File this return</button></div></form><div id="vat-out"></div></div>`;
   },
   async reports() {
@@ -333,6 +345,7 @@ Object.assign(after, {
     bindCompanyPick();
     bindForm('f-books', async (b) => { await api('POST', '/v1/fin/companies', b); S.company = b.unitId; ok('Books set up'); });
     bindForm('f-acct', async (b) => { await api('POST', `/v1/fin/companies/${S.company}/accounts`, b); ok('Account added'); });
+    $('#demo-sa').onclick = async () => { const out = $('#demo-sa-out'); $('#demo-sa').disabled = true; try { await loadSaudiDemo((t) => { out.textContent = t; }); ok('Saudi demo loaded'); } catch (e) { out.textContent = ''; toast(e.message, false); $('#demo-sa').disabled = false; } };
     $('#demo').onclick = async () => { const out = $('#demo-out'); $('#demo').disabled = true; try { await loadDemo((t) => { out.textContent = t; }); ok('Demo data loaded'); } catch (e) { out.textContent = ''; toast(e.message, false); $('#demo').disabled = false; } };
   },
   async invoices(m, ok) {
@@ -391,8 +404,8 @@ Object.assign(after, {
     bindCompanyPick();
     const calc = async (b) => {
       const r = await api('GET', `/v1/fin/companies/${S.company}/vat-return?from=${b.from}&to=${b.to}`);
-      $('#vat-out').innerHTML = report(Object.entries(r.boxes).map(([k, v]) => ({ box: VAT_BOXES[k] || 'Box ' + k, amount: v.amount, vat: v.vat })), [['box', 'Box'], ['amount', 'Amount (AED)', 1], ['vat', 'VAT (AED)', 1]]) +
-        `<p>Output tax <b>${money(r.outputTax)}</b> · Input tax <b>${money(r.inputTax)}</b> · <b>Net VAT ${r.netPayable >= 0 ? 'payable' : 'refundable'}: ${money(Math.abs(r.netPayable))}</b></p>`;
+      $('#vat-out').innerHTML = report(Object.entries(r.boxes).sort(([a], [b]) => a - b).map(([k, v]) => ({ box: `Box ${k}: ${r.labels?.[k] || VAT_BOXES[k] || ''}`, amount: v.amount, vat: v.vat })), [['box', 'Box'], ['amount', `Amount (${ccy()})`, 1], ['vat', `VAT (${ccy()})`, 1]]) +
+        `<p>Output tax <b>${money(r.outputTax)}</b> · Input tax <b>${money(r.inputTax)}</b> · <b>Net VAT ${r.netPayable >= 0 ? `payable to the ${esc(r.authority || 'FTA')}` : `refundable by the ${esc(r.authority || 'FTA')}`}: ${money(Math.abs(r.netPayable))} ${ccy()}</b></p>${(r.notes || []).map((n) => `<p class="muted">${esc(n)}</p>`).join('')}`;
     };
     bindForm('f-vat', calc);
     $('#vat-file').onclick = async () => { const b = form($('#f-vat')); if (!confirm('File this VAT return? This posts the VAT settlement journal and locks the period for VAT.')) return; try { await api('POST', `/v1/fin/companies/${S.company}/vat-returns`, b); toast('VAT return filed'); await calc(b); } catch (e) { toast(e.message, false); } };
@@ -449,7 +462,7 @@ function readLines(b, n, items) {
   }
   return out;
 }
-const taxCodes = async () => (cache.tax ||= (await api('GET', '/v1/fin/tax-codes')).map((t) => [t.code, `${t.code} - ${t.name}`]));
+const taxCodes = async () => { const cc = company()?.country_code || 'AE'; cache.tax ||= {}; return (cache.tax[cc] ||= (await api('GET', `/v1/fin/tax-codes?country=${cc}`)).map((t) => [t.code, `${t.code} - ${t.name}`])); };
 function download(name, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' })); a.download = name; a.click(); }
 
 Object.assign(pages, {
@@ -500,18 +513,26 @@ Object.assign(pages, {
   },
   async hr() {
     const cs = await companies(); if (!cs.length) return noBooks;
-    const [contracts, leave, runs, emps] = await Promise.all([api('GET', `/v1/hr/companies/${S.company}/contracts`), api('GET', `/v1/hr/companies/${S.company}/leave`),
-      api('GET', `/v1/hr/companies/${S.company}/payroll`), api('GET', '/v1/org/employees')]);
+    const [contracts, leave, runs, emps, gosi] = await Promise.all([api('GET', `/v1/hr/companies/${S.company}/contracts`), api('GET', `/v1/hr/companies/${S.company}/leave`),
+      api('GET', `/v1/hr/companies/${S.company}/payroll`), api('GET', '/v1/org/employees'), api('GET', `/v1/hr/companies/${S.company}/contribution-rules`)]);
+    const sa = isSA();
     const withK = contracts.filter((k) => k.status === 'active');
-    const runAct = (r) => r.status === 'draft' ? `${act('View', 'pr-view', r.id, 1)} ${act('Post to ledger', 'pr-post', r.id)}` : r.status === 'posted' ? `${act('View', 'pr-view', r.id, 1)} ${act('Pay and make WPS file', 'pr-pay', r.id)}` : act('View', 'pr-view', r.id, 1);
+    const runAct = (r) => r.status === 'draft' ? `${act('View', 'pr-view', r.id, 1)} ${act('Post to ledger', 'pr-post', r.id)}` : r.status === 'posted' ? `${act('View', 'pr-view', r.id, 1)} ${act(sa ? 'Pay salaries' : 'Pay and make WPS file', 'pr-pay', r.id)}` : act('View', 'pr-view', r.id, 1);
     const ym = today().slice(0, 7);
-    return companyBar(cs) + `<div class="card"><h3>Payroll</h3><p class="muted">Monthly pay is pro-rated for joiners, leavers and approved unpaid leave. Posting charges 5000 Salaries by cost center, and trues up the end-of-service gratuity provision (2500) using BAATS's rule: 21 days' basic a year for 5 years, 30 after, none under 1 year, capped at 24 months. Paying creates the UAE WPS salary file (SIF).</p>
-      ${runs.length ? '<div class="tbl"><table><tr><th>period</th><th style="text-align:right">gross</th><th style="text-align:right">deductions</th><th style="text-align:right">net</th><th style="text-align:right">gratuity change</th><th>status</th><th></th></tr>' + runs.map((r) => `<tr><td>${esc(r.period)}</td><td style="text-align:right">${money(r.gross_total)}</td><td style="text-align:right">${money(r.deductions_total)}</td><td style="text-align:right">${money(r.net_total)}</td><td style="text-align:right">${money(r.gratuity_change)}</td><td>${esc(r.status)}</td><td>${runAct(r)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No payroll yet.</div>'}
+    return companyBar(cs) + `<div class="card"><h3>Payroll</h3><p class="muted">${sa ? `Monthly pay is pro-rated for joiners, leavers and approved unpaid leave. GOSI is worked out from the rules below by nationality: the employee share comes off net pay, the employer share is charged to 5930, and both go to 2220 GOSI payable. Posting also trues up the end-of-service provision (2500) under Saudi law: ${esc(gosi.endOfService)}.` : "Monthly pay is pro-rated for joiners, leavers and approved unpaid leave. Posting charges 5000 Salaries by cost center, and trues up the end-of-service gratuity provision (2500) using BAATS's rule: 21 days' basic a year for 5 years, 30 after, none under 1 year, capped at 24 months. Paying creates the UAE WPS salary file (SIF)."}</p>
+      ${runs.length ? '<div class="tbl"><table><tr><th>period</th><th style="text-align:right">gross</th><th style="text-align:right">deductions</th>' + (sa ? '<th style="text-align:right">GOSI (employees)</th><th style="text-align:right">GOSI (employer)</th>' : '') + '<th style="text-align:right">net</th><th style="text-align:right">gratuity change</th><th>status</th><th></th></tr>' + runs.map((r) => `<tr><td>${esc(r.period)}</td><td style="text-align:right">${money(r.gross_total)}</td><td style="text-align:right">${money(r.deductions_total)}</td>${sa ? `<td style="text-align:right">${money(r.employee_contributions_total)}</td><td style="text-align:right">${money(r.employer_contributions_total)}</td>` : ''}<td style="text-align:right">${money(r.net_total)}</td><td style="text-align:right">${money(r.gratuity_change)}</td><td>${esc(r.status)}</td><td>${runAct(r)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No payroll yet.</div>'}
       <form id="f-pr"><div class="grid">${field('period', 'Month', `type="month" required value="${ym}"`)}</div><div class="row"><button class="btn">Calculate payroll</button></div></form><div id="pr-out"></div></div>
     <div class="card"><h3>Employment contracts</h3>${report(contracts.map((k) => ({ ...k, start_date: d10(k.start_date), end_date: d10(k.end_date) })), [['employee_no', 'No.'], ['employee_name', 'Employee'], ['unit_name', 'Unit'], ['start_date', 'Start'], ['end_date', 'End'], ['status', 'Status'], ['basic', 'Basic', 1], ['monthly_total', 'Monthly total', 1]])}
       <form id="f-k"><div class="grid">${pick('employeeId', 'Employee', emps.filter((e) => !withK.find((k) => k.employee_id === e.id)).map((e) => [e.id, `${e.employee_no} ${e.first_name} ${e.last_name}`]))}${field('startDate', 'Start date', `type="date" required value="${today()}"`)}
         ${field('basic', 'Basic salary', 'type="number" step="any" required min="1"')}${field('housing', 'Housing', 'type="number" step="any" min="0"')}${field('transport', 'Transport', 'type="number" step="any" min="0"')}${field('otherAllowances', 'Other allowances', 'type="number" step="any" min="0"')}
-        ${field('wpsPersonId', 'WPS personal no. (14 digits)', 'pattern="[0-9]{14}"')}${field('bankRoutingCode', 'Bank routing code (9 digits)', 'pattern="[0-9]{9}"')}${field('iban', 'IBAN (AE...)')}</div><div class="row"><button class="btn sec">Add contract</button></div></form></div>
+        ${sa ? field('iban', 'IBAN (SA...)') : `${field('wpsPersonId', 'WPS personal no. (14 digits)', 'pattern="[0-9]{14}"')}${field('bankRoutingCode', 'Bank routing code (9 digits)', 'pattern="[0-9]{9}"')}${field('iban', 'IBAN (AE...)')}`}</div><div class="row"><button class="btn sec">Add contract</button></div></form>
+      ${withK.length ? `<h4>End a contract</h4><p class="muted">The end-of-service benefit depends on the reason${sa ? ': on resignation Saudi law pays nothing under 2 years, a third to 5 years, two thirds to 10 years' : ''}. Once ended, pay the settlement from the 2500 provision.</p>
+      <form id="f-kend"><div class="grid">${pick('contractId', 'Contract', withK.map((k) => [k.id, `${k.employee_no} ${k.employee_name}`]))}${field('endDate', 'Last day', `type="date" required value="${today()}"`)}${pick('reason', 'Reason', [['termination', 'Ended by the employer'], ['resignation', 'Resignation'], ['contract_end', 'Fixed term ended'], ['mutual', 'Mutual agreement'], ['retirement', 'Retirement'], ['death', 'Death']])}</div><div class="row"><button class="btn sec">End contract</button></div></form>` : ''}
+      ${contracts.filter((k) => k.status === 'ended').length ? `<div class="row">${contracts.filter((k) => k.status === 'ended').map((k) => act(`Pay end-of-service: ${esc(k.employee_no)}`, 'k-settle', k.id, 1)).join(' ')}</div>` : ''}</div>
+    ${gosi.rules.length ? `<div class="card"><h3>Social insurance (GOSI)</h3><p class="muted">Rates are kept per company so a change in the law is a change here, not a new release. Payrolls already posted keep the rates they used. Please check these against GOSI's current rates for your employees: Saudis who first joined GOSI from July 2024 have annuity rates that step up each year.</p>
+      ${report(gosi.rules.map((r) => ({ ...r, applies_to: { nationals: 'Saudi nationals', non_nationals: 'Non-Saudis', all: 'Everyone' }[r.applies_to], base: { basic: 'Basic', basic_housing: 'Basic + housing', gross: 'Gross' }[r.base], active: r.active ? 'yes' : 'no' })),
+        [['code', 'Code'], ['name', 'Contribution'], ['applies_to', 'Applies to'], ['employee_pct', 'Employee %'], ['employer_pct', 'Employer %'], ['base', 'On'], ['monthly_cap', 'Monthly cap', 1], ['active', 'Active']])}
+      <form id="f-gosi"><div class="grid">${pick('code', 'Rule', gosi.rules.map((r) => [r.code, r.name]))}${field('employeePct', 'Employee %', 'type="number" step="0.001" min="0" max="100" required')}${field('employerPct', 'Employer %', 'type="number" step="0.001" min="0" max="100" required')}${field('monthlyCap', 'Monthly cap', 'type="number" step="any" min="1"')}</div><div class="row"><button class="btn sec">Change rate</button></div></form></div>` : ''}
     <div class="card"><h3>Leave</h3>${report(leave.map((l) => ({ ...l, date_from: d10(l.date_from), date_to: d10(l.date_to) })), [['employee_name', 'Employee'], ['leave_type', 'Type'], ['date_from', 'From'], ['date_to', 'To'], ['days', 'Days'], ['status', 'Status']])}
       <p class="muted">The employee's line manager (or an HR manager) approves under Approvals. Annual leave accrues monthly from the contract start.</p>
       <form id="f-leave"><div class="grid">${pick('employeeId', 'Employee', withK.map((k) => [k.employee_id, `${k.employee_no} ${k.employee_name}`]))}${pick('leaveType', 'Type', [['annual', 'Annual'], ['sick', 'Sick'], ['unpaid', 'Unpaid'], ['maternity', 'Maternity'], ['parental', 'Parental'], ['compassionate', 'Compassionate'], ['hajj', 'Hajj']])}
@@ -587,11 +608,17 @@ Object.assign(after, {
     });
     bindForm('f-leave', async (b) => { await api('POST', '/v1/hr/leave', b); ok('Leave requested; it now waits for approval'); });
     bindForm('f-pr', async (b) => { const r = await api('POST', `/v1/hr/companies/${c}/payroll`, { period: b.period }); toast(`Payroll ${r.period} calculated`); await show('hr'); showRun(r); });
-    const showRun = (r) => { $('#pr-out').innerHTML = `<h4>Payslips ${esc(r.period)}</h4>` + report(r.payslips, [['employee_no', 'No.'], ['employee_name', 'Employee'], ['unit_name', 'Cost center'], ['paid_days', 'Paid days'], ['basic', 'Basic', 1], ['allowances', 'Allowances', 1], ['additions', 'Additions', 1], ['deductions', 'Deductions', 1], ['net', 'Net', 1], ['gratuity_balance', 'Gratuity accrued', 1]]); };
+    const sa = isSA();
+    const showRun = (r) => { $('#pr-out').innerHTML = `<h4>Payslips ${esc(r.period)}</h4>` + report(r.payslips, [['employee_no', 'No.'], ['employee_name', 'Employee'], ['unit_name', 'Cost center'], ['paid_days', 'Paid days'], ['basic', 'Basic', 1], ['allowances', 'Allowances', 1], ['additions', 'Additions', 1], ['deductions', 'Deductions', 1],
+      ...(sa ? [['employee_contributions', 'GOSI (employee)', 1], ['employer_contributions', 'GOSI (employer)', 1]] : []), ['net', 'Net', 1], ['gratuity_balance', sa ? 'End-of-service accrued' : 'Gratuity accrued', 1]]); };
+    bindForm('f-kend', async (b) => { const r = await api('POST', `/v1/hr/contracts/${b.contractId}/end`, { endDate: b.endDate, reason: b.reason }); ok(`Contract ended. End-of-service benefit due: ${money(r.finalGratuity)} ${ccy()}`); });
+    bindForm('f-gosi', async (b) => { await api('PUT', `/v1/hr/companies/${c}/contribution-rules`, { code: b.code, employeePct: Number(b.employeePct), employerPct: Number(b.employerPct), ...(b.monthlyCap ? { monthlyCap: Number(b.monthlyCap) } : {}) }); ok('Rate changed'); });
     const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
     on('pr-view', async (id) => showRun(await api('GET', `/v1/hr/payroll/${id}`)));
     on('pr-post', async (id) => { await api('POST', `/v1/hr/payroll/${id}/post`); ok('Payroll posted to the ledger'); });
+    on('k-settle', async (id) => { if (!confirm('Pay the end-of-service benefit from the bank account now?')) return; const r = await api('POST', `/v1/hr/contracts/${id}/settlement`, { date: today() }); ok(r.amount ? `Paid ${money(r.amount)} ${ccy()}` : r.note); });
     on('pr-pay', async (id) => {
+      if (sa) { const r = await api('POST', `/v1/hr/payroll/${id}/pay`, { date: today() }); ok(`Salaries paid: ${money(r.total)} SAR`); return; }
       const employerId = prompt('MOHRE employer (establishment) id, 13 digits', localStorage.getItem('baatsEmployer') || ''); if (!employerId) return;
       const employerBankCode = prompt("Your bank's 9-digit routing code", localStorage.getItem('baatsEmployerBank') || ''); if (!employerBankCode) return;
       localStorage.setItem('baatsEmployer', employerId); localStorage.setItem('baatsEmployerBank', employerBankCode);
@@ -646,6 +673,7 @@ Object.assign(pages, {
   async einvoicing() {
     const cs = await companies(); if (!cs.length) return noBooks;
     const rows = await api('GET', `/v1/fin/companies/${S.company}/einvoices`);
+    if (isSA()) return companyBar(cs) + zatcaPage(rows);
     return companyBar(cs) + `<div class="card"><h3>Seller details for e-invoices</h3><p class="muted">PINT AE needs the company's address, emirate, trade licence and IBAN. These are checked before every e-invoice is issued.</p>
       <form id="f-seller"><div class="grid">${field('street', 'Street')}${field('city', 'City')}${pick('emirate', 'Emirate', [['', '(choose)'], ['AUH', 'Abu Dhabi'], ['DXB', 'Dubai'], ['SHJ', 'Sharjah'], ['AJM', 'Ajman'], ['UAQ', 'Umm Al Quwain'], ['RAK', 'Ras Al Khaimah'], ['FUJ', 'Fujairah']])}
       ${field('tradeLicenceNo', 'Trade licence no.')}${field('licenceAuthority', 'Licence authority')}${field('iban', 'IBAN (AE...)')}${field('taxRegistrationNo', 'TRN (15 digits)')}${field('email', 'Email')}${field('phone', 'Phone')}</div>
@@ -687,14 +715,33 @@ Object.assign(pages, {
   },
 });
 
+function zatcaPage(rows) {
+  const typeName = (r) => r.invoice_type === 'simplified' ? 'simplified (B2C)' : r.invoice_type === 'standard' ? 'standard (B2B)' : '';
+  return `<div class="card"><h3>Seller details for ZATCA e-invoices</h3><p class="muted">ZATCA needs the company's VAT number, commercial registration and national address (street, building number, district, city, postal code). They are checked before every e-invoice is issued.</p>
+      <form id="f-seller"><div class="grid">${field('street', 'Street')}${field('buildingNo', 'Building no. (4 digits)', 'pattern="[0-9]{4}"')}${field('district', 'District')}${field('city', 'City')}${field('postalCode', 'Postal code (5 digits)', 'pattern="[0-9]{5}"')}
+      ${field('tradeLicenceNo', 'Commercial registration (CR) no.')}${field('taxRegistrationNo', 'VAT number (15 digits, starts and ends with 3)', 'pattern="3[0-9]{13}3"')}${field('iban', 'IBAN (SA...)')}${field('email', 'Email')}${field('phone', 'Phone')}</div>
+      <div class="row"><button class="btn sec">Save details</button></div></form></div>
+    <div class="card"><h3>Sales documents</h3><p class="muted">Customers with a VAT number or a commercial registration, and exports, get a standard tax invoice (B2B); anyone else a simplified one (B2C). "Issue" writes the UBL XML once with its invoice counter, the previous invoice's hash and a QR code carrying this invoice's hash, so the documents form one unbroken chain.</p>
+      <p class="muted"><b>Before going live:</b> ZATCA requires each device to be onboarded and every invoice to be cryptographically stamped with the certificate ZATCA issues, then cleared (B2B) or reported (B2C) through its API. That onboarding is not done in this trial, so these XML files are not yet signed or sent; record ZATCA's answer here once you send them through your onboarded solution.</p>
+      <div class="row"><button class="btn sec" id="zatca-chain">Check the hash chain</button><span id="zatca-chain-out"></span></div>
+      ${rows.length ? '<div class="tbl"><table><tr><th>no</th><th>kind</th><th>customer</th><th>date</th><th style="text-align:right">total</th><th>counter</th><th>type</th><th>e-invoice</th><th></th></tr>' + rows.map((r) => `<tr><td>${esc(r.no)}</td><td>${esc(r.kind.replace('_', ' '))}</td><td>${esc(r.party_name)}</td><td>${d10(r.date)}</td><td style="text-align:right">${money(r.gross_total)} ${esc(r.currency)}</td><td>${r.counter ?? ''}</td><td>${typeName(r)}</td><td>${esc(r.status || 'not issued')}${r.asp_reference ? ' · ' + esc(r.asp_reference) : ''}</td><td>${r.einvoice_id ? `${act('Download XML', 'ei-xml', r.einvoice_id, 1)} ${act('QR code data', 'ei-qr', r.einvoice_id, 1)} ${r.status !== 'accepted' ? act('Record ZATCA answer', 'ei-asp', r.einvoice_id, 1) : ''}` : `${act('Check', 'ei-check', r.invoice_id, 1)} ${act('Issue', 'ei-issue', r.invoice_id)}`}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No posted sales documents yet.</div>'}
+      <pre id="ei-out" style="display:none"></pre></div>`;
+}
+/** Read a ZATCA QR code (base64 TLV) back into its fields. */
+function readQr(b64) { const b = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); const out = []; for (let i = 0; i < b.length;) { const len = b[i + 1]; out.push(new TextDecoder().decode(b.slice(i + 2, i + 2 + len))); i += 2 + len; } return out; }
+
 Object.assign(after, {
   async einvoicing(m, ok) {
     bindCompanyPick();
+    const qrRows = cache.einv = isSA() ? await api('GET', `/v1/fin/companies/${S.company}/einvoices`) : [];
+    const chainBtn = $('#zatca-chain'); if (chainBtn) chainBtn.onclick = async () => { try { const r = await api('GET', `/v1/fin/companies/${S.company}/einvoices/chain`); $('#zatca-chain-out').innerHTML = r.intact ? `<span style="color:var(--ok)">Intact: ${r.invoices} e-invoices, counters 1 to ${r.lastCounter}, every hash and link checks out</span>` : `<span style="color:var(--bad)">${esc(r.problems.join('; '))}</span>`; } catch (e) { toast(e.message, false); } };
     bindForm('f-seller', async (b) => { await api('PATCH', `/v1/fin/companies/${S.company}`, b); ok('Details saved'); });
     const out = $('#ei-out');
     const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
     on('ei-check', async (id) => { const r = await api('GET', `/v1/fin/invoices/${id}/einvoice-check`); out.style.display = 'block'; out.textContent = r.ready ? 'Ready to issue. Preview:\n\n' + r.xml : 'Fix these first:\n' + r.problems.map((p) => `- ${p.message} [${p.rule}]`).join('\n'); });
-    on('ei-issue', async (id) => { await api('POST', `/v1/fin/invoices/${id}/einvoice`); ok('E-invoice issued'); });
+    on('ei-issue', async (id) => { const r = await api('POST', `/v1/fin/invoices/${id}/einvoice`); ok(r.counter ? `E-invoice issued, counter ${r.counter}` : 'E-invoice issued'); });
+    on('ei-qr', async (id) => { const r = qrRows.find((x) => x.einvoice_id === id); const f = readQr(r.qr); out.style.display = 'block';
+      out.textContent = ['Seller', 'VAT number', 'Time', 'Total with VAT', 'VAT', 'Invoice hash'].map((l, i) => `${l}: ${f[i] ?? ''}`).join('\n') + `\n\nQR code content (base64 TLV):\n${r.qr}`; });
     on('ei-xml', async (id) => { const r = await fetch(`/v1/fin/einvoices/${id}/xml`, { headers: { authorization: 'Bearer ' + S.token } }); if (!r.ok) throw new Error('Could not download'); download(`einvoice-${id}.xml`, await r.text()); });
     on('ei-asp', async (id) => {
       const status = prompt('What did the service provider say? Type submitted, accepted or rejected', 'accepted'); if (!status) return;
@@ -1368,7 +1415,7 @@ const compact = (v) => { const a = Math.abs(v); return a >= 1e6 ? `${(v / 1e6).t
 function niceStep(v) { const p = 10 ** Math.floor(Math.log10(v)); return [1, 2, 2.5, 5, 10].map((m) => m * p).find((x) => x >= v); }
 function niceMax(v) { if (v <= 0) return 1; const p = 10 ** Math.floor(Math.log10(v)); return Math.ceil(v / p) * p; }
 /** Line chart on one axis: series [{key,label,cls}], points [{month,...}]. Hover columns carry a tooltip. */
-function lineChart(points, series, title) {
+function lineChart(points, series, title, fmt = money) {
   const W = 640, H = 220, L = 52, R = 12, T = 12, B = 26, w = W - L - R, h = H - T - B;
   const vals = points.flatMap((p) => series.map((s) => p[s.key]));
   const vmax = Math.max(0, ...vals), vmin = Math.min(0, ...vals), step = niceStep((vmax - vmin) / 4 || 1);
@@ -1379,7 +1426,7 @@ function lineChart(points, series, title) {
   const xl = points.map((p, i) => (i % 2 === (points.length - 1) % 2 ? `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" class="axis">${p.month.slice(2).replace('-', '/')}</text>` : '')).join('');
   const lines = series.map((s) => `<polyline fill="none" class="ln ${s.cls}" points="${points.map((p, i) => `${x(i)},${y(p[s.key])}`).join(' ')}"/>`
     + `<circle class="dot ${s.cls}" cx="${x(points.length - 1)}" cy="${y(points.at(-1)[s.key])}" r="4"/>`).join('');
-  const hits = points.map((p, i) => `<rect class="hit" x="${x(i) - w / points.length / 2}" y="${T}" width="${w / points.length}" height="${h}" data-tip="${esc(`<b>${p.month}</b>` + series.map((s) => `<div><i class="sw ${s.cls}"></i>${s.label}: ${money(p[s.key])}</div>`).join(''))}" data-x="${x(i)}"/>`).join('');
+  const hits = points.map((p, i) => `<rect class="hit" x="${x(i) - w / points.length / 2}" y="${T}" width="${w / points.length}" height="${h}" data-tip="${esc(`<b>${p.month}</b>` + series.map((s) => `<div><i class="sw ${s.cls}"></i>${s.label}: ${fmt(p[s.key])}</div>`).join(''))}" data-x="${x(i)}"/>`).join('');
   const legend = series.length > 1 ? `<div class="legend">${series.map((s) => `<span><i class="sw ${s.cls}"></i>${s.label}</span>`).join('')}</div>` : '';
   return `<div class="chart"><div class="ctitle">${title}</div>${legend}<div class="cwrap"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}">${grid}${xl}${lines}<line class="xhair" y1="${T}" y2="${T + h}" x1="0" x2="0" style="display:none"/>${hits}</svg><div class="tip" style="display:none"></div></div></div>`;
 }
@@ -1752,6 +1799,172 @@ async function loadPhase5Demo(step, co, root, asApprover) {
   await api('POST', '/v1/bi/reports', { name: 'Expenses by account', dataset: 'gl_lines', shared: true,
     spec: { groupBy: ['account_code', 'account_name'], measures: [{ field: 'net', agg: 'sum' }], filters: [{ field: 'account_type', op: 'eq', value: 'expense' }], sort: [{ by: 'sum_net', dir: 'desc' }] } });
   await api('POST', '/v1/bi/reports', { name: 'Stock by warehouse', dataset: 'stock', shared: true, spec: { columns: ['warehouse', 'item_code', 'item_name', 'qty', 'unit_cost', 'value'], sort: [{ by: 'value', dir: 'desc' }] } });
+}
+
+
+// ---------- Interactive dashboard (Phase 6) ----------
+const PERIODS = [['this_month', 'This month'], ['last_month', 'Last month'], ['this_quarter', 'This quarter'], ['last_quarter', 'Last quarter'], ['this_year', 'This financial year'],
+  ['last_year', 'Last financial year'], ['last_12_months', 'Last 12 months'], ['custom', 'Custom dates']];
+const COMPARES = [['previous_period', 'Previous period'], ['previous_year', 'Same period last year'], ['none', 'No comparison']];
+const optsHtml = (opts, v) => opts.map(([k, t]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${esc(t)}</option>`).join('');
+const anaQuery = (extra = {}) => { const a = S.ana; const q = new URLSearchParams({ period: a.period, compare: a.compare, ...extra }); if (a.period === 'custom') { q.set('from', a.from); q.set('to', a.to); } return q; };
+/** A small trend line for a tile: one series, no axes; the last point marked. */
+function spark(points) {
+  const v = points.map((p) => p.value ?? 0); if (v.length < 2) return '';
+  const lo = Math.min(...v), hi = Math.max(...v), W = 120, H = 30, x = (i) => (i * W) / (v.length - 1), y = (n) => H - 3 - ((n - lo) / ((hi - lo) || 1)) * (H - 6);
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${v.map((n, i) => `${x(i)},${y(n)}`).join(' ')}" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function breakdownBars(b) {
+  if (!b.rows.length) return '<div class="empty">Nothing in this period.</div>';
+  const f = (v) => fmtKpi(v, b.unit === 'count' ? 'count' : b.unit === 'tco2e' ? 'tco2e' : 'money');
+  const max = Math.max(...b.rows.map((r) => Math.abs(r.value))) || 1;
+  return `<div class="cwrap">${b.rows.map((r) => `<div class="bar" data-tip="${esc(`<b>${esc(r.label)}</b><div>${f(r.value)}${r.share !== null ? ` · ${r.share}% of the total` : ''}</div>`)}"><span class="bl" title="${esc(r.label)}">${esc(r.label)}</span><span class="bt"><span class="bf" style="width:${Math.max(1, Math.abs(r.value) / max * 100)}%"></span></span><span class="bv">${f(r.value)}${r.share !== null ? `<span class="share">${r.share}%</span>` : ''}</span></div>`).join('')}<div class="tip" style="display:none"></div></div>`;
+}
+
+Object.assign(pages, {
+  async analytics() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const lay = await api('GET', `/v1/bi/companies/${S.company}/dashboard/layout`);
+    cache.layout = lay;
+    if (!S.ana || S.ana.company !== S.company) S.ana = { company: S.company, period: lay.period, compare: lay.compare, from: lay.from || yearStart(), to: lay.to || today(), drill: null, bd: null, editing: false };
+    const A = S.ana;
+    const byCode = new Map(lay.available.map((k) => [k.code, k]));
+    const head = `<div class="card"><div class="ana-bar">
+        <label>Period<select id="ana-period">${optsHtml(PERIODS, A.period)}</select></label>
+        ${A.period === 'custom' ? `<label>From<input type="date" id="ana-from" value="${A.from}"></label><label>To<input type="date" id="ana-to" value="${A.to}"></label>` : ''}
+        <label>Compare with<select id="ana-compare">${optsHtml(COMPARES, A.compare)}</select></label>
+        <span style="flex:1"></span><button class="btn sec" id="ana-edit">${A.editing ? 'Close' : 'Choose tiles'}</button></div>`;
+    if (A.editing) {
+      A.draft ||= [...lay.tiles];
+      const modules = [...new Set(lay.available.map((k) => k.module))];
+      return companyBar(cs) + head + `</div><div class="card"><h3>Your tiles</h3><p class="muted">Tick the KPIs you want and put them in order. Only KPIs your roles cover are listed. The layout, period and comparison are saved for you alone.</p>
+        <div class="ana-order">${A.draft.length ? A.draft.map((c, i) => `<div><span>${i + 1}. ${esc(byCode.get(c)?.name || c)}</span><button class="btn sec" data-ana-up="${i}" ${i ? '' : 'disabled'} aria-label="Move up">↑</button><button class="btn sec" data-ana-down="${i}" ${i < A.draft.length - 1 ? '' : 'disabled'} aria-label="Move down">↓</button><button class="btn sec" data-ana-drop="${c}" aria-label="Remove">✕</button></div>`).join('') : '<div class="empty">No tiles chosen.</div>'}</div>
+        ${modules.map((mod) => `<h4>${esc(MODULE_NAMES[mod] || mod)}</h4><div class="ana-pick">${lay.available.filter((k) => k.module === mod).map((k) => `<label class="ck"><input type="checkbox" data-ana-tile="${k.code}" ${A.draft.includes(k.code) ? 'checked' : ''}>${esc(k.name)}</label>`).join('')}</div>`).join('')}
+        <div class="row"><button class="btn" id="ana-save">Save layout</button><button class="btn sec" id="ana-reset">Back to the default</button></div></div>`;
+    }
+    if (!lay.tiles.length) return companyBar(cs) + head + '<p class="muted">No tiles yet. Press <b>Choose tiles</b>.</p></div>';
+    const a = await api('GET', `/v1/bi/companies/${S.company}/analysis?${anaQuery({ spark: '1', codes: lay.tiles.join(',') })}`);
+    const kp = new Map(a.kpis.map((k) => [k.code, k]));
+    const cmpLabel = a.compare === 'previous_year' ? 'last year' : 'the previous period';
+    const tile = (k) => `<button class="atile ${A.drill === k.code ? 'on' : ''}" data-kpi="${k.code}" aria-pressed="${A.drill === k.code}" title="${esc(k.description)}">
+        <span class="tl">${esc(k.name)}</span><span class="tv">${fmtKpi(k.value, k.unit)}</span>
+        <span class="ts">${k.snapshot ? 'Position now' : a.prior ? (k.prior === null ? 'No comparison' : `${changeTag(k.changePct, k.better) || ''} vs ${fmtKpi(k.prior, k.unit)}`) : k.kind === 'level' ? `At ${a.to}` : 'For the period'}</span>
+        ${k.spark ? spark(k.spark) : ''}</button>`;
+    let drill = '';
+    if (A.drill && kp.has(A.drill)) {
+      const d = await api('GET', `/v1/bi/companies/${S.company}/kpis/${A.drill}/drill?${anaQuery()}`);
+      const f = (v) => fmtKpi(v, d.kpi.unit);
+      const bd = d.breakdowns.find((b) => b.key === A.bd) || d.breakdowns[0];
+      const extended = d.trend && d.trend.some((p) => !p.inRange);
+      const series = [{ key: 'value', label: 'This period', cls: 's1' }, ...(d.prior ? [{ key: 'compare', label: a.compare === 'previous_year' ? 'A year earlier' : 'The period before', cls: 's2' }] : [])];
+      const pts = d.trend ? d.trend.map((p) => ({ ...p, value: p.value ?? 0, compare: p.compare ?? 0 })) : null;
+      drill = `<div class="card" id="ana-drill"><div class="row" style="justify-content:space-between;align-items:flex-start;margin-top:0"><div><h3 style="margin:0">${esc(d.kpi.name)}: ${f(d.value)}</h3>
+          <div class="muted">${esc(d.kpi.description)} · ${d.from} to ${d.to}${d.prior ? ` · ${changeTag(d.changePct, d.kpi.better) ? changeTag(d.changePct, d.kpi.better) + ' ' : ''}against ${f(d.priorValue)} for ${d.prior[0]} to ${d.prior[1]}` : ''}</div></div>
+          <button class="btn sec" id="ana-close">Close</button></div>
+        ${pts ? `<div class="charts" style="margin-top:12px">${lineChart(pts, series, extended ? 'Month by month: the six months up to the end of the period' : 'Month by month', f)}</div>
+          <details><summary class="muted">Show the months as a table</summary>${report(pts.map((p) => ({ month: p.month + (p.inRange ? '' : ' (before the period)'), value: f(p.value), compare: d.prior ? f(p.compare) : '' })), [['month', 'Month'], ['value', 'This period'], ...(d.prior ? [['compare', series[1].label]] : [])])}</details>` : '<p class="muted">This KPI is a position now, so it has no history to chart.</p>'}
+        ${d.breakdowns.length ? `<h4>Breakdown</h4><div class="tabs">${d.breakdowns.map((b) => `<button class="tab ${b === bd ? 'on' : ''}" data-ana-bd="${b.key}">${esc(b.title)}</button>`).join('')}</div>${breakdownBars(bd)}` : ''}
+        ${d.records ? `<h4>${esc(d.records.title)}</h4><p class="muted">${d.records.total > d.records.rows.length ? `The largest ${d.records.rows.length} of ${d.records.total}.` : `${d.records.total} in all.`}</p>
+          ${report(d.records.rows.map((r) => Object.fromEntries(d.records.columns.map((c) => [c.key, c.type === 'date' ? d10(r[c.key]) : r[c.key]]))), d.records.columns.map((c) => [c.key, c.label, c.type === 'money' ? 1 : 0]))}` : ''}</div>`;
+    }
+    return companyBar(cs) + head + `<div class="muted" style="margin-top:10px">${esc(a.company.name)} · ${a.from} to ${a.to}${a.prior ? ` compared with ${a.prior[0]} to ${a.prior[1]}` : ''} · amounts in ${esc(a.company.currency)} · click a tile to see what is behind it</div>
+      <div class="atiles">${lay.tiles.filter((c) => kp.has(c)).map((c) => tile(kp.get(c))).join('')}</div></div>${drill}`;
+  },
+});
+
+Object.assign(after, {
+  async analytics(m) {
+    bindCompanyPick(); bindCharts(m);
+    const A = S.ana; if (!A) return;
+    const keep = () => api('PUT', `/v1/bi/companies/${S.company}/dashboard/layout`, { tiles: cache.layout.tiles, period: A.period, compare: A.compare, ...(A.period === 'custom' ? { from: A.from, to: A.to } : {}) }).catch(() => {});
+    const on = (id, ev, fn) => { const el = $('#' + id); if (el) el[ev] = fn; };
+    on('ana-period', 'onchange', async (e) => { A.period = e.target.value; await keep(); show('analytics'); });
+    on('ana-compare', 'onchange', async (e) => { A.compare = e.target.value; await keep(); show('analytics'); });
+    const dates = async () => { const f = $('#ana-from').value, t = $('#ana-to').value; if (!f || !t) return; if (f > t) { toast('The period starts after it ends', false); return; } A.from = f; A.to = t; await keep(); show('analytics'); };
+    on('ana-from', 'onchange', dates); on('ana-to', 'onchange', dates);
+    on('ana-edit', 'onclick', () => { A.editing = !A.editing; A.draft = null; show('analytics'); });
+    on('ana-close', 'onclick', () => { A.drill = null; show('analytics'); });
+    m.querySelectorAll('[data-kpi]').forEach((el) => el.onclick = async () => { A.drill = A.drill === el.dataset.kpi ? null : el.dataset.kpi; A.bd = null; await show('analytics'); $('#ana-drill')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    m.querySelectorAll('[data-ana-bd]').forEach((el) => el.onclick = async () => { A.bd = el.dataset.anaBd; const y = window.scrollY; await show('analytics'); window.scrollTo(0, y); });
+    m.querySelectorAll('[data-ana-tile]').forEach((el) => el.onchange = () => { const c = el.dataset.anaTile; A.draft = el.checked ? [...A.draft, c] : A.draft.filter((x) => x !== c); show('analytics'); });
+    m.querySelectorAll('[data-ana-drop]').forEach((el) => el.onclick = () => { A.draft = A.draft.filter((x) => x !== el.dataset.anaDrop); show('analytics'); });
+    const move = (i, d) => { const t = [...A.draft]; [t[i], t[i + d]] = [t[i + d], t[i]]; A.draft = t; show('analytics'); };
+    m.querySelectorAll('[data-ana-up]').forEach((el) => el.onclick = () => move(Number(el.dataset.anaUp), -1));
+    m.querySelectorAll('[data-ana-down]').forEach((el) => el.onclick = () => move(Number(el.dataset.anaDown), 1));
+    on('ana-save', 'onclick', async () => { try { await api('PUT', `/v1/bi/companies/${S.company}/dashboard/layout`, { tiles: A.draft, period: A.period, compare: A.compare, ...(A.period === 'custom' ? { from: A.from, to: A.to } : {}) }); A.editing = false; A.draft = null; toast('Layout saved'); show('analytics'); } catch (e) { toast(e.message, false); } });
+    on('ana-reset', 'onclick', async () => { try { const l = await api('DELETE', `/v1/bi/companies/${S.company}/dashboard/layout`); Object.assign(A, { editing: false, draft: null, period: l.period, compare: l.compare }); toast('Back to the default layout'); show('analytics'); } catch (e) { toast(e.message, false); } });
+  },
+});
+
+
+// Saudi demo: a second company in Saudi Arabia, filled through the public API like the main demo.
+async function loadSaudiDemo(step) {
+  const us = await units(); const root = us.find((u) => u.depth === 0) || us[0];
+  let sa = us.find((u) => u.code === 'SA-DEMO');
+  if (!sa) { step('Adding the Saudi company...'); sa = await api('POST', '/v1/org/units', { typeCode: 'company', parentId: root.id, code: 'SA-DEMO', name: 'BAATS Arabia', countryCode: 'SA', currencyCode: 'SAR' }); }
+  const co = sa.id;
+  const books = await api('GET', `/v1/fin/companies/${co}/accounts`).catch(() => []);
+  if (!books.length) { step('Setting up Saudi books (chart, 15% VAT, GOSI rules)...'); await api('POST', '/v1/fin/companies', { unitId: co, legalName: 'BAATS Arabia LLC', taxRegistrationNo: '310000000000003', openFrom: yearStart() }); }
+  await api('PATCH', `/v1/fin/companies/${co}`, { street: 'King Fahd Road', buildingNo: '2121', district: 'Al Olaya', city: 'Riyadh', postalCode: '12211', tradeLicenceNo: '1010987654', iban: 'SA0380000000608010167519', email: 'finance@baats-arabia.example' });
+  step('Signing in the approver...');
+  const pw = 'Approver-Demo-2026', appEmail = `approver@${S.tenant}.demo`;
+  if (!(await api('GET', '/v1/iam/users')).find((u) => u.email === appEmail)) {
+    const approver = await api('POST', '/v1/iam/users', { email: appEmail, displayName: 'Demo Approver', password: pw });
+    const roles = await api('GET', '/v1/iam/roles');
+    await api('POST', '/v1/iam/assignments', { userId: approver.id, roleId: roles.find((r) => r.code === 'TENANT_ADMIN').id, scopeUnitId: root.id, includeDescendants: true });
+  }
+  const asApprover = async (fn) => {
+    const l = await api('POST', '/v1/auth/login', { tenant: S.tenant, email: appEmail, password: pw });
+    const saved = S.token; S.token = (l.session || l).token;
+    try { return await fn(); } finally { await api('POST', '/v1/auth/logout').catch(() => {}); S.token = saved; }
+  };
+  const approveAll = (type) => asApprover(async () => { for (const t of await api('GET', '/v1/wf/inbox')) if (t.entity_type === type) await api('POST', `/v1/wf/tasks/${t.task_id}/approve`, { comment: 'Demo approval' }); });
+  step('Adding Saudi customers and suppliers...');
+  const existing = await api('GET', '/v1/mdm/parties');
+  const mk = async (code, name, isCustomer, countryCode, extra = {}) => {
+    let p = existing.find((x) => x.code === code);
+    if (!p) p = (await api('POST', '/v1/mdm/parties', { code, name, isCustomer, isSupplier: !isCustomer, countryCode, currencyCode: 'SAR', ownerUnitId: co, ...extra })).party;
+    if (p.status === 'draft') await api('POST', `/v1/mdm/parties/${p.id}/submit`);
+    return p;
+  };
+  const riyadh = await mk('SA-C1', 'Riyadh Trading Co', true, 'SA', { taxRegistrationNo: '300000000000003',
+    attributes: { street: 'Olaya Street', building_no: '3456', district: 'Al Olaya', city: 'Riyadh', postal_code: '12611', cr_no: '1010123456' } });
+  const walkin = await mk('SA-C2', 'Walk-in customer', true, 'SA');
+  const importer = await mk('SA-C3', 'Gulf Importer FZE', true, 'AE', { attributes: { street: 'Jebel Ali Free Zone', city: 'Dubai' } });
+  const local = await mk('SA-S1', 'Jeddah Office Supplies', false, 'SA');
+  const cloud = await mk('SA-S2', 'Cloud Hosting Inc', false, 'US');
+  await approveAll('mdm.party');
+  step("Owner's capital (approved by the second user)...");
+  const d = today();
+  const done = await api('GET', `/v1/fin/companies/${co}/invoices`).catch(() => []);
+  if (!done.length) {
+    await api('POST', `/v1/fin/companies/${co}/journals`, { date: d, memo: "Owner's capital introduced", lines: [{ account: '1010', debit: 200000 }, { account: '3000', credit: 200000 }] });
+    await approveAll('fin.journal');
+    step('Posting sales and purchases at 15% VAT...');
+    const inv = async (b) => { const x = await api('POST', `/v1/fin/companies/${co}/invoices`, { date: d, ...b }); return api('POST', `/v1/fin/invoices/${x.id}/post`); };
+    const due = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+    const s1 = await inv({ kind: 'sales_invoice', partyId: riyadh.id, dueDate: due, lines: [{ description: 'ERP implementation services', quantity: 2, unitPrice: 5000, taxCode: 'SR' }] });
+    const s2 = await inv({ kind: 'sales_invoice', partyId: walkin.id, dueDate: d, lines: [{ description: 'Training seat', quantity: 1, unitPrice: 800, taxCode: 'SR' }] });
+    const s3 = await inv({ kind: 'sales_invoice', partyId: importer.id, dueDate: due, lines: [{ description: 'Steel brackets (export)', quantity: 1, unitPrice: 12000, taxCode: 'ZR', account: '4200' }] });
+    const s4 = await inv({ kind: 'sales_invoice', partyId: riyadh.id, dueDate: due, lines: [{ description: 'Loan arrangement fee', quantity: 1, unitPrice: 3000, taxCode: 'EX', account: '4100' }] });
+    await inv({ kind: 'purchase_invoice', partyId: local.id, supplierRef: 'JOS-' + Date.now().toString().slice(-5), lines: [{ description: 'Office furniture', quantity: 1, unitPrice: 4000, taxCode: 'SR', account: '5500' }] });
+    await inv({ kind: 'purchase_invoice', partyId: cloud.id, supplierRef: 'CH-' + Date.now().toString().slice(-5), lines: [{ description: 'Cloud hosting (imported service)', quantity: 1, unitPrice: 2500, taxCode: 'RC', account: '5300' }] });
+    await api('POST', `/v1/fin/companies/${co}/payments`, { kind: 'receipt', partyId: riyadh.id, date: d, bankAccount: '1010', amount: 5000, allocations: [{ invoiceId: s1.id, amount: 5000 }] });
+    step('Issuing ZATCA e-invoices (counter, hash chain, QR code)...');
+    for (const x of [s1, s2, s3, s4]) await api('POST', `/v1/fin/invoices/${x.id}/einvoice`);
+  }
+  step('Employees, contracts and a payroll with GOSI...');
+  const emps = await api('GET', '/v1/org/employees');
+  const emp = async (no, first, last, nationality) => emps.find((e) => e.employee_no === no) || api('POST', '/v1/org/employees', { employeeNo: no, firstName: first, lastName: last, unitId: co, nationality });
+  const e1 = await emp('SA-E1', 'Faisal', 'Al-Harbi', 'SA');
+  const e2 = await emp('SA-E2', 'Ravi', 'Menon', 'IN');
+  const ks = await api('GET', `/v1/hr/companies/${co}/contracts`);
+  if (!ks.find((k) => k.employee_id === e1.id)) await api('POST', '/v1/hr/contracts', { employeeId: e1.id, companyId: co, startDate: '2021-03-01', basic: 15000, housing: 3750, transport: 1000, iban: 'SA4420000001234567891234' });
+  if (!ks.find((k) => k.employee_id === e2.id)) await api('POST', '/v1/hr/contracts', { employeeId: e2.id, companyId: co, startDate: '2024-09-01', basic: 9000, housing: 2250, transport: 750 });
+  const run = await api('POST', `/v1/hr/companies/${co}/payroll`, { period: d.slice(0, 7) }).catch(() => null);
+  if (run && run.status === 'draft') await api('POST', `/v1/hr/payroll/${run.id}/post`);
+  S.company = co; cache.companies = null;
+  step('Done. Pick BAATS Arabia in the company list on any finance page.');
 }
 
 // Demo: everything through the public API, as the signed-in admin plus a second approver user.

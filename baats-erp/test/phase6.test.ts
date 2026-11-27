@@ -76,6 +76,9 @@ describe('interactive dashboard', () => {
     // Whole months compare with the same number of whole months before; other spans with the same number of days.
     assert.deepEqual(dash.comparisonRange('2026-02-01', '2026-03-31', 'previous_period'), ['2025-12-01', '2026-01-31']);
     assert.deepEqual(dash.comparisonRange('2026-03-10', '2026-03-19', 'previous_period'), ['2026-02-28', '2026-03-09']);
+    // Month to date compares with the same days of the month before (clamped to its length).
+    assert.deepEqual(dash.comparisonRange('2026-03-01', '2026-03-30', 'previous_period'), ['2026-02-01', '2026-02-28']);
+    assert.deepEqual(dash.comparisonRange('2026-11-01', '2026-11-27', 'previous_period'), ['2026-10-01', '2026-10-27']);
     assert.deepEqual(dash.comparisonRange('2028-02-01', '2028-02-29', 'previous_year'), ['2027-02-01', '2027-02-28']);
     assert.equal(dash.comparisonRange('2026-01-01', '2026-01-31', 'none'), null);
     assert.throws(() => dash.checkRange('2026-03-01', '2026-02-01'), /starts after it ends/);

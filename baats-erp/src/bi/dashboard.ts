@@ -49,11 +49,17 @@ export function checkRange(from: string, to: string) {
 const wholeMonths = (from: string, to: string) => from === monthStart(from) && to === monthEnd(to);
 const monthCount = (from: string, to: string) => (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(to.slice(5, 7)) - Number(from.slice(5, 7)) + 1;
 
-/** The period to compare with: the same length just before, or the same dates a year earlier. */
+/** The period to compare with: the same months (or days) just before, or the same dates a year earlier. */
 export function comparisonRange(from: string, to: string, compare: Compare): [string, string] | null {
   if (compare === 'none') return null;
   if (compare === 'previous_year') return [lastYear(from), lastYear(to)];
-  if (wholeMonths(from, to)) { const n = monthCount(from, to); const s = addMonths(from, -n); return [s, monthEnd(addMonths(s, n - 1))]; }
+  if (from === monthStart(from)) {
+    // Whole months, or months to date: the same months just before, to the same day of the month.
+    const n = monthCount(from, to); const s = addMonths(from, -n); const lastMonth = addMonths(s, n - 1);
+    if (to === monthEnd(to)) return [s, monthEnd(lastMonth)];
+    const day = Math.min(Number(to.slice(8)), Number(monthEnd(lastMonth).slice(8)));
+    return [s, `${lastMonth.slice(0, 8)}${String(day).padStart(2, '0')}`];
+  }
   const len = daysBetween(from, to) + 1;
   return [addDays(from, -len), addDays(from, -1)];
 }

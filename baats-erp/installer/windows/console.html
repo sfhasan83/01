@@ -133,7 +133,7 @@ const pages = {
   async overview() {
     const me = await api('GET', '/v1/me');
     return `<div class="card"><h3>Welcome, ${esc(me.user.display_name)}</h3><p class="muted">Signed in to <b>${esc(S.tenant)}</b> as ${esc(me.user.email)}. MFA: ${me.user.mfa_enabled ? 'on' : 'off'}.</p>
-      <p>This console lets you try what BAATS can do today. Phase 6b: the rest of the GCC beside the UAE and Saudi Arabia: Oman (5% VAT and its return, 15% income tax, the Social Protection Fund), Bahrain (10% VAT and the NBR return, SIO with the leaving indemnity), Qatar and Kuwait (no VAT; GRSIA and PIFSS), each with its own end-of-service rule, and money in three decimals for the dinar and rial (try it with Load GCC demo under Finance: setup). Phase 6a: an interactive dashboard (pick any period and a comparison, click a KPI to see its trend, breakdowns and the records behind it, and keep your own tiles), and country packs with Saudi Arabia beside the UAE: 15% VAT, the ZATCA VAT return, ZATCA e-invoices chained by hash with QR codes, GOSI and the Saudi end-of-service award (try it with Load Saudi demo under Finance: setup). Phase 5: an AI assistant that answers questions from your books and proposes changes for you to confirm (an administrator turns it on under Assistant settings, with Claude or a model on this computer), an executive dashboard computed live from the books, a report builder over governed datasets with CSV export, a strategy scorecard with KPI targets, ESG emissions and resource use, and anomaly checks on the whole ledger. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
+      <p>This console lets you try what BAATS can do today. Phase 6c: BAATS Mobile, a phone app for approvals, leave, payslips and expense claims with a receipt photo (see BAATS Mobile; switch on phone access there to use it on a phone on the same Wi-Fi), expense claims approved by the line manager and posted with their input VAT, and integrations: API keys for other systems and signed webhooks when invoices, payments, payroll, claims, leave and tickets happen. Phase 6b: the rest of the GCC beside the UAE and Saudi Arabia: Oman (5% VAT and its return, 15% income tax, the Social Protection Fund), Bahrain (10% VAT and the NBR return, SIO with the leaving indemnity), Qatar and Kuwait (no VAT; GRSIA and PIFSS), each with its own end-of-service rule, and money in three decimals for the dinar and rial (try it with Load GCC demo under Finance: setup). Phase 6a: an interactive dashboard (pick any period and a comparison, click a KPI to see its trend, breakdowns and the records behind it, and keep your own tiles), and country packs with Saudi Arabia beside the UAE: 15% VAT, the ZATCA VAT return, ZATCA e-invoices chained by hash with QR codes, GOSI and the Saudi end-of-service award (try it with Load Saudi demo under Finance: setup). Phase 5: an AI assistant that answers questions from your books and proposes changes for you to confirm (an administrator turns it on under Assistant settings, with Claude or a model on this computer), an executive dashboard computed live from the books, a report builder over governed datasets with CSV export, a strategy scorecard with KPI targets, ESG emissions and resource use, and anomaly checks on the whole ledger. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
       <div class="card"><h3>Your approvals waiting (${me.inbox.length})</h3>${table(me.inbox)}</div>
       <div class="card"><h3>Your permissions (${me.permissions.length})</h3>${me.permissions.map((p) => `<span class="pill">${esc(typeof p === 'string' ? p : p.permission || JSON.stringify(p))}</span>`).join('')}</div>`;
   },
@@ -197,7 +197,7 @@ const pages = {
       <label style="margin-top:10px">JSON body<textarea name="body"></textarea></label><div class="row"><button class="btn">Send</button></div></form><pre id="api-out"></pre></div>`;
   },
 };
-const MENU = [['overview', 'Overview'], ['assistant', 'AI assistant'], ['analytics', 'Interactive dashboard'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['aisettings', 'Assistant settings'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audittrail', 'Audit trail'], ['apitester', 'API tester']];
+const MENU = [['overview', 'Overview'], ['assistant', 'AI assistant'], ['analytics', 'Interactive dashboard'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['expenses', 'HR: expense claims'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['aisettings', 'Assistant settings'], ['integrations', 'Integrations (API keys, webhooks)'], ['mobile', 'BAATS Mobile'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audittrail', 'Audit trail'], ['apitester', 'API tester']];
 let current = 'overview';
 const after = {};
 
@@ -2064,6 +2064,197 @@ async function loadSaudiDemo(step) {
 }
 
 // Demo: everything through the public API, as the signed-in admin plus a second approver user.
+// ---------- Phase 6c: expense claims, integrations and BAATS Mobile ----------
+const EXP_STATUS = [['', 'All'], ['pending_approval', 'Waiting for approval'], ['approved', 'Approved, to pay'], ['paid', 'Paid'], ['rejected', 'Rejected'], ['draft', 'Drafts']];
+const authFetch = async (path) => { const r = await fetch(path, { headers: { authorization: 'Bearer ' + S.token } }); if (!r.ok) throw new Error('HTTP ' + r.status); return URL.createObjectURL(await r.blob()); };
+// Read a chosen receipt file as base64 for a claim (a phone shrinks photos itself; here the file must already be small).
+const readReceipt = (file) => new Promise((resolve, reject) => {
+  if (!file) return resolve(null);
+  if (file.size > 750000) return reject(new Error('The receipt is larger than 750 KB. Save it smaller or use BAATS Mobile, which shrinks photos.'));
+  const r = new FileReader(); r.onload = () => resolve({ fileName: file.name, contentType: file.type || 'application/octet-stream', dataBase64: String(r.result).split(',')[1] });
+  r.onerror = () => reject(new Error('could not read the file')); r.readAsDataURL(file);
+});
+async function claimView(id) {
+  const c = await api('GET', `/v1/hr/expenses/${id}`);
+  const out = $('#exp-out');
+  out.innerHTML = `<h4>${esc(c.no || 'Draft')}: ${esc(c.title)} (${esc(c.employee_name)}, ${esc(c.status.replace('_', ' '))})</h4>` +
+    report(c.lines.map((l) => ({ ...l, date: d10(l.date), receipt: l.receipt_id ? '' : 'none' })), [['line_no', '#'], ['date', 'Date'], ['category', 'Category'], ['account_code', 'Account'], ['description', 'Description'], ['tax_code', 'VAT code'], ['net_amount', 'Net', 1], ['tax_amount', 'VAT', 1], ['gross_amount', 'Paid', 1], ['receipt', 'Receipt']], 'Total', c.gross_total) +
+    `<p class="muted">${c.journal_no ? `Posted as ${esc(c.journal_no)}.` : ''} ${c.payment_journal_no ? `Paid as ${esc(c.payment_journal_no)}.` : ''}</p><div id="exp-receipts" class="row" style="flex-wrap:wrap"></div>`;
+  for (const l of c.lines.filter((x) => x.receipt_id)) {
+    const u = await authFetch(`/v1/hr/receipts/${l.receipt_id}`).catch(() => null);
+    if (!u) continue;
+    $('#exp-receipts').insertAdjacentHTML('beforeend', l.receipt_type === 'application/pdf' ? `<a class="btn sec" href="${u}" target="_blank" rel="noopener">Receipt ${l.line_no} (PDF)</a>`
+      : `<figure style="margin:0"><img src="${u}" alt="Receipt for line ${l.line_no}" style="max-height:220px;border:1px solid var(--line);border-radius:8px"><figcaption class="muted">Line ${l.line_no}</figcaption></figure>`);
+  }
+}
+
+// The launcher's built-in test receiver, so webhooks can be tried without another system.
+const TEST_RECEIVER = () => `${location.origin}/local/test-receiver`;
+
+Object.assign(pages, {
+  async expenses() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    S.expStatus = S.expStatus ?? '';
+    const [claims, emps, cats, mine] = await Promise.all([api('GET', `/v1/hr/companies/${S.company}/expenses${S.expStatus ? `?status=${S.expStatus}` : ''}`),
+      api('GET', `/v1/hr/companies/${S.company}/contracts`), api('GET', '/v1/hr/expense-categories'), api('GET', '/v1/ess/expenses')]);
+    const withK = emps.filter((k) => k.status === 'active');
+    const toPay = claims.filter((c) => c.status === 'approved');
+    return companyBar(cs) + `<div class="card"><h3>Expense claims</h3><p class="muted">Employees claim what they paid themselves, with a photo of each receipt, from BAATS Mobile or here. The line manager approves (HR or an administrator if there is no manager). Approval posts the claim: the expense net of VAT, the input VAT to 1200 (reclaimable like a supplier bill), and the amount owed to the employee to 2230. Paying it moves the money from the bank and clears 2230.</p>
+      <div class="row"><label>Show<select id="exp-status">${EXP_STATUS.map(([v, t]) => `<option value="${v}" ${v === S.expStatus ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        ${toPay.length ? `<span class="muted">${toPay.length} approved claim${toPay.length === 1 ? '' : 's'} to pay, ${money(toPay.reduce((s, c) => s + Number(c.gross_total), 0))} ${ccy()}</span>` : ''}</div>
+      ${claims.length ? '<div class="tbl"><table><tr><th>No.</th><th>Employee</th><th>Title</th><th>Items</th><th>Receipts</th><th style="text-align:right">VAT</th><th style="text-align:right">Total</th><th>Status</th><th></th></tr>' + claims.map((c) => `<tr><td>${esc(c.no || '(draft)')}</td><td>${esc(c.employee_name)}</td><td>${esc(c.title)}</td><td>${c.lines}</td><td>${c.receipts}</td><td style="text-align:right">${money(c.tax_total)}</td><td style="text-align:right">${money(c.gross_total)}</td><td>${esc(c.status.replace('_', ' '))}</td><td>${act('View', 'exp-view', c.id, 1)} ${c.status === 'approved' ? act('Pay', 'exp-pay', c.id) : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No claims.</div>'}
+      <div id="exp-out"></div></div>
+    <div class="card"><h3>Enter a claim for an employee</h3><p class="muted">For paper receipts handed in to HR. The employee must have a contract in this company. Enter what was paid, VAT included; BAATS works out the VAT from the code.</p>
+      <form id="f-exp"><div class="grid">${pick('employeeId', 'Employee', withK.map((k) => [k.employee_id, `${k.employee_no} ${k.employee_name}`]))}${field('title', 'Claim title', 'required placeholder="Client visit, Abu Dhabi"')}
+        ${field('date', 'Date', `type="date" required max="${today()}" value="${today()}"`)}${pick('category', 'Category', cats.map((c) => [c.code, `${c.name} (${c.account})`]))}${field('description', 'Description', 'required')}
+        ${field('amount', `Amount paid (${ccy()})`, 'type="number" step="any" min="0" required')}${field('taxCode', 'VAT code', `value="${defaultTax()}"`)}
+        <label>Receipt (photo or PDF, up to 750 KB)<input type="file" id="exp-file" accept="image/jpeg,image/png,image/webp,application/pdf"></label></div>
+        <div class="row"><button class="btn">Send for approval</button></div></form></div>
+    ${mine.length ? `<div class="card"><h3>My own claims</h3>${report(mine.map((c) => ({ ...c, no: c.no || '(draft)', status: c.status.replace('_', ' ') })), [['no', 'No.'], ['title', 'Title'], ['status', 'Status'], ['gross_total', 'Total', 1]])}</div>` : ''}`;
+  },
+
+  async integrations() {
+    const [keys, hooks, users] = await Promise.all([api('GET', '/v1/int/api-keys'), api('GET', '/v1/int/webhooks'), api('GET', '/v1/iam/users')]);
+    const evs = Object.entries(hooks.events);
+    return `<div class="card"><h3>API keys</h3><p class="muted">Another system calls the BAATS API with a key in the header <code>Authorization: Bearer &lt;key&gt;</code>. A key acts as one user and can do exactly what that user's roles allow, so give each integration its own user with only the roles it needs. Keys skip the second sign-in factor, so set an expiry and revoke keys you no longer use. The key is shown once.</p>
+      ${report(keys.map((k) => ({ ...k, created_at: d10(k.created_at), expires_at: d10(k.expires_at) || 'never', last_used_at: k.last_used_at ? String(k.last_used_at).slice(0, 16).replace('T', ' ') : 'never', state: k.revoked_at ? 'revoked' : (k.expires_at && new Date(k.expires_at) < new Date() ? 'expired' : 'active') })),
+        [['name', 'Name'], ['prefix', 'Starts with'], ['user_email', 'Acts as'], ['created_at', 'Made'], ['expires_at', 'Expires'], ['last_used_at', 'Last used'], ['state', 'State']])}
+      ${keys.filter((k) => !k.revoked_at).length ? `<div class="row" style="flex-wrap:wrap">${keys.filter((k) => !k.revoked_at).map((k) => act(`Revoke ${esc(k.name)}`, 'key-revoke', k.id, 1)).join(' ')}</div>` : ''}
+      <form id="f-key"><div class="grid">${field('name', 'Name', 'required placeholder="Payroll bureau"')}${pick('userId', 'Acts as user', users.filter((u) => u.status === 'active').map((u) => [u.id, u.email]))}${field('expiresAt', 'Expires on (optional)', `type="date" min="${today()}"`)}</div><div class="row"><button class="btn">Make a key</button></div></form><div id="key-out"></div></div>
+    <div class="card"><h3>Webhooks</h3><p class="muted">BAATS tells another system when something happens, by sending a signed JSON message (POST) to its address. Each message has the header <code>X-BAATS-Signature: t=&lt;time&gt;,v1=&lt;HMAC-SHA256 of "time.body" with the webhook's secret&gt;</code>; the receiver checks it and should refuse messages more than five minutes old. Messages that fail are tried again after 1, 2, 4 minutes and so on, up to 8 times. The events are written in the same transaction as the change, so an event is sent exactly when the change was saved.</p>
+      ${hooks.webhooks.length ? '<div class="tbl"><table><tr><th>Name</th><th>Address</th><th>Events</th><th>On</th><th>Waiting</th><th>Failed</th><th>Last delivered</th><th></th></tr>' + hooks.webhooks.map((w) => `<tr><td>${esc(w.name)}</td><td>${esc(w.url)}</td><td>${w.events.map((e) => `<span class="pill">${esc(e)}</span>`).join('')}</td><td>${w.active ? 'yes' : 'no'}</td><td>${w.pending}</td><td>${w.failed}</td><td>${esc(w.last_delivered_at ? String(w.last_delivered_at).slice(0, 19).replace('T', ' ') : '')}</td><td>${act('Deliveries', 'wh-log', w.id, 1)} ${act('Send a test', 'wh-ping', w.id, 1)} ${act(w.active ? 'Switch off' : 'Switch on', 'wh-toggle', w.id, 1)} ${act('Delete', 'wh-del', w.id, 1)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No webhooks yet.</div>'}
+      <div id="wh-out"></div>
+      <form id="f-hook"><div class="grid">${field('name', 'Name', 'required placeholder="Accounting system"')}${field('url', 'Address (https://...)', 'required id="wh-url"')}</div>
+        <div class="row" style="flex-wrap:wrap">${evs.map(([k, t]) => `<label style="flex-direction:row;align-items:center;gap:6px" title="${esc(t)}"><input type="checkbox" data-ev="${esc(k)}" ${['invoice.posted', 'payment.recorded'].includes(k) ? 'checked' : ''}>${esc(k)}</label>`).join('')}</div>
+        <div class="row"><button class="btn">Add webhook</button> <button type="button" class="btn sec" id="wh-test-url">Use the built-in test receiver</button></div></form><div id="hook-out"></div></div>
+    <div class="card"><h3>Test receiver</h3><p class="muted">In this trial, BAATS has a receiver of its own at <code>${esc(TEST_RECEIVER())}</code>, so you can watch webhooks arrive without another system. It keeps the last 50 messages until BAATS stops.</p>
+      <div class="row"><button class="btn sec" id="rx-refresh">Show what arrived</button></div><div id="rx-out"></div></div>`;
+  },
+
+  async mobile() {
+    let pa = null;
+    try { pa = await api('GET', '/local/phone-access'); } catch { /* not the trial launcher */ }
+    const me = await api('GET', '/v1/me');
+    const linked = !!me.user.employee_id;
+    return `<div class="card"><h3>BAATS Mobile</h3><p>BAATS Mobile is the phone app for employees and managers: approvals waiting for you, leave balance and leave requests, payslips, and expense claims with a photo of the receipt. It runs in the phone's browser and can be added to the home screen like an app. There is nothing to install from an app store.</p>
+      <p>On this computer: <a href="/m/" target="_blank" rel="noopener">${esc(location.origin)}/m/</a>${linked ? '' : ' <span class="muted">(your own user is not linked to an employee, so it shows approvals only; the demo users below are linked)</span>'}</p></div>
+    ${pa ? `<div class="card"><h3>Phone access</h3>
+      <p>Phone access is <b>${pa.on ? 'on' : 'off'}</b>. ${pa.on ? (pa.urls.length ? 'On a phone connected to the same Wi-Fi as this computer, open:' : 'This computer has no local network address right now. Connect it to Wi-Fi or a network cable, then switch phone access off and on again.') : 'While it is off, BAATS can be reached from this computer only.'}</p>
+      ${pa.on && pa.urls.length ? `<p style="font-size:20px">${pa.urls.map((u) => `<b>${esc(u)}</b>`).join('<br>')}</p>
+        <p class="muted">The first time, Windows may ask whether Node.js may use the network. Allow it on <b>private</b> networks only. If the phone cannot connect, check that the Wi-Fi is set as a private network in Windows and that the phone is not on a guest network. The connection is not encrypted (plain http), so use it on your own network only. Phones show it as a web page you can add to the home screen; offline use and notifications need https, which comes with a server installation.</p>` : ''}
+      <div class="row"><button class="btn${pa.on ? ' sec' : ''}" id="pa-toggle">${pa.on ? 'Switch phone access off' : 'Let phones on this network reach BAATS'}</button></div></div>` : ''}
+    <div class="card"><h3>Who can use it</h3><p class="muted">Anyone with a BAATS user can sign in with the same company code, email and password. To see their own leave, payslips and claims, the user must be linked to their employee record (Users and roles: add the user with the employee chosen). Managers see approvals for the people who report to them. The UAE demo (Finance: setup, Load demo data) adds two linked users to try it with: <b>priya@${esc(S.tenant)}.demo</b> (an employee) and <b>omar@${esc(S.tenant)}.demo</b> (her manager), both with the password <b>Mobile-Demo-2026</b>.</p></div>`;
+  },
+});
+
+Object.assign(after, {
+  async expenses(m, ok) {
+    bindCompanyPick();
+    const st = $('#exp-status'); if (st) st.onchange = () => { S.expStatus = st.value; show('expenses'); };
+    const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
+    on('exp-view', (id) => claimView(id));
+    on('exp-pay', async (id) => { if (!confirm('Pay this claim to the employee from the bank account (1010) today?')) return; const c = await api('POST', `/v1/hr/expenses/${id}/pay`, { date: today() }); ok(`${c.no} paid: ${money(c.gross_total)} ${ccy()}`); });
+    bindForm('f-exp', async (b) => {
+      const receipt = await readReceipt($('#exp-file').files[0]);
+      const c = await api('POST', '/v1/hr/expenses', { companyId: S.company, employeeId: b.employeeId, title: b.title, submit: true,
+        lines: [{ date: b.date, category: b.category, description: b.description, amount: Number(b.amount), taxCode: b.taxCode || defaultTax(), ...(receipt ? { receipt } : {}) }] });
+      ok(`${c.no} sent for approval: ${money(c.gross_total)} ${ccy()}, of which VAT ${money(c.tax_total)}`);
+    });
+  },
+
+  async integrations(m, ok) {
+    const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
+    bindForm('f-key', async (b) => {
+      const k = await api('POST', '/v1/int/api-keys', { name: b.name, userId: b.userId, ...(b.expiresAt ? { expiresAt: `${b.expiresAt}T23:59:59Z` } : {}) });
+      await show('integrations');
+      $('#key-out').innerHTML = `<div class="card" style="border-color:var(--ok)"><b>Copy this key now; BAATS will not show it again.</b><pre style="white-space:pre-wrap;word-break:break-all">${esc(k.key)}</pre>
+        <p class="muted">Try it: <code>curl -H "Authorization: Bearer ${esc(k.key)}" ${esc(location.origin)}/v1/me</code></p></div>`;
+    });
+    on('key-revoke', async (id) => { if (!confirm('Revoke this key? Systems using it stop working at once.')) return; await api('POST', `/v1/int/api-keys/${id}/revoke`); ok('Key revoked'); });
+    const urlBtn = $('#wh-test-url'); if (urlBtn) urlBtn.onclick = () => { $('#wh-url').value = TEST_RECEIVER(); const n = $('#f-hook [name=name]'); if (!n.value) n.value = 'Test receiver'; };
+    const fh = $('#f-hook');
+    if (fh) fh.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const b = form(fh);
+        const events = [...fh.querySelectorAll('[data-ev]')].filter((x) => x.checked).map((x) => x.dataset.ev);
+        const w = await api('POST', '/v1/int/webhooks', { name: b.name, url: b.url, events });
+        await show('integrations');
+        $('#hook-out').innerHTML = `<div class="card" style="border-color:var(--ok)"><b>The signing secret for ${esc(w.name)}. Copy it now; BAATS will not show it again.</b><pre style="white-space:pre-wrap;word-break:break-all">${esc(w.secret)}</pre></div>`;
+      } catch (err) { toast(err.message, false); }
+    });
+    on('wh-ping', async (id) => { await api('POST', `/v1/int/webhooks/${id}/ping`); toast('Test queued; it is sent within half a minute'); });
+    on('wh-toggle', async (id) => { const w = (await api('GET', '/v1/int/webhooks')).webhooks.find((x) => x.id === id); await api('PATCH', `/v1/int/webhooks/${id}`, { active: !w.active }); ok(w.active ? 'Switched off' : 'Switched on'); });
+    on('wh-del', async (id) => { if (!confirm('Delete this webhook and its delivery history?')) return; await api('DELETE', `/v1/int/webhooks/${id}`); ok('Webhook deleted'); });
+    const showLog = async (id) => {
+      const ds = await api('GET', `/v1/int/webhooks/${id}/deliveries`);
+      $('#wh-out').innerHTML = '<h4>Deliveries (newest first)</h4>' + (ds.length ? '<div class="tbl"><table><tr><th>Event</th><th>When</th><th>State</th><th>Tries</th><th>Answer</th><th>Problem</th><th>Next try</th><th></th></tr>' + ds.map((d) => `<tr><td>${esc(d.type)}</td><td>${esc(String(d.event_at).slice(0, 19).replace('T', ' '))}</td><td>${esc(d.status)}</td><td>${d.attempts}</td><td>${esc(d.last_status ?? '')}</td><td>${esc(d.last_error ?? '')}</td><td>${d.status === 'pending' ? esc(String(d.next_attempt_at).slice(0, 19).replace('T', ' ')) : ''}</td><td>${d.status !== 'delivered' ? `<button class="btn sec" data-redeliver="${d.id}" data-hook="${id}">Send again</button>` : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">Nothing sent yet.</div>');
+      $('#wh-out').querySelectorAll('[data-redeliver]').forEach((el) => el.onclick = async () => { try { await api('POST', `/v1/int/deliveries/${el.dataset.redeliver}/redeliver`); toast('Queued again'); showLog(el.dataset.hook); } catch (e) { toast(e.message, false); } });
+    };
+    on('wh-log', showLog);
+    const rx = $('#rx-refresh');
+    if (rx) rx.onclick = async () => {
+      try {
+        const got = await api('GET', '/local/test-receiver');
+        $('#rx-out').innerHTML = got.length ? got.map((g) => `<details><summary>${esc(g.at.slice(11, 19))} <b>${esc(g.event)}</b> <span class="muted">${esc(g.signature)}</span></summary><pre>${esc(JSON.stringify(g.body, null, 2))}</pre></details>`).join('') : '<div class="empty">Nothing has arrived yet. Add a webhook with the test receiver address, press Send a test, and look again in half a minute.</div>';
+      } catch (e) { toast(e.message, false); }
+    };
+  },
+
+  async mobile(m, ok) {
+    const b = $('#pa-toggle'); if (!b) return;
+    b.onclick = async () => {
+      try {
+        const cur = await api('GET', '/local/phone-access');
+        if (!cur.on && !confirm('Let phones and other computers on this network reach BAATS? They still need a user and password to sign in.')) return;
+        const r = await api('POST', '/local/phone-access', { on: !cur.on });
+        ok(r.on ? (r.urls.length ? `Phone access on: ${r.urls[0]}` : 'Phone access on, but no network address found') : 'Phone access off');
+      } catch (e) { toast(e.message, false); }
+    };
+  },
+});
+
+// A receipt image for the demo, drawn here so the demo needs no files.
+function demoReceipt(lines) {
+  const cv = document.createElement('canvas'); cv.width = 360; cv.height = 120 + lines.length * 28;
+  const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.fillStyle = '#111';
+  g.font = 'bold 20px monospace'; g.fillText(lines[0], 20, 40); g.font = '16px monospace';
+  lines.slice(1).forEach((l, i) => g.fillText(l, 20, 80 + i * 28));
+  return { fileName: 'receipt.jpg', contentType: 'image/jpeg', dataBase64: cv.toDataURL('image/jpeg', 0.85).split(',')[1] };
+}
+
+async function loadPhase6Demo(step, co, root) {
+  step('BAATS Mobile: two employees who can sign in on a phone, and expense claims...');
+  const pw = 'Mobile-Demo-2026';
+  const emps = await api('GET', '/v1/org/employees');
+  const omar = emps.find((e) => e.employee_no === 'DEMO-001'), priya = emps.find((e) => e.employee_no === 'DEMO-002');
+  if (!omar || !priya) return;
+  if (priya.manager_id !== omar.id) await api('PATCH', `/v1/org/employees/${priya.id}`, { managerId: omar.id });
+  const users = await api('GET', '/v1/iam/users');
+  const ensure = async (first, e) => {
+    const email = `${first}@${S.tenant}.demo`;
+    if (!users.find((u) => u.email === email)) await api('POST', '/v1/iam/users', { email, displayName: `${e.first_name} ${e.last_name}`, password: pw, employeeId: e.id });
+    return email;
+  };
+  const omarEmail = await ensure('omar', omar), priyaEmail = await ensure('priya', priya);
+  const as = async (email, fn) => {
+    const l = await api('POST', '/v1/auth/login', { tenant: S.tenant, email, password: pw });
+    const saved = S.token; S.token = (l.session || l).token;
+    try { return await fn(); } finally { await api('POST', '/v1/auth/logout').catch(() => {}); S.token = saved; }
+  };
+  if ((await api('GET', `/v1/hr/companies/${co}/expenses`)).length) return;
+  const d = today();
+  // One claim approved by her manager and paid, one waiting for him on his phone.
+  const paid = await as(priyaEmail, () => api('POST', '/v1/hr/expenses', { companyId: co, title: 'Printer paper and toner', submit: true, lines: [
+    { date: d, category: 'office', description: 'Toner cartridge', amount: 315, taxCode: 'SR', receipt: demoReceipt(['OFFICE MART', 'Toner HP 26A    300.00', 'VAT 5%           15.00', 'TOTAL AED       315.00']) }] }));
+  await as(omarEmail, async () => { for (const t of await api('GET', '/v1/wf/inbox')) if (t.entity_id === paid.id) await api('POST', `/v1/wf/tasks/${t.task_id}/approve`, { comment: 'OK' }); });
+  await api('POST', `/v1/hr/expenses/${paid.id}/pay`, { date: d });
+  await as(priyaEmail, () => api('POST', '/v1/hr/expenses', { companyId: co, title: 'Client visit, Abu Dhabi', submit: true, lines: [
+    { date: d, category: 'travel', description: 'Taxi Dubai to Abu Dhabi', amount: 262.5, taxCode: 'SR', receipt: demoReceipt(['DUBAI TAXI', 'Trip DXB-AUH    250.00', 'VAT 5%           12.50', 'TOTAL AED       262.50']) },
+    { date: d, category: 'meals', description: 'Lunch with the client', amount: 189, taxCode: 'SR' },
+    { date: d, category: 'fees', description: 'Parking', amount: 20, taxCode: 'EX' }] }));
+}
+
 async function loadDemo(step) {
   const me = await api('GET', '/v1/me');
   const us = await units(); const root = us.find((u) => u.depth === 0) || us[0];
@@ -2118,7 +2309,8 @@ async function loadDemo(step) {
   await loadPhase3Demo(step, co, root);
   await loadPhase4Demo(step, co, root, asApprover);
   await loadPhase5Demo(step, co, root, asApprover);
-  step(`Done. Second user: ${appEmail} / ${pw}`);
+  await loadPhase6Demo(step, co, root);
+  step(`Done. Second user: ${appEmail} / ${pw}. Phone users: priya@${S.tenant}.demo and omar@${S.tenant}.demo / Mobile-Demo-2026`);
   toast(`Demo loaded. The approver can sign in as ${appEmail} with password ${pw}`);
 }
 

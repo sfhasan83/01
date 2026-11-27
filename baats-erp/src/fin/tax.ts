@@ -16,8 +16,8 @@ import { companyPack } from './country.ts';
  */
 
 const SALES_TYPES = ['sales_invoice', 'sales_credit'];
-// Fuel receipts logged in fleet carry input VAT like a purchase invoice.
-const PURCHASE_TYPES = ['purchase_invoice', 'purchase_credit', 'fuel'];
+// Fuel receipts logged in fleet and approved expense claims carry input VAT like a purchase invoice.
+const PURCHASE_TYPES = ['purchase_invoice', 'purchase_credit', 'fuel', 'expense_claim'];
 
 export interface VatBox { amount: number; vat: number }
 export interface VatReturn {

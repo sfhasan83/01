@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f4c5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="BAATS">
+<link rel="manifest" href="/m/manifest.webmanifest">
+<link rel="icon" href="/m/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/m/icon-192.png">
+<title>BAATS Mobile</title>
+<style>
+:root { --bg: #f4f6f7; --card: #fff; --ink: #1b2a30; --muted: #5d6d74; --line: #dde3e6; --brand: #0f4c5c; --brand-ink: #fff;
+  --good: #1d7a46; --warn: #9a6700; --bad: #b42318; --chip: #e8eef0; }
+@media (prefers-color-scheme: dark) { :root { --bg: #11181b; --card: #1a2327; --ink: #e6ecee; --muted: #9aa9af; --line: #2c393e;
+  --brand: #4fa3b5; --brand-ink: #071417; --good: #5cc28a; --warn: #e0b040; --bad: #f07a6e; --chip: #243035; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { position: sticky; top: 0; z-index: 2; background: var(--brand); color: var(--brand-ink); padding: calc(env(safe-area-inset-top) + 12px) 16px 12px;
+  display: flex; align-items: center; gap: 8px; }
+header h1 { font-size: 18px; margin: 0; flex: 1; }
+header button { background: transparent; border: 0; color: inherit; font: inherit; padding: 6px; }
+main { padding: 12px 16px calc(84px + env(safe-area-inset-bottom)); max-width: 640px; margin: 0 auto; }
+nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--line); display: flex;
+  padding-bottom: env(safe-area-inset-bottom); z-index: 2; }
+nav button { flex: 1; background: none; border: 0; padding: 10px 2px 8px; color: var(--muted); font: 12px system-ui, sans-serif; position: relative; }
+nav button.on { color: var(--brand); font-weight: 600; }
+nav svg { display: block; margin: 0 auto 2px; width: 22px; height: 22px; }
+nav .badge { position: absolute; top: 4px; left: 55%; background: var(--bad); color: #fff; border-radius: 9px; font-size: 11px; padding: 0 5px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin: 0 0 12px; }
+.card h2 { font-size: 16px; margin: 0 0 8px; }
+.muted { color: var(--muted); font-size: 14px; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row > * { flex: 1; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 15px; }
+.kv .v { text-align: right; font-variant-numeric: tabular-nums; }
+.big { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.tiles .card { margin: 0; }
+.item { display: block; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  margin: 0 0 8px; color: inherit; font: inherit; }
+.item .t { font-weight: 600; }
+.item .r { float: right; font-variant-numeric: tabular-nums; }
+.chip { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--chip); color: var(--ink); }
+.chip.approved, .chip.paid, .chip.posted { color: var(--good); }
+.chip.pending_approval, .chip.draft { color: var(--warn); }
+.chip.rejected, .chip.cancelled { color: var(--bad); }
+label { display: block; font-size: 14px; color: var(--muted); margin: 10px 0 4px; }
+input, select, textarea { width: 100%; font: 16px system-ui, sans-serif; padding: 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink); }
+textarea { min-height: 70px; }
+.btn { display: inline-block; border: 0; border-radius: 10px; padding: 12px 16px; font: 600 16px system-ui, sans-serif; background: var(--brand);
+  color: var(--brand-ink); width: 100%; margin-top: 12px; }
+.btn.sec { background: var(--chip); color: var(--ink); }
+.btn.bad { background: var(--bad); color: #fff; }
+.btn[disabled] { opacity: .6; }
+.err { color: var(--bad); font-size: 14px; margin-top: 8px; white-space: pre-wrap; }
+.ok { color: var(--good); font-size: 14px; margin-top: 8px; }
+.line { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.thumb { max-width: 100%; max-height: 260px; border-radius: 8px; border: 1px solid var(--line); display: block; margin-top: 6px; }
+.empty { text-align: center; color: var(--muted); padding: 24px 0; }
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom)); background: var(--ink); color: var(--bg);
+  padding: 12px 14px; border-radius: 10px; z-index: 5; }
+</style>
+</head>
+<body>
+<header><h1 id="title">BAATS</h1><button id="refresh" aria-label="Refresh" hidden>&#x21bb;</button><button id="logout" hidden>Sign out</button></header>
+<main id="app"><p class="empty">Loading…</p></main>
+<nav id="nav" hidden></nav>
+<script>
+'use strict';
+const $ = (s) => document.querySelector(s);
+const app = $('#app');
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const d10 = (v) => (v ? String(v).slice(0, 10) : '');
+const today = () => new Date().toISOString().slice(0, 10);
+const DECIMALS = { BHD: 3, KWD: 3, OMR: 3, JOD: 3, IQD: 3, TND: 3, LYD: 3, JPY: 0, KRW: 0 };
+const money = (v, cur) => {
+  const dp = DECIMALS[cur] ?? 2;
+  return `${cur ? cur + ' ' : ''}${Number(v ?? 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
+};
+const LEAVE_TYPES = [['annual', 'Annual'], ['sick', 'Sick'], ['unpaid', 'Unpaid'], ['maternity', 'Maternity'], ['parental', 'Parental'],
+  ['compassionate', 'Compassionate'], ['hajj', 'Hajj']];
+const label = (s) => String(s ?? '').replace(/_/g, ' ');
+
+let S = null;
+try { S = JSON.parse(localStorage.getItem('baatsMobile') || 'null'); } catch { S = null; }
+const save = () => { try { S ? localStorage.setItem('baatsMobile', JSON.stringify(S)) : localStorage.removeItem('baatsMobile'); } catch { /* private mode */ } };
+
+async function api(method, path, body) {
+  const h = {};
+  if (S?.token) h.authorization = 'Bearer ' + S.token;
+  if (body !== undefined) h['content-type'] = 'application/json';
+  let r;
+  try { r = await fetch(path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) }); }
+  catch { throw new Error('Cannot reach BAATS. Check that you are on the same network as the BAATS computer.'); }
+  if (r.status === 401 && path !== '/v1/auth/login') { S = null; save(); show('login'); throw new Error('Your session ended; sign in again.'); }
+  if (r.status === 204) return null;
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.message || `BAATS answered ${r.status}`);
+  return j;
+}
+async function blobUrl(path) {
+  const r = await fetch(path, { headers: { authorization: 'Bearer ' + S.token } });
+  if (!r.ok) throw new Error('could not load the receipt');
+  return URL.createObjectURL(await r.blob());
+}
+function toast(msg) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+function busy(btn, on) { if (btn) { btn.disabled = on; if (on) btn.dataset.t = btn.textContent, btn.textContent = 'Please wait…'; else if (btn.dataset.t) btn.textContent = btn.dataset.t; } }
+function fail(el, err) { if (el) el.innerHTML = `<div class="err">${esc(err.message || err)}</div>`; }
+
+// --- Navigation -----------------------------------------------------------------------
+const ICONS = {
+  home: '<path d="M3 11l9-8 9 8v10h-6v-6H9v6H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
+  approvals: '<path d="M4 12l5 5L20 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  leave: '<rect x="3" y="5" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="2"/>',
+  pay: '<rect x="4" y="3" width="16" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="2"/>',
+  expenses: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 8h6M9 12h6" stroke="currentColor" stroke-width="2"/>',
+};
+const TABS = [['home', 'Home'], ['approvals', 'Approvals'], ['leave', 'Leave'], ['pay', 'Payslips'], ['expenses', 'Expenses']];
+let current = 'home';
+let me = null;
+function drawNav() {
+  const n = $('#nav');
+  n.hidden = false;
+  n.innerHTML = TABS.map(([k, t]) => `<button data-tab="${k}" class="${k === current ? 'on' : ''}"><svg viewBox="0 0 24 24">${ICONS[k]}</svg>${t}${
+    k === 'approvals' && me?.approvals ? `<span class="badge">${me.approvals}</span>` : ''}</button>`).join('');
+  n.querySelectorAll('button').forEach((b) => b.onclick = () => show(b.dataset.tab));
+}
+async function show(view, arg) {
+  if (!S?.token) view = 'login';
+  if (TABS.some(([k]) => k === view)) current = view;
+  $('#logout').hidden = view === 'login';
+  $('#refresh').hidden = view === 'login';
+  if (view === 'login') $('#nav').hidden = true; else drawNav();
+  window.scrollTo(0, 0);
+  try { await VIEWS[view](arg); } catch (err) { fail(app, err); }
+}
+$('#refresh').onclick = () => show(current);
+$('#logout').onclick = async () => { try { await api('POST', '/v1/auth/logout'); } catch { /* signing out anyway */ } S = null; me = null; save(); show('login'); };
+
+// --- Views ------------------------------------------------------------------------------
+const VIEWS = {
+  async login() {
+    $('#title').textContent = 'BAATS Mobile';
+    let tenant = '';
+    try { tenant = localStorage.getItem('baatsTenant') || ''; } catch { /* none */ }
+    app.innerHTML = `<div class="card"><h2>Sign in</h2><p class="muted">Use the same company code, email and password as on the computer.</p>
+      <form id="f"><label for="tenant">Company code</label><input id="tenant" name="tenant" required autocapitalize="none" autocomplete="organization" value="${esc(tenant)}">
+      <label for="email">Email</label><input id="email" name="email" type="email" required autocomplete="username" autocapitalize="none">
+      <label for="password">Password</label><input id="password" name="password" type="password" required autocomplete="current-password">
+      <div id="totp-box" hidden><label for="totp">Code from your authenticator app</label><input id="totp" name="totp" inputmode="numeric" autocomplete="one-time-code"></div>
+      <button class="btn">Sign in</button><div id="msg"></div></form></div>`;
+    $('#f').onsubmit = async (e) => {
+      e.preventDefault();
+      const b = Object.fromEntries(new FormData(e.target));
+      if (!b.totp) delete b.totp;
+      const btn = e.target.querySelector('button'); busy(btn, true);
+      try {
+        const s = await api('POST', '/v1/auth/login', b);
+        S = { token: s.token, tenant: b.tenant, email: b.email }; save();
+        try { localStorage.setItem('baatsTenant', b.tenant); } catch { /* private mode */ }
+        show('home');
+      } catch (err) {
+        if (/second factor/.test(err.message)) { $('#totp-box').hidden = false; $('#totp').focus(); }
+        fail($('#msg'), err);
+      } finally { busy(btn, false); }
+    };
+  },
+
+  async home() {
+    $('#title').textContent = 'BAATS';
+    me = await api('GET', '/v1/ess/me');
+    drawNav();
+    const e = me.employee, k = me.contract, l = me.leave;
+    app.innerHTML = `<div class="card"><div class="muted">Signed in as</div><div class="big" style="font-size:22px">${esc(me.user.name)}</div>
+        ${e ? `<div class="muted">${esc(e.designation || '')}${e.designation ? ' · ' : ''}${esc(e.unit_name)}${k ? ' · ' + esc(k.company) : ''}</div>
+          ${e.manager ? `<div class="muted">Reports to ${esc(e.manager)}</div>` : ''}`
+        : '<div class="err">Your user is not linked to an employee record yet, so leave, payslips and expenses are not available. Ask HR to link it.</div>'}</div>
+      <div class="tiles">
+        <button class="item card" data-go="approvals"><div class="muted">Waiting for you</div><div class="big">${me.approvals}</div><div class="muted">approvals</div></button>
+        <button class="item card" data-go="leave"><div class="muted">Annual leave</div><div class="big">${l ? esc(l.balance) : '–'}</div><div class="muted">days available</div></button>
+      </div>
+      ${e ? `<button class="btn" data-go="newclaim">New expense claim</button><button class="btn sec" data-go="newleave">Request leave</button>` : ''}
+      ${me.canSeeDashboard ? '<p class="muted" style="margin-top:16px">The full dashboard is on the BAATS console on your computer.</p>' : ''}`;
+    app.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => show(b.dataset.go));
+  },
+
+  async approvals() {
+    $('#title').textContent = 'Approvals';
+    const tasks = await api('GET', '/v1/wf/inbox');
+    if (me) { me.approvals = tasks.length; drawNav(); }
+    if (!tasks.length) { app.innerHTML = '<p class="empty">Nothing is waiting for you.</p>'; return; }
+    app.innerHTML = tasks.map((t, i) => `<button class="item" data-i="${i}"><span class="r muted">${esc(d10(t.created_at))}</span>
+      <div class="t">${esc(t.workflow)}</div><div class="muted">${esc(summary(t))}</div><div class="muted">From ${esc(t.requester)}${t.on_behalf_of_user_id ? ' (delegated to you)' : ''}</div></button>`).join('');
+    app.querySelectorAll('[data-i]').forEach((b) => b.onclick = () => show('task', tasks[Number(b.dataset.i)]));
+  },
+
+  async task(t) {
+    $('#title').textContent = 'Approve';
+    const p = t.payload || {};
+    const rows = Object.entries(p).filter(([k, v]) => v !== null && typeof v !== 'object' && !(k === 'currency' && 'amount' in p))
+      .map(([k, v]) => `<div>${esc(label(k === 'no' ? 'number' : k).replace(/^./, (c) => c.toUpperCase()))}</div><div class="v">${esc(k === 'amount' ? money(v, p.currency) : v)}</div>`).join('');
+    app.innerHTML = `<div class="card"><h2>${esc(t.workflow)}</h2><div class="muted">From ${esc(t.requester)} on ${esc(d10(t.created_at))}${t.due_at ? ', due ' + esc(d10(t.due_at)) : ''}</div>
+        <div class="kv line">${rows}</div></div><div id="detail"></div>
+      <div class="card"><label for="comment">Comment (needed to reject)</label><textarea id="comment"></textarea>
+        <button class="btn" id="approve">Approve</button><button class="btn bad" id="reject">Reject</button><button class="btn sec" id="back">Back</button><div id="msg"></div></div>`;
+    $('#back').onclick = () => show('approvals');
+    const act = async (what, btn) => {
+      const comment = $('#comment').value.trim();
+      if (what === 'reject' && !comment) return fail($('#msg'), 'Say why you reject it, so the requester knows what to change.');
+      busy(btn, true);
+      try { await api('POST', `/v1/wf/tasks/${t.task_id}/${what}`, comment ? { comment } : {}); toast(what === 'approve' ? 'Approved' : 'Rejected'); show('approvals'); }
+      catch (err) { fail($('#msg'), err); busy(btn, false); }
+    };
+    $('#approve').onclick = (e) => act('approve', e.target);
+    $('#reject').onclick = (e) => act('reject', e.target);
+    if (t.entity_type === 'hr.expense') claimDetail($('#detail'), t.entity_id, false).catch((err) => fail($('#detail'), err));
+  },
+
+  async leave() {
+    $('#title').textContent = 'Leave';
+    const [list] = await Promise.all([api('GET', '/v1/ess/leave'), me ? null : api('GET', '/v1/ess/me').then((m) => { me = m; })]);
+    const l = me?.leave;
+    app.innerHTML = `<div class="card"><div class="muted">Annual leave available</div><div class="big">${l ? esc(l.balance) : '–'} days</div>
+        ${l ? `<div class="muted">${esc(l.entitled)} earned, ${esc(l.taken)} taken or waiting</div>` : ''}</div>
+      <button class="btn" id="new">Request leave</button><div style="height:12px"></div>
+      ${list.length ? list.map((r) => `<div class="item"><span class="r"><span class="chip ${esc(r.status)}">${esc(label(r.status))}</span></span>
+        <div class="t">${esc(label(r.leave_type))}, ${esc(r.days)} day${Number(r.days) === 1 ? '' : 's'}</div>
+        <div class="muted">${esc(d10(r.date_from))} to ${esc(d10(r.date_to))}${r.reason ? ' · ' + esc(r.reason) : ''}</div></div>`).join('')
+      : '<p class="empty">No leave requests yet.</p>'}`;
+    $('#new').onclick = () => show('newleave');
+  },
+
+  async newleave() {
+    $('#title').textContent = 'Request leave';
+    app.innerHTML = `<div class="card"><form id="f">
+      <label for="leaveType">Type</label><select id="leaveType" name="leaveType">${LEAVE_TYPES.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
+      <div class="row"><div><label for="dateFrom">From</label><input id="dateFrom" name="dateFrom" type="date" required value="${today()}"></div>
+      <div><label for="dateTo">To</label><input id="dateTo" name="dateTo" type="date" required value="${today()}"></div></div>
+      <label for="reason">Reason (optional)</label><textarea id="reason" name="reason"></textarea>
+      <button class="btn">Send for approval</button><button type="button" class="btn sec" id="back">Cancel</button><div id="msg"></div></form></div>`;
+    $('#back').onclick = () => show('leave');
+    $('#f').onsubmit = async (e) => {
+      e.preventDefault();
+      const b = Object.fromEntries(new FormData(e.target)); if (!b.reason) delete b.reason;
+      const btn = e.target.querySelector('button'); busy(btn, true);
+      try { await api('POST', '/v1/ess/leave', b); me = null; toast('Leave requested; your manager will see it'); show('leave'); }
+      catch (err) { fail($('#msg'), err); busy(btn, false); }
+    };
+  },
+
+  async pay() {
+    $('#title').textContent = 'Payslips';
+    const list = await api('GET', '/v1/ess/payslips');
+    if (!list.length) { app.innerHTML = '<p class="empty">No payslips yet. They appear here once a payroll is posted.</p>'; return; }
+    app.innerHTML = list.map((s) => `<button class="item" data-id="${esc(s.id)}"><span class="r">${esc(money(s.net, s.currency))}</span>
+      <div class="t">${esc(String(s.period).slice(0, 7))}</div><div class="muted">${esc(s.paid_days)} paid days · ${esc(label(s.payroll_status))}</div></button>`).join('');
+    app.querySelectorAll('[data-id]').forEach((b) => b.onclick = () => show('payslip', b.dataset.id));
+  },
+
+  async payslip(id) {
+    $('#title').textContent = 'Payslip';
+    const s = await api('GET', `/v1/ess/payslips/${id}`);
+    const c = s.currency;
+    const row = (t, v, cls = '') => `<div class="${cls}">${t}</div><div class="v ${cls}">${esc(money(v, c))}</div>`;
+    app.innerHTML = `<div class="card"><h2>${esc(s.company)}</h2><div class="muted">${esc(s.name)} (${esc(s.employee_no)}) · ${esc(String(s.period).slice(0, 7))}</div>
+      <div class="kv line">${row('Basic', s.basic)}${row('Allowances', s.allowances)}${Number(s.additions) ? row('Additions', s.additions) : ''}
+        ${row('<b>Gross</b>', s.gross)}${Number(s.deductions) ? row('Deductions', -Number(s.deductions)) : ''}
+        ${Number(s.employee_contributions) ? row('Social insurance', -Number(s.employee_contributions)) : ''}</div>
+      <div class="kv line"><div><b>Net pay</b></div><div class="v big" style="font-size:22px">${esc(money(s.net, c))}</div></div>
+      <div class="muted line">${esc(s.paid_days)} paid days · payroll ${esc(label(s.payroll_status))}</div></div>
+      <button class="btn sec" id="back">Back</button>`;
+    $('#back').onclick = () => show('pay');
+  },
+
+  async expenses() {
+    $('#title').textContent = 'Expenses';
+    const list = await api('GET', '/v1/ess/expenses');
+    app.innerHTML = `<button class="btn" id="new">New expense claim</button><div style="height:12px"></div>
+      ${list.length ? list.map((c) => `<button class="item" data-id="${esc(c.id)}"><span class="r">${esc(money(c.gross_total, c.currency))}</span>
+        <div class="t">${esc(c.title)}</div><div class="muted">${esc(c.no || 'Draft')} · ${esc(c.lines)} item${c.lines === 1 ? '' : 's'}, ${esc(c.receipts)} receipt${c.receipts === 1 ? '' : 's'}
+        <span class="chip ${esc(c.status)}">${esc(label(c.status))}</span></div></button>`).join('')
+      : '<p class="empty">No claims yet. Take a photo of a receipt to start one.</p>'}`;
+    $('#new').onclick = () => show('newclaim');
+    app.querySelectorAll('[data-id]').forEach((b) => b.onclick = () => show('claim', b.dataset.id));
+  },
+
+  async claim(id) {
+    $('#title').textContent = 'Expense claim';
+    app.innerHTML = '<div id="detail"></div><div id="acts"></div>';
+    const c = await claimDetail($('#detail'), id, true);
+    const acts = $('#acts');
+    acts.innerHTML = `${c.status === 'draft' ? '<button class="btn" id="submit">Send for approval</button><button class="btn bad" id="del">Delete draft</button>' : ''}
+      <button class="btn sec" id="back">Back</button><div id="msg"></div>`;
+    $('#back').onclick = () => show('expenses');
+    if (c.status === 'draft') {
+      $('#submit').onclick = async (e) => { busy(e.target, true); try { await api('POST', `/v1/hr/expenses/${id}/submit`); toast('Sent for approval'); show('claim', id); } catch (err) { fail($('#msg'), err); busy(e.target, false); } };
+      $('#del').onclick = async (e) => { busy(e.target, true); try { await api('DELETE', `/v1/hr/expenses/${id}`); toast('Draft deleted'); show('expenses'); } catch (err) { fail($('#msg'), err); busy(e.target, false); } };
+    }
+  },
+
+  async newclaim() {
+    $('#title').textContent = 'New claim';
+    const o = await api('GET', '/v1/ess/expense-options');
+    const lines = [];
+    const catOpts = o.categories.map((c) => `<option value="${esc(c.code)}">${esc(c.name)}</option>`).join('');
+    const taxOpts = o.taxCodes.map((t) => `<option value="${esc(t.code)}" ${t.code === o.defaultTaxCode ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+    app.innerHTML = `<div class="card"><div class="muted">${esc(o.company)} · amounts in ${esc(o.currency)}, as paid (VAT included)</div>
+      <label for="claim-title">What is the claim for?</label><input id="claim-title" placeholder="Client visit, Dubai" required></div>
+      <div id="lines"></div>
+      <div class="card"><h2>Add an expense</h2><form id="fl">
+        <label for="photo">Receipt photo or PDF</label><input id="photo" type="file" accept="image/*,application/pdf" capture="environment">
+        <div id="preview"></div>
+        <div class="row"><div><label for="date">Date</label><input id="date" name="date" type="date" required value="${today()}" max="${today()}"></div>
+          <div><label for="amount">Amount</label><input id="amount" name="amount" type="number" inputmode="decimal" step="any" min="0" required></div></div>
+        <label for="category">Category</label><select id="category" name="category">${catOpts}</select>
+        <label for="description">Description</label><input id="description" name="description" required placeholder="Taxi to the airport">
+        <label for="taxCode">VAT on the receipt</label><select id="taxCode" name="taxCode">${taxOpts}</select>
+        <button class="btn sec">Add to the claim</button><div id="lmsg"></div></form></div>
+      <button class="btn" id="send" disabled>Send for approval</button><button class="btn sec" id="draft" disabled>Save as draft</button>
+      <button class="btn sec" id="back">Cancel</button><div id="msg"></div>`;
+    let receipt = null;
+    $('#back').onclick = () => show('expenses');
+    $('#photo').onchange = async (e) => {
+      const f = e.target.files[0]; receipt = null; $('#preview').innerHTML = '';
+      if (!f) return;
+      try {
+        receipt = await prepareReceipt(f);
+        $('#preview').innerHTML = receipt.contentType === 'application/pdf' ? `<div class="muted">${esc(f.name)} (PDF)</div>`
+          : `<img class="thumb" alt="Receipt" src="data:${receipt.contentType};base64,${receipt.dataBase64}">`;
+        $('#preview').insertAdjacentHTML('beforeend', `<div class="muted">${Math.round(receipt.bytes / 1024)} KB</div>`);
+      } catch (err) { fail($('#preview'), err); }
+    };
+    const draw = () => {
+      const total = lines.reduce((s, l) => s + l.amount, 0);
+      $('#lines').innerHTML = lines.length ? `<div class="card"><h2>${lines.length} expense${lines.length === 1 ? '' : 's'}, ${esc(money(total, o.currency))}</h2>
+        ${lines.map((l, i) => `<div class="line"><span class="r">${esc(money(l.amount, o.currency))}</span><div>${esc(l.description)}</div>
+          <div class="muted">${esc(l.date)} · ${esc(o.categories.find((c) => c.code === l.category)?.name)}${l.receipt ? ' · receipt' : ' · no receipt'}
+          · <a href="#" data-rm="${i}">remove</a></div></div>`).join('')}</div>` : '';
+      $('#lines').querySelectorAll('[data-rm]').forEach((a) => a.onclick = (e) => { e.preventDefault(); lines.splice(Number(a.dataset.rm), 1); draw(); });
+      $('#send').disabled = $('#draft').disabled = !lines.length;
+    };
+    $('#fl').onsubmit = (e) => {
+      e.preventDefault();
+      const b = Object.fromEntries(new FormData(e.target));
+      const amount = Number(b.amount);
+      if (!(amount > 0)) return fail($('#lmsg'), 'Enter the amount you paid.');
+      if (lines.length >= 30) return fail($('#lmsg'), 'A claim has at most 30 expenses; send this one and start another.');
+      lines.push({ date: b.date, category: b.category, description: b.description, amount, taxCode: b.taxCode,
+        ...(receipt ? { receipt: { fileName: receipt.fileName, contentType: receipt.contentType, dataBase64: receipt.dataBase64 } } : {}) });
+      e.target.reset(); $('#date').value = today(); $('#taxCode').value = o.defaultTaxCode; receipt = null; $('#preview').innerHTML = ''; $('#lmsg').innerHTML = '';
+      draw(); toast('Added');
+    };
+    const send = async (submit, btn) => {
+      const title = $('#claim-title').value.trim();
+      if (!title) { $('#claim-title').focus(); return fail($('#msg'), 'Give the claim a short title.'); }
+      busy(btn, true);
+      try {
+        const c = await api('POST', '/v1/hr/expenses', { companyId: o.companyId, title, submit, lines });
+        toast(submit ? `${c.no} sent for approval` : 'Saved as a draft'); show('claim', c.id);
+      } catch (err) { fail($('#msg'), err); busy(btn, false); }
+    };
+    $('#send').onclick = (e) => send(true, e.target);
+    $('#draft').onclick = (e) => send(false, e.target);
+  },
+};
+
+function summary(t) {
+  const p = t.payload || {};
+  if (t.entity_type === 'hr.leave') return `${p.employee || ''}: ${label(p.leave_type)} leave, ${p.days} day${p.days === 1 ? '' : 's'}${p.date_from ? ` from ${p.date_from}` : ''}`;
+  if (t.entity_type === 'hr.expense') return `${p.no || ''} ${p.employee || ''}: ${p.title || ''}, ${money(p.amount, p.currency)}`;
+  const bits = [p.no, p.name, p.title, p.description, p.amount !== undefined ? money(p.amount, p.currency) : null].filter(Boolean);
+  return bits.length ? bits.join(' · ') : label(t.entity_type);
+}
+
+async function claimDetail(el, id, own) {
+  const c = await api('GET', `/v1/hr/expenses/${id}`);
+  const cur = c.currency;
+  el.innerHTML = `<div class="card"><h2>${esc(c.title)}</h2><div class="muted">${esc(c.no || 'Draft')} · ${esc(c.employee_name)}
+      <span class="chip ${esc(c.status)}">${esc(label(c.status))}</span></div>
+    ${c.lines.map((l) => `<div class="line"><span class="r">${esc(money(l.gross_amount, cur))}</span><div>${esc(l.description)}</div>
+      <div class="muted">${esc(d10(l.date))} · ${esc(label(l.category))} · VAT ${esc(money(l.tax_amount, cur))}</div>
+      ${l.receipt_id ? `<div data-receipt="${esc(l.receipt_id)}" data-type="${esc(l.receipt_type)}" data-name="${esc(l.receipt_name)}"><span class="muted">Loading receipt…</span></div>`
+        : '<div class="muted">No receipt</div>'}</div>`).join('')}
+    <div class="kv line"><div>VAT</div><div class="v">${esc(money(c.tax_total, cur))}</div><div><b>Total</b></div><div class="v"><b>${esc(money(c.gross_total, cur))}</b></div></div>
+    ${c.journal_no ? `<div class="muted line">Posted as ${esc(c.journal_no)}${c.payment_journal_no ? `, paid as ${esc(c.payment_journal_no)}` : ''}</div>` : ''}
+    ${own && c.status === 'approved' ? '<div class="muted line">Approved. Finance will pay it to you.</div>' : ''}</div>`;
+  for (const r of el.querySelectorAll('[data-receipt]')) {
+    blobUrl(`/v1/hr/receipts/${r.dataset.receipt}`).then((u) => {
+      r.innerHTML = r.dataset.type === 'application/pdf' ? `<a href="${u}" target="_blank" rel="noopener">Open ${esc(r.dataset.name)}</a>`
+        : `<img class="thumb" alt="Receipt" src="${u}">`;
+    }).catch((err) => fail(r, err));
+  }
+  return c;
+}
+
+// A phone photo is several megabytes. Shrink it to at most 1600 pixels as JPEG so the
+// receipt stays readable and under the 750 KB the server keeps.
+const MAX_BYTES = 740_000;
+async function prepareReceipt(file) {
+  if (file.type === 'application/pdf') {
+    if (file.size > MAX_BYTES) throw new Error('This PDF is larger than 750 KB. Take a photo of the receipt instead.');
+    return { fileName: file.name, contentType: file.type, dataBase64: await b64(file), bytes: file.size };
+  }
+  if (!file.type.startsWith('image/')) throw new Error('Choose a photo or a PDF.');
+  const img = await new Promise((resolve, reject) => {
+    const u = URL.createObjectURL(file); const i = new Image();
+    i.onload = () => { URL.revokeObjectURL(u); resolve(i); }; i.onerror = () => reject(new Error('This photo cannot be read; try JPEG or PNG.')); i.src = u;
+  });
+  for (const [side, q] of [[1600, 0.82], [1280, 0.75], [1024, 0.7], [800, 0.65]]) {
+    const k = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+    const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
+    const blob = await new Promise((r) => cv.toBlob(r, 'image/jpeg', q));
+    if (blob && blob.size <= MAX_BYTES) {
+      return { fileName: file.name.replace(/\.[^.]+$/, '') + '.jpg', contentType: 'image/jpeg', dataBase64: await b64(blob), bytes: blob.size };
+    }
+  }
+  throw new Error('This photo is too large even after shrinking it.');
+}
+function b64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1]); r.onerror = () => reject(new Error('could not read the file')); r.readAsDataURL(blob);
+  });
+}
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/m/sw.js', { scope: '/m/' }).catch(() => { /* works without it */ });
+show(S?.token ? 'home' : 'login');
+</script>
+</body>
+</html>

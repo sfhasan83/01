@@ -1,3 +1,4 @@
+import { emit } from '../int/webhooks.ts';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize, decide, unitScope } from '../iam/authz.ts';
@@ -35,11 +36,14 @@ export async function createTicket(tx: Tx, ctx: Ctx, input: { queue: string; cat
   const sla = SLA_HOURS[input.priority];
   if (!sla) throw new ValidationError('priority is 1 (critical) to 4 (low)');
   const no = await tenantNumber(tx, 'svc.tickets', 'TKT', now);
-  return one(tx, `INSERT INTO svc.tickets (tenant_id, no, queue, category, priority, title, description, requester_user_id, unit_id, asset_id, space_id,
+  const t = await one(tx, `INSERT INTO svc.tickets (tenant_id, no, queue, category, priority, title, description, requester_user_id, unit_id, asset_id, space_id,
                     response_due, resolution_due, created_at)
     VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
     [no, input.queue, input.category, input.priority, input.title, input.description, ctx.userId, me.unit_id ?? null, input.assetId ?? null, input.spaceId ?? null,
       new Date(now.getTime() + sla.response * 3600e3), new Date(now.getTime() + sla.resolution * 3600e3), now]);
+  await emit(tx, 'ticket.created', null, { ticket_id: t.id, no: t.no, queue: t.queue, category: t.category, priority: t.priority, title: t.title,
+    resolution_due: t.resolution_due });
+  return t;
 }
 
 async function ticket(tx: Tx, id: string) {

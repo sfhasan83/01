@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, rea
 import { createServer } from 'node:net';
 import { createServer as createHttpServer } from 'node:http';
 import { join, dirname } from 'node:path';
+import { networkInterfaces } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const IS_WIN = process.platform === 'win32';
@@ -194,8 +195,8 @@ async function main() {
   const shutdown = async (why) => {
     if (shuttingDown) return; shuttingDown = true;
     say(`Stopping BAATS (${why})...`);
-    clearInterval(timer);
-    try { server.close(); } catch { /* ignore */ }
+    clearInterval(timer); clearInterval(hookTimer);
+    try { server.close(); closePhoneAccess(); } catch { /* ignore */ }
     try { await app.close(); } catch { /* ignore */ }
     try { await db.close(); } catch { /* ignore */ }
     stopPostgres();
@@ -205,12 +206,67 @@ async function main() {
   const readBody = (req) => new Promise((resolve) => { let b = ''; req.on('data', (d) => { b += d; }); req.on('end', () => resolve(b)); });
   const send = (res, status, type, body) => { res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' }); res.end(body); };
   await app.ready();
+  // Phone access (off by default): BAATS also listens on this computer's local
+  // network addresses, so BAATS Mobile works on phones on the same Wi-Fi.
+  const lanAddresses = () => Object.values(networkInterfaces()).flat()
+    .filter((a) => a && a.family === 'IPv4' && !a.internal && !a.address.startsWith('169.254.')).map((a) => a.address);
+  const phoneServers = [];
+  const received = [];
+  const phoneUrls = () => phoneServers.map((x) => `http://${x.ip}:${cfg.appPort}/m/`);
+  const openPhoneAccess = async () => {
+    for (const ip of lanAddresses()) {
+      if (phoneServers.some((x) => x.ip === ip)) continue;
+      const srv = createHttpServer((req, res) => handle(req, res, true));
+      try {
+        await new Promise((resolve, reject) => { srv.once('error', reject); srv.listen(cfg.appPort, ip, resolve); });
+        phoneServers.push({ ip, srv });
+      } catch (err) { say(`Phone access: could not listen on ${ip} (${err.message})`); }
+    }
+    if (phoneServers.length) say(`Phones on the same network can open BAATS Mobile at ${phoneUrls().join(' or ')}`);
+    else say('Phone access is on, but this computer has no local network address right now.');
+  };
+  const closePhoneAccess = () => { for (const x of phoneServers.splice(0)) x.srv.close(); };
+  // Only someone who manages integrations in a company may switch phone access.
+  const mayManage = async (req) => {
+    const r = await app.inject({ method: 'POST', url: '/v1/iam/check', payload: { permission: 'int.manage' },
+      headers: { authorization: req.headers.authorization ?? '', 'content-type': 'application/json' } });
+    return r.statusCode === 200 && JSON.parse(r.body).allowed === true;
+  };
+
   // Local-only routes for the trial console; everything else goes to the BAATS API unchanged.
-  const server = createHttpServer(async (req, res) => {
+  // Requests that come from the local network reach only BAATS Mobile and the API.
+  const handle = async (req, res, fromLan) => {
     const path = (req.url ?? '/').split('?')[0];
     try {
+      if (fromLan) {
+        if (req.method === 'GET' && (path === '/' || path === '/index.html')) { res.writeHead(302, { location: '/m/' }); return res.end(); }
+        if (!(path === '/m' || path.startsWith('/m/') || path.startsWith('/v1/') || path === '/health') || path === '/v1/platform/tenants') {
+          return send(res, 404, 'application/json', '{"error":"not_found","message":"not available from the network"}');
+        }
+        return app.routing(req, res);
+      }
       if (req.method === 'GET' && (path === '/' || path === '/index.html')) return send(res, 200, 'text/html; charset=utf-8', consoleHtml);
       if (req.method === 'GET' && path === '/local/ping') return send(res, 200, 'application/json', JSON.stringify({ baats: true, version }));
+      if (req.method === 'GET' && path === '/local/phone-access') {
+        return send(res, 200, 'application/json', JSON.stringify({ on: !!cfg.allowPhones, urls: phoneUrls(), port: cfg.appPort, localUrl: `http://127.0.0.1:${cfg.appPort}/m/` }));
+      }
+      if (req.method === 'POST' && path === '/local/phone-access') {
+        if (!(await mayManage(req))) return send(res, 403, 'application/json', '{"error":"forbidden","message":"only someone with the int.manage permission can switch phone access"}');
+        const on = JSON.parse((await readBody(req)) || '{}').on === true;
+        cfg.allowPhones = on;
+        writeFileSync(CONFIG, JSON.stringify(cfg, null, 2));
+        if (on) await openPhoneAccess(); else { closePhoneAccess(); say('Phone access is off.'); }
+        return send(res, 200, 'application/json', JSON.stringify({ on, urls: phoneUrls(), port: cfg.appPort }));
+      }
+      // A webhook receiver for trying webhooks without another system; keeps the last 50 messages in memory.
+      if (req.method === 'POST' && path === '/local/test-receiver') {
+        const raw = await readBody(req);
+        let body; try { body = JSON.parse(raw); } catch { body = raw.slice(0, 2000); }
+        received.unshift({ at: new Date().toISOString(), event: String(req.headers['x-baats-event'] ?? ''), signature: String(req.headers['x-baats-signature'] ?? ''), body });
+        received.length = Math.min(received.length, 50);
+        return send(res, 200, 'application/json', '{"received":true}');
+      }
+      if (req.method === 'GET' && path === '/local/test-receiver') return send(res, 200, 'application/json', JSON.stringify(received));
       if (req.method === 'POST' && path === '/local/create-company') {
         const r = await app.inject({ method: 'POST', url: '/v1/platform/tenants', payload: await readBody(req),
           headers: { 'content-type': 'application/json', 'x-platform-admin-key': cfg.platformAdminKey } });
@@ -223,7 +279,20 @@ async function main() {
       }
       app.routing(req, res);
     } catch (err) { send(res, 500, 'application/json', JSON.stringify({ error: 'internal', message: err.message })); }
-  });
+  };
+  const server = createHttpServer((req, res) => handle(req, res, false));
+
+  // Webhook deliveries every half minute, as in src/main.ts. Receivers on this
+  // computer or the local network are allowed in the trial.
+  const { dispatchAll } = await import(pathToFileURL(join(APP_DIR, 'src', 'int', 'webhooks.ts')).href);
+  const { parseSecretKey } = await import(pathToFileURL(join(APP_DIR, 'src', 'ai', 'secrets.ts')).href);
+  const hookOpts = { secretKey: parseSecretKey(cfg.secretKey), allowPrivateUrls: true };
+  let dispatching = false;
+  const hookTimer = setInterval(async () => {
+    if (dispatching) return;
+    dispatching = true;
+    try { await dispatchAll(db, hookOpts); } catch { /* next time */ } finally { dispatching = false; }
+  }, 30_000);
 
   // Escalation sweep, as in src/main.ts
   const { runEscalations } = await import(pathToFileURL(join(APP_DIR, 'src', 'workflow', 'engine.ts')).href);
@@ -247,6 +316,7 @@ async function main() {
   say('  Your browser should open by itself.');
   say('  To stop BAATS, close this window (or press Ctrl+C).');
   say('==========================================================');
+  if (cfg.allowPhones) await openPhoneAccess();
   openBrowser(url);
 }
 

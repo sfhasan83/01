@@ -16,6 +16,7 @@ import { registerPhase3 } from './phase3.ts';
 import { registerPhase4 } from './phase4.ts';
 import { registerPhase5 } from './phase5.ts';
 import { registerAssistant } from './assistant.ts';
+import { MOBILE_PATHS, registerPhase6 } from './phase6.ts';
 import { parseSecretKey } from '../ai/secrets.ts';
 import type { AiOptions } from '../ai/assistant.ts';
 
@@ -25,7 +26,7 @@ declare module 'fastify' {
 
 export interface ServerOptions {
   db: Db; platformAdminKey?: string; logger?: boolean;
-  /** AI assistant: secretKey encrypts provider API keys (32 bytes, base64 or hex); allowPrivateUrls permits local model servers. */
+  /** secretKey (32 bytes, base64 or hex) seals AI provider keys and webhook secrets; allowPrivateUrls permits local model servers and webhook receivers on the local network. */
   ai?: { secretKey?: string; allowPrivateUrls?: boolean; providerFactory?: AiOptions['providerFactory'] };
 }
 
@@ -50,7 +51,7 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
 
   app.decorateRequest('ctx', null as unknown as Ctx);
   app.decorateRequest('token', '');
-  const PUBLIC = new Set(['/v1/auth/login', '/v1/platform/tenants', '/health']);
+  const PUBLIC = new Set(['/v1/auth/login', '/v1/platform/tenants', '/health', ...MOBILE_PATHS]);
   app.addHook('onRequest', async (req: FastifyRequest) => {
     if (PUBLIC.has(req.routeOptions.url ?? '')) return;
     const h = req.headers.authorization;
@@ -206,7 +207,10 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
   registerPhase3(app, run);
   registerPhase4(app, run);
   registerPhase5(app, run);
-  registerAssistant(app, run, db, { secretKey: parseSecretKey(opts.ai?.secretKey), allowPrivateUrls: opts.ai?.allowPrivateUrls ?? false, providerFactory: opts.ai?.providerFactory });
+  const secretKey = parseSecretKey(opts.ai?.secretKey);
+  const allowPrivateUrls = opts.ai?.allowPrivateUrls ?? false;
+  registerAssistant(app, run, db, { secretKey, allowPrivateUrls, providerFactory: opts.ai?.providerFactory });
+  registerPhase6(app, run, { secretKey, allowPrivateUrls });
 
   return app;
 }

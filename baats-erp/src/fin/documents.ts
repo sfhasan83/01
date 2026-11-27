@@ -3,6 +3,7 @@ import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
 import { company, nextNumber, post, resolveAccount, roundMoney, type PostingLine } from './ledger.ts';
 import { roundIn } from '../core/money.ts';
+import { emit } from '../int/webhooks.ts';
 
 /**
  * Receivables and payables. Posting rules follow BAATS Accounting:
@@ -179,6 +180,8 @@ export async function postInvoice(tx: Tx, ctx: Ctx, invoiceId: string) {
     source: { type: 'invoice', id: inv.id }, lines: postLines,
   });
   await tx.query(`UPDATE fin.invoices SET status = 'posted', no = $2, journal_id = $3 WHERE id = $1`, [inv.id, no, journal.id]);
+  await emit(tx, 'invoice.posted', inv.company_id, { invoice_id: inv.id, no, kind: inv.kind, date, party: party.name, party_id: inv.party_id,
+    currency: inv.currency, net: Number(inv.net_total), tax: Number(inv.tax_total), gross: Number(inv.gross_total), journal_no: journal.no });
   // A credit note settles its original invoice straight away (same rate, so no exchange difference).
   if (credit) {
     await tx.query(`INSERT INTO fin.allocations (tenant_id, credit_id, invoice_id, amount, date) VALUES (app.tenant(), $1, $2, $3, $4)`,
@@ -291,6 +294,8 @@ export async function recordPayment(tx: Tx, ctx: Ctx, input: PaymentInput) {
     await tx.query(`INSERT INTO fin.allocations (tenant_id, payment_id, invoice_id, amount, date) VALUES (app.tenant(), $1, $2, $3, $4)`,
       [pay.id, a.invoiceId, a.amount, input.date]);
   }
+  await emit(tx, 'payment.recorded', input.companyId, { payment_id: pay.id, no, kind: input.kind, date: input.date, party: party.name, party_id: input.partyId,
+    currency, amount, allocated, unallocated, reference: input.reference ?? null, journal_no: journal.no });
   return { ...pay, journal_id: journal.id, unallocated };
 }
 

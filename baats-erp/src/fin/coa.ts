@@ -52,6 +52,7 @@ export const UAE_CHART: AccountTemplate[] = [
   L('2200', 'Accrued Expenses', 'liability', '21', { role: 'accruals' }),
   L('2210', 'Salaries Payable', 'liability', '21', { role: 'salaries_payable' }),
   L('2220', 'Pension Contributions Payable (GPSSA)', 'liability', '21', { role: 'social_insurance_payable', manual: false }),
+  L('2230', 'Employee Expense Claims Payable', 'liability', '21', { role: 'employee_claims_payable', manual: false }),
   L('2300', 'Deferred Revenue (contract liabilities)', 'liability', '21', { role: 'deferred_revenue' }),
   L('2400', 'Corporate Tax Payable', 'liability', '21', { role: 'corporate_tax_payable' }),
   L('2500', 'End-of-Service Benefits Provision', 'liability', '21', { role: 'eosb_provision' }),

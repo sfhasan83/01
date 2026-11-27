@@ -4,7 +4,7 @@
 
 BAATS Enterprise ERP is a multi-tenant enterprise business operating system: one platform where every department runs as an integrated module on shared engines for organization, identity, workflow, master data, audit and rules.
 
-This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (finance built on BAATS Accounting, UAE edition, plus inventory, procurement, sales and CRM, HR and payroll), **Phase 3 operations** (projects, manufacturing with MRP, maintenance, fleet), **Phase 4 corporate functions** (documents, legal and contracts, risk, compliance and internal audit, corrective actions, service desk, quality, health and safety, facilities), **Phase 5 intelligence** (KPI engine, executive dashboard, report builder, strategy scorecard, ESG, anomaly checks, and the AI assistant), **Phase 6a and 6b** (the interactive dashboard, country packs for the six GCC states, and money in three decimals), a Windows trial installer, and the foundation documents for the full programme.
+This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (finance built on BAATS Accounting, UAE edition, plus inventory, procurement, sales and CRM, HR and payroll), **Phase 3 operations** (projects, manufacturing with MRP, maintenance, fleet), **Phase 4 corporate functions** (documents, legal and contracts, risk, compliance and internal audit, corrective actions, service desk, quality, health and safety, facilities), **Phase 5 intelligence** (KPI engine, executive dashboard, report builder, strategy scorecard, ESG, anomaly checks, and the AI assistant), **Phase 6a to 6c** (the interactive dashboard, country packs for the six GCC states, money in three decimals, BAATS Mobile, expense claims, API keys and webhooks), a Windows trial installer, and the foundation documents for the full programme.
 
 ## Documents
 
@@ -54,6 +54,10 @@ This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (fi
 | AI assistant (Phase 5b) | Chat about one company at a time; Claude by default (`claude-opus-5-5` through the Anthropic SDK, with prompt caching and refusal fallbacks) or any OpenAI-compatible service, including a local model such as Ollama; 19 tools over the KPIs, statements, ageing, stock, report builder, anomaly checks, ESG, scorecard and service desk, each running as the user so permissions and unit scoping apply; changes (raise a ticket, record an ESG reading, save a report) wait for the user to confirm; API keys encrypted at rest (`BAATS_SECRET_KEY`) and kept out of the audit trail; monthly token allowance; every tool call audited |
 | Interactive dashboard (Phase 6a) | Any period (this or last month, quarter, financial year, last 12 months, or custom dates) against the previous period or the same period last year; tiles with sparklines; click a KPI for its monthly line against the comparison, breakdowns (customer, supplier, account, cost center, vehicle, department, age) and the records behind it; personal tiles, order, period and comparison per user and company |
 | Country packs (Phase 6a, 6b) | UAE, Saudi Arabia, Oman, Bahrain, Qatar and Kuwait. Oman: 5% VAT and its return, 15% income tax, Social Protection Fund. Bahrain: 10% VAT and the NBR return, SIO with the stepped leaving indemnity. Qatar and Kuwait: no VAT, GRSIA and PIFSS. Each has its own end-of-service rule, and dinars and rials are kept to three decimals. Saudi: SAR books, 15% VAT codes with ZATCA exemption reasons, the ZATCA VAT return, ZATCA e-invoices (UBL 2.1, standard and simplified, invoice counter, hash chain, QR code, chain check), GOSI by nationality from editable company rates, end-of-service per the Saudi Labor Law with the resignation reductions. Not yet: ZATCA onboarding, stamping and clearance, zakat and income tax |
+| Expense claims (Phase 6c) | Employees claim what they paid themselves, one claim with up to 30 expenses and a receipt photo or PDF for each (kept in the database, at most 750 KB). VAT is worked out from the amount paid and the VAT code; reverse charge is refused. The line manager approves (HR or an administrator when there is none); approval posts the expense net of VAT, input VAT to 1200 and the amount owed to the employee to 2230 (journal ECJ); paying it from the bank clears 2230 (journal ECP). Only the employee, the approver and holders of `hr.expense.manage` see a claim and its receipts |
+| BAATS Mobile (Phase 6c) | A phone web app at `/m/`, served by the BAATS server and added to the home screen (no app store): approvals with the claim and its receipts, leave balance and requests, payslips of posted payrolls, and expense claims with the camera, shrunk on the phone to about 200 KB. Self-service is limited to the signed-in user's own employee record (`/v1/ess/...`) |
+| API keys (Phase 6c) | Keys for other systems (`Authorization: Bearer <key>`), each acting as one user with exactly that user's roles; shown once, stored as a hash, optional expiry, revocable, last use recorded. Keys skip the second factor, so making one needs `int.manage` and a key for another user also `iam.user.manage` |
+| Webhooks (Phase 6c) | Events `invoice.posted`, `payment.recorded`, `payroll.posted`, `expense.approved`, `expense.paid`, `leave.approved`, `ticket.created`, written in the same transaction as the change (an outbox), sent as JSON with `X-BAATS-Signature: t=<unix time>,v1=<HMAC-SHA256 hex of "t.body">`, retried after 1, 2, 4 ... minutes up to 8 attempts, then marked failed and can be sent again. The signing secret is sealed with `BAATS_SECRET_KEY`. Private and local addresses are refused, also after DNS resolution, unless the server allows them |
 | API | REST `/v1` with schema validation for all of the above |
 
 ## Run it
@@ -101,7 +105,10 @@ src/inv/          inventory
 src/pur/          procurement
 src/crm/          leads, opportunities, activities
 src/sal/          quotations, orders, deliveries, invoicing from orders
-src/hr/           contracts, leave, payroll, WPS, gratuity
+src/hr/           contracts, leave, payroll, WPS, gratuity, expense claims
+src/ess/          employee self-service for BAATS Mobile
+src/int/          webhooks: event outbox, signing and delivery
+src/mobile/       BAATS Mobile (phone web app, served at /m/)
 installer/windows Windows trial installer (NSIS), launcher and trial console
 src/api/          HTTP API
 test/             unit, integration (real PostgreSQL) and API tests
@@ -113,10 +120,12 @@ test/             unit, integration (real PostgreSQL) and API tests
 |---|---|---|
 | `DATABASE_URL` | server | Connection as `baats_app` (never the owner) |
 | `PLATFORM_ADMIN_KEY` | server | Required header for tenant onboarding |
-| `BAATS_SECRET_KEY` | server | 32 bytes (base64 or hex) that encrypt AI provider API keys at rest; without it, keys cannot be saved |
+| `BAATS_SECRET_KEY` | server | 32 bytes (base64 or hex) that encrypt AI provider API keys and webhook signing secrets at rest; without it, neither can be saved |
 | `AI_ALLOW_PRIVATE_URLS` | server | `true` lets tenants point the assistant at http:// or private addresses (on-premises local models); leave unset for hosted, multi-tenant servers |
 | `PORT`, `HOST` | server | Listen address (default `0.0.0.0:3000`) |
 | `ESCALATION_SWEEP_SECONDS` | server | Escalation sweep interval (default 300) |
+| `WEBHOOK_DISPATCH_SECONDS` | server | How often due webhook deliveries are sent (default 30) |
+| `WEBHOOK_ALLOW_PRIVATE_URLS` | server | `true` allows webhook receivers on http:// or private addresses (on-premises); leave unset for hosted servers |
 | `MIGRATION_DATABASE_URL` | migrate | Owner connection |
 | `APP_DB_PASSWORD` | migrate | Enables login for `baats_app` with this password |
 | `TEST_ADMIN_DATABASE_URL` | tests | Superuser connection used to create per-file test databases |

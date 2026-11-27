@@ -1,6 +1,7 @@
 import { UnauthenticatedError, ValidationError } from '../core/errors.ts';
 import { one, type Ctx, type Db, type Tx } from '../core/db.ts';
 import { newToken, newTotpSecret, sha256, verifyPassword, verifyTotp } from './crypto.ts';
+import { userForApiKey } from './apikeys.ts';
 
 const SESSION_HOURS = 8;
 const MAX_FAILED_LOGINS = 5;
@@ -63,6 +64,7 @@ export async function authenticate(db: Db, token: string): Promise<Ctx> {
   const tenantId = token.split('.')[0];
   if (!/^[0-9a-f-]{36}$/.test(tenantId)) throw new UnauthenticatedError();
   const userId = await db.withTenant({ tenantId, userId: null }, async (tx) => {
+    if (token.slice(tenantId.length + 1).startsWith('bk_')) return (await userForApiKey(tx, token)) ?? undefined;
     const s = await one(tx, `SELECT s.user_id FROM iam.sessions s JOIN iam.users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now() AND u.status = 'active'`, [sha256(token)]);
     return s?.user_id as string | undefined;

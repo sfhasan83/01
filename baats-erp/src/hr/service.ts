@@ -1,4 +1,5 @@
 import { fixed } from '../core/money.ts';
+import { emit } from '../int/webhooks.ts';
 import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
@@ -149,13 +150,19 @@ export async function requestLeave(tx: Tx, ctx: Ctx, input: { employeeId: string
     VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7) RETURNING *`,
     [input.employeeId, input.leaveType, input.dateFrom, input.dateTo, n, input.reason ?? null, ctx.userId]);
   const inst = await submit(tx, ctx, { code: LEAVE_WORKFLOW, entityType: 'hr.leave', entityId: r.id, subjectUnitId: emp.unit_id,
-    payload: { leave_type: input.leaveType, days: n, employee: `${emp.first_name} ${emp.last_name}` } });
+    payload: { leave_type: input.leaveType, days: n, date_from: input.dateFrom, date_to: input.dateTo, employee: `${emp.first_name} ${emp.last_name}` } });
   return { ...r, workflowInstanceId: inst.id };
 }
 
 onWorkflowComplete('hr.leave', async (tx, inst) => {
   const approved = inst.status === 'approved';
   await tx.query(`UPDATE hr.leave_requests SET status = $2 WHERE id = $1 AND status = 'pending_approval'`, [inst.entity_id, approved ? 'approved' : 'rejected']);
+  if (approved) {
+    const r = await one(tx, `SELECT r.*, e.employee_no, k.company_id FROM hr.leave_requests r JOIN org.employees e ON e.id = r.employee_id
+                              LEFT JOIN hr.contracts k ON k.employee_id = r.employee_id AND k.status = 'active' WHERE r.id = $1`, [inst.entity_id]);
+    if (r) await emit(tx, 'leave.approved', r.company_id ?? null, { leave_id: r.id, employee_no: r.employee_no, leave_type: r.leave_type,
+      from: dstr(r.date_from), to: dstr(r.date_to), days: Number(r.days) });
+  }
 });
 
 export async function listLeave(tx: Tx, ctx: Ctx, companyId: string) {
@@ -304,6 +311,8 @@ export async function postPayroll(tx: Tx, ctx: Ctx, runId: string, date?: string
   }
   await tx.query(`UPDATE hr.payroll_runs SET status = 'posted', journal_id = $2, gratuity_journal_id = $3, gratuity_change = $4 WHERE id = $1`,
     [runId, j.id, gj?.id ?? null, change]);
+  await emit(tx, 'payroll.posted', run.company_id, { run_id: runId, period: run.period, gross: Number(run.gross_total), net: Number(run.net_total),
+    employees: Number((await one(tx, 'SELECT count(*) AS n FROM hr.payslips WHERE run_id = $1', [runId])).n), journal_no: j.no });
   return getPayroll(tx, ctx, runId);
 }
 

@@ -4,7 +4,7 @@
 
 BAATS Enterprise ERP is a multi-tenant enterprise business operating system: one platform where every department runs as an integrated module on shared engines for organization, identity, workflow, master data, audit and rules.
 
-This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (finance built on BAATS Accounting, UAE edition, plus inventory, procurement, sales and CRM, HR and payroll), **Phase 3 operations** (projects, manufacturing with MRP, maintenance, fleet), **Phase 4 corporate functions** (documents, legal and contracts, risk, compliance and internal audit, corrective actions, service desk, quality, health and safety, facilities), **Phase 5 analytics** (KPI engine, executive dashboard, report builder, strategy scorecard, ESG, anomaly checks), a Windows trial installer, and the foundation documents for the full programme.
+This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (finance built on BAATS Accounting, UAE edition, plus inventory, procurement, sales and CRM, HR and payroll), **Phase 3 operations** (projects, manufacturing with MRP, maintenance, fleet), **Phase 4 corporate functions** (documents, legal and contracts, risk, compliance and internal audit, corrective actions, service desk, quality, health and safety, facilities), **Phase 5 intelligence** (KPI engine, executive dashboard, report builder, strategy scorecard, ESG, anomaly checks, and the AI assistant), a Windows trial installer, and the foundation documents for the full programme.
 
 ## Documents
 
@@ -51,6 +51,7 @@ This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (fi
 | Strategy scorecard (Phase 5) | Objectives by balanced scorecard perspective with KPI targets per year; amounts judged pro rata to date and projected to year end, rates as they stand; red, amber and green with a tolerance band |
 | ESG (Phase 5) | Scope 1 from fleet fuel logs, LPG and refrigerant; scope 2 from grid electricity; water, waste, recycling and solar; overridable emission factors with their source; intensity per revenue and per employee |
 | Anomaly checks (Phase 5) | Whole-ledger rules: duplicate supplier bills, weekend and round-amount manual journals, late postings, high customer credit notes, unmatched supplier payments, Benford's law; review outcomes recorded, and nobody can explain away their own document |
+| AI assistant (Phase 5b) | Chat about one company at a time; Claude by default (`claude-opus-5-5` through the Anthropic SDK, with prompt caching and refusal fallbacks) or any OpenAI-compatible service, including a local model such as Ollama; 19 tools over the KPIs, statements, ageing, stock, report builder, anomaly checks, ESG, scorecard and service desk, each running as the user so permissions and unit scoping apply; changes (raise a ticket, record an ESG reading, save a report) wait for the user to confirm; API keys encrypted at rest (`BAATS_SECRET_KEY`) and kept out of the audit trail; monthly token allowance; every tool call audited |
 | API | REST `/v1` with schema validation for all of the above |
 
 ## Run it
@@ -110,6 +111,8 @@ test/             unit, integration (real PostgreSQL) and API tests
 |---|---|---|
 | `DATABASE_URL` | server | Connection as `baats_app` (never the owner) |
 | `PLATFORM_ADMIN_KEY` | server | Required header for tenant onboarding |
+| `BAATS_SECRET_KEY` | server | 32 bytes (base64 or hex) that encrypt AI provider API keys at rest; without it, keys cannot be saved |
+| `AI_ALLOW_PRIVATE_URLS` | server | `true` lets tenants point the assistant at http:// or private addresses (on-premises local models); leave unset for hosted, multi-tenant servers |
 | `PORT`, `HOST` | server | Listen address (default `0.0.0.0:3000`) |
 | `ESCALATION_SWEEP_SECONDS` | server | Escalation sweep interval (default 300) |
 | `MIGRATION_DATABASE_URL` | migrate | Owner connection |

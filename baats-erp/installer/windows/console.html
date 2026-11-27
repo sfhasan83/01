@@ -37,6 +37,14 @@ pre{white-space:pre-wrap;word-break:break-all;font-size:12px;background:var(--bg
 .hit{fill:transparent;cursor:crosshair}.xhair{stroke:var(--muted);stroke-dasharray:3 3}.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:5;min-width:150px}
 .bar{display:grid;grid-template-columns:minmax(90px,35%) 1fr auto;gap:8px;align-items:center;padding:3px 0;font-size:13px}.bl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bt{height:12px}.bf{display:block;height:12px;border-radius:0 4px 4px 0;background:var(--s1)}.bv{font-variant-numeric:tabular-nums}
 .rag{font-weight:600;white-space:nowrap}.rag-green{color:var(--ok)}.rag-amber{color:var(--warn)}.rag-red{color:var(--bad)}.checks{display:flex;flex-wrap:wrap;gap:6px 14px}.ck{flex-direction:row!important;align-items:center;gap:6px;display:flex}
+.ai-wrap{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start}.ai-side{position:sticky;top:12px}.ai-list{display:flex;flex-direction:column;gap:4px;margin-top:10px;max-height:60vh;overflow:auto}
+.ai-item{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:8px 10px;cursor:pointer;font:inherit}.ai-item.on{border-color:var(--brand);background:var(--chip)}.ai-item span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.ai-thread{max-height:62vh;overflow:auto;padding:8px 2px;display:flex;flex-direction:column;gap:10px}.ai-msg{display:flex}.ai-msg.me{justify-content:flex-end}.ai-bubble{max-width:85%;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--line);overflow-wrap:anywhere}.ai-msg.me .ai-bubble{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.ai-bubble p{margin:0 0 8px}.ai-bubble p:last-child{margin-bottom:0}.ai-bubble ul,.ai-bubble ol{margin:4px 0 8px;padding-left:20px}.ai-bubble td.num{text-align:right;font-variant-numeric:tabular-nums}.ai-bubble code{font-size:12px;background:var(--chip);padding:1px 4px;border-radius:4px}
+.ai-chip{display:inline-block;font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:1px 8px;margin:0 4px 6px 0}.ai-chip.bad{color:var(--bad)}
+.ai-change{border:1px solid var(--warn);border-radius:8px;padding:8px 10px;margin-top:8px;background:var(--panel)}.ai-change.done{border-color:var(--ok)}.ai-change.rejected,.ai-change.failed{border-color:var(--line)}.ai-err{color:var(--bad);font-size:13px;margin-top:4px}
+.ai-ask{display:flex;gap:8px;margin-top:12px;align-items:flex-end}.ai-ask textarea{flex:1;resize:vertical;min-height:44px;font:inherit}.ai-wait{font-style:italic}
+@media (max-width:900px){.ai-wrap{grid-template-columns:1fr}.ai-side{position:static}.ai-bubble{max-width:100%}}
 </style>
 </head>
 <body>
@@ -120,7 +128,7 @@ const pages = {
   async overview() {
     const me = await api('GET', '/v1/me');
     return `<div class="card"><h3>Welcome, ${esc(me.user.display_name)}</h3><p class="muted">Signed in to <b>${esc(S.tenant)}</b> as ${esc(me.user.email)}. MFA: ${me.user.mfa_enabled ? 'on' : 'off'}.</p>
-      <p>This console lets you try what BAATS can do today. Phase 5: an executive dashboard computed live from the books, a report builder over governed datasets with CSV export, a strategy scorecard with KPI targets, ESG emissions and resource use, and anomaly checks on the whole ledger. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
+      <p>This console lets you try what BAATS can do today. Phase 5: an AI assistant that answers questions from your books and proposes changes for you to confirm (an administrator turns it on under Assistant settings, with Claude or a model on this computer), an executive dashboard computed live from the books, a report builder over governed datasets with CSV export, a strategy scorecard with KPI targets, ESG emissions and resource use, and anomaly checks on the whole ledger. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
       <div class="card"><h3>Your approvals waiting (${me.inbox.length})</h3>${table(me.inbox)}</div>
       <div class="card"><h3>Your permissions (${me.permissions.length})</h3>${me.permissions.map((p) => `<span class="pill">${esc(typeof p === 'string' ? p : p.permission || JSON.stringify(p))}</span>`).join('')}</div>`;
   },
@@ -173,7 +181,7 @@ const pages = {
       <p class="muted">Note: BAATS enforces maker-checker. You cannot approve a record you submitted yourself. To try the full flow: (1) under Users and roles, add a second user and give them the Tenant administrator role, (2) under Master data, add a customer and press Submit, (3) sign out, sign in as the second user, and approve it here.</p></div>
     <div class="card"><h3>Approval workflows</h3>${table(defs.map((d) => ({ code: d.code, name: d.name, entity_type: d.entity_type, version: d.version, status: d.status })))}</div>`;
   },
-  async audit() {
+  async audittrail() {
     const rows = await api('GET', '/v1/audit/entries?limit=100');
     return `<div class="card"><h3>Audit trail integrity</h3><p class="muted">Every change is chained with SHA-256. Verify checks that no entry has been altered or removed.</p><div class="row"><button class="btn" id="verify">Verify audit chain</button><span id="verify-out"></span></div></div>
     <div class="card"><h3>Latest 100 audit entries</h3>${table(rows, ['seq', 'occurred_at', 'category', 'action', 'entity_type', 'entity_id'].filter((c) => !rows[0] || c in rows[0]))}</div>`;
@@ -184,7 +192,7 @@ const pages = {
       <label style="margin-top:10px">JSON body<textarea name="body"></textarea></label><div class="row"><button class="btn">Send</button></div></form><pre id="api-out"></pre></div>`;
   },
 };
-const MENU = [['overview', 'Overview'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audit', 'Audit trail'], ['apitester', 'API tester']];
+const MENU = [['overview', 'Overview'], ['assistant', 'AI assistant'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['aisettings', 'Assistant settings'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audittrail', 'Audit trail'], ['apitester', 'API tester']];
 let current = 'overview';
 const after = {};
 
@@ -1553,6 +1561,149 @@ Object.assign(after, {
       await api('POST', `/v1/bi/companies/${S.company}/anomalies/review`, { rule, key: k.join('|'), outcome, note, from: S.anFrom, to: S.anTo }); ok('Review recorded'); };
     onAct(m, 'an-ok', (v) => review(v, 'explained'));
     onAct(m, 'an-bad', (v) => review(v, 'confirmed'));
+  },
+});
+
+// ---------- AI assistant (Phase 5b) ----------
+// Assistant answers are model text: escape everything, then allow a small, safe subset of Markdown.
+function mdLite(src) {
+  const inline = (s) => esc(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  const lines = String(src ?? '').replace(/\r/g, '').split('\n');
+  let out = '', i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^\s*\|.*\|\s*$/.test(l)) {
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(lines[i].trim().slice(1, -1).split('|').map((c) => c.trim())); i++; }
+      const body = rows.filter((r) => !r.every((c) => /^:?-{2,}:?$/.test(c)));
+      const num = (c) => /^[-+]?[\d,]+(\.\d+)?%?$/.test(c.replace(/[A-Z]{3}\s?/, ''));
+      out += '<div class="tbl"><table>' + body.map((r, n) => '<tr>' + r.map((c) => n === 0 ? `<th>${inline(c)}</th>` : `<td${num(c) ? ' class="num"' : ''}>${inline(c)}</td>`).join('') + '</tr>').join('') + '</table></div>';
+      continue;
+    }
+    if (/^\s*([-*]|\d+\.)\s+/.test(l)) {
+      const ordered = /^\s*\d+\./.test(l); const items = [];
+      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*([-*]|\d+\.)\s+/, '')); i++; }
+      out += `<${ordered ? 'ol' : 'ul'}>${items.map((x) => `<li>${inline(x)}</li>`).join('')}</${ordered ? 'ol' : 'ul'}>`;
+      continue;
+    }
+    const h = l.match(/^#{1,4}\s+(.*)$/);
+    if (h) { out += `<p><b>${inline(h[1])}</b></p>`; i++; continue; }
+    if (!l.trim()) { i++; continue; }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !/^\s*(\||[-*]\s|\d+\.\s|#)/.test(lines[i])) { para.push(inline(lines[i])); i++; }
+    if (para.length) out += `<p>${para.join('<br>')}</p>`; else { out += `<p>${inline(l)}</p>`; i++; }
+  }
+  return out;
+}
+const TOOL_LABELS = { list_kpis: 'Listed the KPIs', get_kpi: 'Looked up a KPI', kpi_trend: 'Looked up a KPI trend', executive_dashboard: 'Read the dashboard', trial_balance: 'Read the trial balance',
+  profit_and_loss: 'Read the profit and loss', balance_sheet: 'Read the balance sheet', ageing: 'Read the ageing', find_partners: 'Searched customers and suppliers', stock_levels: 'Read stock levels',
+  list_datasets: 'Listed report datasets', run_report: 'Ran a report', anomaly_checks: 'Ran the anomaly checks', esg_report: 'Read the ESG report', strategy_scorecard: 'Read the scorecard', my_tickets: 'Listed tickets' };
+function aiCall(c) {
+  if (c.kind === 'read') {
+    const label = TOOL_LABELS[c.tool] || c.summary;
+    return `<span class="ai-chip ${c.status === 'failed' ? 'bad' : ''}" title="${esc(c.summary)}${c.error ? ' · ' + esc(c.error) : ''}">${c.status === 'failed' ? '✕' : '✓'} ${esc(label)}${c.status === 'failed' ? ' (not possible)' : ''}</span>`;
+  }
+  const state = { pending: 'Waiting for you', done: 'Done', rejected: 'You rejected this', failed: 'Could not be done' }[c.status];
+  return `<div class="ai-change ${c.status}"><div><b>Proposed change</b> · <span class="muted">${esc(state)}</span></div><div>${esc(c.summary)}</div>
+    ${c.status === 'pending' ? `<div class="row"><button class="btn" data-ai-ok="${c.id}">Confirm</button><button class="btn sec" data-ai-no="${c.id}">Reject</button></div>` : ''}
+    ${c.error ? `<div class="ai-err">${esc(c.error)}</div>` : ''}${c.status === 'done' && c.result?.no ? `<div class="muted">Reference ${esc(c.result.no)}</div>` : ''}</div>`;
+}
+function aiThread(conv) {
+  if (!conv.messages.length) return `<div class="empty">Ask about sales, cash, overdue customers, stock, emissions or anything else in your books. For example: <i>How did revenue this quarter compare with last quarter?</i> or <i>Which customers are more than 60 days overdue?</i></div>`;
+  // One bubble per answer: consecutive assistant steps (look-ups, then the reply) are shown together.
+  const groups = [];
+  for (const m of conv.messages) { const g = groups[groups.length - 1]; if (m.role === 'assistant' && g?.role === 'assistant') g.parts.push(m); else groups.push({ role: m.role, parts: [m] }); }
+  const part = (m) => `${m.toolCalls.filter((c) => c.kind === 'read').map(aiCall).join('')}${m.text ? mdLite(m.text) : ''}${m.notice ? `<p class="muted">${esc(m.notice)}</p>` : ''}${m.toolCalls.filter((c) => c.kind === 'change').map(aiCall).join('')}`;
+  return groups.map((g) => g.role === 'user'
+    ? `<div class="ai-msg me"><div class="ai-bubble">${esc(g.parts[0].text).replace(/\n/g, '<br>')}</div></div>`
+    : `<div class="ai-msg"><div class="ai-bubble">${g.parts.map(part).join('')}</div></div>`).join('');
+}
+
+Object.assign(pages, {
+  async assistant() {
+    let st;
+    try { st = await api('GET', '/v1/ai/status'); } catch (e) { return `<div class="card"><h3>AI assistant</h3><p>${esc(e.message)}</p><p class="muted">Ask your administrator for the "Use the AI assistant" permission.</p></div>`; }
+    if (!st.enabled) return `<div class="card"><h3>AI assistant</h3><p>The assistant is not turned on yet.</p><p class="muted">An administrator turns it on under <b>Assistant settings</b>: choose Claude (an Anthropic API key is needed) or an OpenAI-compatible service, including a model running on this computer.</p><div class="row"><button class="btn" data-go="aisettings">Open Assistant settings</button></div></div>`;
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const list = await api('GET', `/v1/ai/conversations?companyId=${S.company}`);
+    if (S.aiConv && !list.find((c) => c.id === S.aiConv)) S.aiConv = null;
+    const conv = S.aiConv ? await api('GET', `/v1/ai/conversations/${S.aiConv}`) : null;
+    return companyBar(cs) + `<div class="ai-wrap">
+      <div class="card ai-side"><div class="row" style="margin-top:0"><button class="btn" id="ai-new">New conversation</button></div>
+        ${list.length ? `<div class="ai-list">${list.map((c) => `<button class="ai-item ${c.id === S.aiConv ? 'on' : ''}" data-ai-open="${c.id}"><span>${esc(c.title)}</span>${c.pending ? '<span class="pill">needs you</span>' : ''}<small class="muted">${esc(String(c.updated_at).slice(0, 16).replace('T', ' '))}</small></button>`).join('')}</div>` : '<div class="empty">No conversations yet.</div>'}
+        <p class="muted" style="font-size:12px">Using ${esc(st.model)}. The assistant sees only what you may see, and asks before it changes anything.</p></div>
+      <div class="card ai-main">${conv ? `<div class="row" style="margin-top:0;justify-content:space-between"><h3 style="margin:0">${esc(conv.title)}</h3><button class="btn sec" data-ai-del="${conv.id}">Delete</button></div>
+        <div id="ai-thread" class="ai-thread" aria-live="polite">${aiThread(conv)}</div>
+        <form id="f-ai" class="ai-ask"><textarea name="text" rows="2" placeholder="${conv.pending.length ? 'Confirm or reject the proposed change first' : 'Ask about this company…'}" ${conv.pending.length ? 'disabled' : ''} required></textarea><button class="btn" ${conv.pending.length ? 'disabled' : ''}>Send</button></form>`
+      : `<h3>Ask BAATS</h3><p class="muted">Start a new conversation, or open one on the left.</p>
+        <form id="f-ai-first" class="ai-ask"><textarea name="text" rows="2" placeholder="For example: What is our cash position, and who owes us the most?" required></textarea><button class="btn">Send</button></form>`}</div></div>`;
+  },
+  async aisettings() {
+    let s;
+    try { s = await api('GET', '/v1/ai/settings'); } catch (e) { return `<div class="card"><h3>Assistant settings</h3><p>${esc(e.message)}</p></div>`; }
+    const u = s.usageThisMonth;
+    return `<div class="card"><h3>Assistant settings</h3><p class="muted">The assistant answers questions from your books and can propose simple changes (raise a ticket, record an ESG reading, save a report) that the user confirms. It acts as the signed-in user, so it never sees more than they may.</p>
+      <form id="f-ai-set"><div class="grid">
+        ${pick('provider', 'Provider', [['anthropic', 'Claude (Anthropic)'], ['openai_compatible', 'OpenAI-compatible (OpenAI, Azure, Ollama, LM Studio)']])}
+        ${field('model', 'Model', `required value="${esc(s.model)}"`)}
+        ${pick('effort', 'Effort (Claude only)', [['medium', 'Medium (recommended)'], ['low', 'Low (faster, cheaper)'], ['high', 'High (more thorough)'], ['', 'Not sent (older models)']])}
+        ${field('baseUrl', 'Service address (base URL)', `value="${esc(s.baseUrl ?? '')}" placeholder="Leave empty for Claude"`)}
+        ${field('apiKey', `API key ${s.apiKey.set ? `(saved, ends ${esc(s.apiKey.hint)})` : '(not set)'}`, 'type="password" autocomplete="off" placeholder="Paste to replace"')}
+        ${field('monthlyTokenLimit', 'Monthly token allowance (empty = none)', `type="number" min="1" value="${s.monthlyTokenLimit ?? ''}"`)}
+        ${check('enabled', 'Assistant turned on', s.enabled)}
+      </div><div class="row"><button class="btn">Save</button><button type="button" class="btn sec" id="ai-test">Test connection</button>${s.apiKey.set ? '<button type="button" class="btn sec" id="ai-key-del">Remove saved key</button>' : ''}<span id="ai-test-out" class="muted"></span></div></form></div>
+    <div class="card"><h3>This month</h3><div class="tiles"><div class="tile"><div class="tl">Requests</div><div class="tv">${u.requests.toLocaleString()}</div></div>
+      <div class="tile"><div class="tl">Tokens in</div><div class="tv">${u.inputTokens.toLocaleString()}</div></div><div class="tile"><div class="tl">Tokens out</div><div class="tv">${u.outputTokens.toLocaleString()}</div></div></div></div>
+    <div class="card"><h3>Choosing a provider</h3><ul>
+      <li><b>Claude</b> (default): create an API key at console.anthropic.com and paste it above. Model <code>claude-opus-5-5</code>. Usage is billed to your Anthropic account.</li>
+      <li><b>OpenAI</b>: provider OpenAI-compatible, address <code>https://api.openai.com/v1</code>, your OpenAI key, and the model name.</li>
+      <li><b>A model on this computer</b> (nothing leaves the PC): install Ollama, run <code>ollama pull llama3.1</code>, then choose OpenAI-compatible, address <code>http://127.0.0.1:11434/v1</code>, model <code>llama3.1</code>, no key. Smaller local models answer less reliably.</li></ul>
+      <p class="muted">The key is encrypted on this computer and never shown again. Questions and the figures the assistant looks up are sent to the provider you choose.</p></div>`;
+  },
+});
+Object.assign(after, {
+  async assistant(m, ok) {
+    bindCompanyPick();
+    onAct(m, 'go', (p) => show(p));
+    const th = $('#ai-thread'); if (th) th.scrollTop = th.scrollHeight;
+    const busy = (el, on) => { el.querySelectorAll('button,textarea').forEach((x) => x.disabled = on); };
+    const thinking = () => { const t = $('#ai-thread'); if (t) { t.insertAdjacentHTML('beforeend', '<div class="ai-msg"><div class="ai-bubble muted ai-wait">Working on it…</div></div>'); t.scrollTop = t.scrollHeight; } };
+    $('#ai-new') && ($('#ai-new').onclick = async () => { try { const c = await api('POST', '/v1/ai/conversations', { companyId: S.company }); S.aiConv = c.id; show('assistant'); } catch (e) { toast(e.message, false); } });
+    onAct(m, 'ai-open', (id) => { S.aiConv = id; show('assistant'); });
+    onAct(m, 'ai-del', async (id) => { if (!confirm('Delete this conversation?')) return; await api('DELETE', `/v1/ai/conversations/${id}`); S.aiConv = null; ok('Conversation deleted'); });
+    const send = async (el, text, convId) => {
+      busy(el, true);
+      const t = $('#ai-thread'); if (t) { t.insertAdjacentHTML('beforeend', `<div class="ai-msg me"><div class="ai-bubble">${esc(text).replace(/\n/g, '<br>')}</div></div>`); }
+      thinking();
+      try { await api('POST', `/v1/ai/conversations/${convId}/messages`, { text }); } catch (e) { toast(e.message, false); }
+      S.aiConv = convId; show('assistant');
+    };
+    bindForm('f-ai', async (b, el) => send(el, b.text, S.aiConv));
+    bindForm('f-ai-first', async (b, el) => { const c = await api('POST', '/v1/ai/conversations', { companyId: S.company }); await send(el, b.text, c.id); });
+    const enter = (el) => el && el.querySelector('textarea').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); el.requestSubmit(); } });
+    enter($('#f-ai')); enter($('#f-ai-first'));
+    const decide = async (id, yes, el) => { el.closest('.ai-change').querySelectorAll('button').forEach((x) => x.disabled = true); thinking();
+      try { await api('POST', `/v1/ai/tool-calls/${id}/${yes ? 'confirm' : 'reject'}`); } catch (e) { toast(e.message, false); } show('assistant'); };
+    onAct(m, 'ai-ok', (id, el) => decide(id, true, el));
+    onAct(m, 'ai-no', (id, el) => decide(id, false, el));
+  },
+  async aisettings(m, ok) {
+    const f = $('#f-ai-set'); if (!f) return;
+    const s = await api('GET', '/v1/ai/settings');
+    f.provider.value = s.provider; f.effort.value = s.effort ?? '';
+    const sync = () => { const claude = f.provider.value === 'anthropic'; f.effort.disabled = !claude; f.baseUrl.placeholder = claude ? 'Leave empty for Claude' : 'http://127.0.0.1:11434/v1 or https://api.openai.com/v1'; };
+    f.provider.onchange = () => { if (f.provider.value === 'openai_compatible' && f.model.value.startsWith('claude')) f.model.value = 'llama3.1'; if (f.provider.value === 'anthropic' && !f.model.value.startsWith('claude')) f.model.value = 'claude-opus-5-5'; sync(); };
+    sync();
+    bindForm('f-ai-set', async (b) => {
+      const body = { provider: b.provider, model: b.model, enabled: !!b.enabled, baseUrl: b.baseUrl || null,
+        effort: b.provider === 'anthropic' ? (f.effort.value || null) : null, monthlyTokenLimit: b.monthlyTokenLimit ? Number(b.monthlyTokenLimit) : null };
+      if (b.apiKey) body.apiKey = b.apiKey;
+      await api('PUT', '/v1/ai/settings', body); ok('Assistant settings saved');
+    });
+    $('#ai-key-del') && ($('#ai-key-del').onclick = async () => { if (!confirm('Remove the saved API key? The assistant stops working with Claude until a new key is added.')) return;
+      try { await api('PUT', '/v1/ai/settings', { apiKey: null, enabled: false }); ok('Key removed'); } catch (e) { toast(e.message, false); } });
+    $('#ai-test').onclick = async () => { const o = $('#ai-test-out'); o.textContent = 'Testing…';
+      try { const r = await api('POST', '/v1/ai/settings/test'); o.innerHTML = `<span style="color:var(--ok)">Connected to ${esc(r.model)} in ${(r.ms / 1000).toFixed(1)} s</span>`; } catch (e) { o.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; } };
   },
 });
 

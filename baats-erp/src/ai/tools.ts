@@ -1,6 +1,7 @@
 import { one, type Ctx, type Tx } from '../core/db.ts';
 import { ValidationError } from '../core/errors.ts';
 import * as kpi from '../bi/kpi.ts';
+import * as dash from '../bi/dashboard.ts';
 import * as rep from '../bi/reports.ts';
 import * as esg from '../bi/esg.ts';
 import * as anom from '../bi/anomaly.ts';
@@ -53,6 +54,12 @@ export const TOOLS: ToolDef[] = [
     description: 'Monthly values of one KPI for the last N months up to as_of (default today, 12 months).',
     schema: obj({ code: { type: 'string' }, as_of: date, months: { type: 'integer', minimum: 2, maximum: 36 } }, ['code']),
     run: (tx, ctx, env, i) => kpi.kpiTrend(tx, ctx, env.companyId, i.code, i.as_of ?? env.today, i.months ?? 12),
+  },
+  {
+    name: 'kpi_breakdown', kind: 'read',
+    description: 'One KPI in depth for a period: its value against a comparison period, the month-by-month line, breakdowns (by customer, supplier, account, cost center, vehicle, department or age) and the largest records behind it. Use it to explain why a KPI moved.',
+    schema: obj({ code: { type: 'string' }, from: date, to: date, compare: { enum: ['previous_period', 'previous_year', 'none'] } }, ['code', 'from', 'to']),
+    run: (tx, ctx, env, i) => dash.kpiDrill(tx, ctx, env.companyId, i.code, { from: i.from, to: i.to, compare: i.compare ?? 'previous_period', today: env.today }),
   },
   {
     name: 'executive_dashboard', kind: 'read',

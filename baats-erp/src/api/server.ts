@@ -122,9 +122,10 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
   app.post('/v1/org/employees', {
     schema: obj(['employeeNo', 'firstName', 'lastName', 'unitId'], {
       employeeNo: str, firstName: str, lastName: str, email: str, unitId: uuid, designationId: uuid, managerId: uuid, hireDate: str, attributes: { type: 'object' },
+      nationality: { type: 'string', pattern: '^[A-Z]{2}$' },
     }),
   }, async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => org.createEmployee(tx, ctx, req.body as B)); });
-  app.patch<{ Params: P }>('/v1/org/employees/:id', { schema: obj([], { unitId: uuid, managerId: { type: ['string', 'null'] }, designationId: uuid, status: str }) },
+  app.patch<{ Params: P }>('/v1/org/employees/:id', { schema: obj([], { unitId: uuid, managerId: { type: ['string', 'null'] }, designationId: uuid, status: str, nationality: { type: 'string', pattern: '^[A-Z]{2}$' } }) },
     async (req) => run(req, (tx, ctx) => org.updateEmployee(tx, ctx, req.params.id, req.body as B)));
   app.get<{ Params: P }>('/v1/org/employees/:id/reports', async (req) => run(req, (tx, ctx) => org.directReports(tx, ctx, req.params.id)));
 

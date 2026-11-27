@@ -64,7 +64,7 @@ describe('company books', () => {
     assert.equal(byCode.get('2100').name, 'Output VAT Payable');
     assert.equal(byCode.get('5950').parent_code, '53');
     assert.equal(byCode.get('11').is_group, true);
-    const codes = await tx(admin, (q) => setup.listTaxCodes(q));
+    const codes = await tx(admin, (q) => setup.listTaxCodes(q, 'AE'));
     assert.deepEqual(codes.map((c) => c.code), ['EX', 'OS', 'RC', 'SR', 'ZR']);
     const periods = await tx(admin, async (q) => (await q.query('SELECT count(*)::int AS n FROM fin.periods WHERE company_id = $1', [co])).rows[0].n);
     assert.equal(periods, 12);

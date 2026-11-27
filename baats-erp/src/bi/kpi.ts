@@ -27,7 +27,7 @@ const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 const days = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400e3) + 1;
 const ratio = (a: number, b: number, scale = 1) => (b ? Math.round((a / b) * scale * 100) / 100 : null);
 
-const ACC = {
+export const ACC = {
   revenue: `a.type = 'revenue'`,
   direct: `a.type = 'expense' AND p.code = '52'`,
   opex: `a.type = 'expense' AND (p.code IS DISTINCT FROM '52')`,
@@ -203,7 +203,7 @@ export async function kpiCatalog(tx: Tx, ctx: Ctx, companyId: string) {
   for (const k of KPIS) if ((await decide(tx, ctx.userId!, k.permission, { unitId: companyId })).allowed) out.push(meta(k));
   return out;
 }
-const meta = (k: KpiDef) => ({ code: k.code, name: k.name, module: k.module, unit: k.unit, better: k.better, kind: k.kind, snapshot: !!k.snapshot, description: k.description });
+export const meta = (k: KpiDef) => ({ code: k.code, name: k.name, module: k.module, unit: k.unit, better: k.better, kind: k.kind, snapshot: !!k.snapshot, description: k.description });
 
 export async function kpiValue(tx: Tx, ctx: Ctx, companyId: string, code: string, from: string, to: string) {
   const k = kpiDef(code);
@@ -215,7 +215,7 @@ export async function kpiValue(tx: Tx, ctx: Ctx, companyId: string, code: string
 export const monthStart = (d: string) => `${d.slice(0, 7)}-01`;
 export const monthEnd = (d: string) => new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)), 0)).toISOString().slice(0, 10);
 export const addMonths = (d: string, n: number) => { const x = new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1 + n, 1)); return x.toISOString().slice(0, 10); };
-const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86400e3).toISOString().slice(0, 10);
+export const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86400e3).toISOString().slice(0, 10);
 
 /** Start of the company's financial year containing a date. */
 export async function fiscalYearStart(tx: Tx, companyId: string, asOf: string) {

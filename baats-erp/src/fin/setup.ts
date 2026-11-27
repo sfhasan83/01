@@ -2,7 +2,7 @@ import { ConflictError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
 import { insertDefinition } from '../workflow/engine.ts';
-import { UAE_CHART, UAE_TAX_CODES } from './coa.ts';
+import { companyPack, packFor } from './country.ts';
 import { JOURNAL_WORKFLOW, openPeriods } from './ledger.ts';
 
 export interface CompanySetup {
@@ -19,8 +19,9 @@ export interface CompanySetup {
 }
 
 /**
- * Give a legal-entity org unit its own books: company record, the BAATS UAE chart
- * of accounts, UAE VAT codes, open periods, and a default journal approval workflow.
+ * Give a legal-entity org unit its own books from its country's pack: company
+ * record, chart of accounts, VAT codes, payroll contribution rules, open periods,
+ * and a default journal approval workflow.
  */
 export async function setupCompany(tx: Tx, ctx: Ctx, input: CompanySetup) {
   await authorize(tx, ctx, 'fin.company.manage', { unitId: input.unitId });
@@ -29,31 +30,34 @@ export async function setupCompany(tx: Tx, ctx: Ctx, input: CompanySetup) {
   if (!unit) throw new ValidationError('unknown org unit');
   if (!unit.is_legal_entity) throw new ValidationError('books can only be kept by a legal-entity unit (for example a company)');
   if (!unit.country_code || !unit.currency_code) throw new ValidationError('set the unit\'s country and currency first');
-  if (unit.country_code !== 'AE') {
-    throw new ValidationError(`the ${unit.country_code} localisation pack is not available yet; UAE is the first (see roadmap Phase 6)`);
-  }
+  const pack = packFor(unit.country_code);
+  if (unit.currency_code !== pack.currency) throw new ValidationError(`books in ${pack.name} are kept in ${pack.currency}; set the unit's currency to ${pack.currency}`);
   if (await one(tx, 'SELECT 1 FROM fin.companies WHERE unit_id = $1', [input.unitId])) throw new ConflictError('this company already has books');
-  if (input.taxRegistrationNo && !/^\d{15}$/.test(input.taxRegistrationNo)) throw new ValidationError('a UAE TRN has 15 digits');
+  if (input.taxRegistrationNo && !pack.taxNumber.test(input.taxRegistrationNo)) throw new ValidationError(pack.taxNumber.message);
 
   const company = await one(tx, `INSERT INTO fin.companies (tenant_id, unit_id, legal_name, country_code, base_currency,
       fiscal_year_start_month, tax_registration_no, vat_period, vat_quarter_start_month, corporate_tax_rate, corporate_tax_threshold)
     VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
     [input.unitId, input.legalName, unit.country_code, unit.currency_code, input.fiscalYearStartMonth ?? 1,
       input.taxRegistrationNo ?? null, input.vatPeriod ?? 'quarterly', input.vatQuarterStartMonth ?? 1,
-      input.corporateTaxRate ?? 9, input.corporateTaxThreshold ?? 375000]);
+      input.corporateTaxRate ?? pack.defaults.corporateTaxRate, input.corporateTaxThreshold ?? pack.defaults.corporateTaxThreshold]);
 
   const ids = new Map<string, string>();
-  for (const a of UAE_CHART) {
+  for (const a of pack.chart) {
     const row = await one(tx, `INSERT INTO fin.accounts (tenant_id, company_id, code, name, type, parent_id, is_group, control, system_role, allow_manual)
       VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [input.unitId, a.code, a.name, a.type, a.parent ? ids.get(a.parent) : null, a.kind === 'G', a.control ?? null, a.role ?? null, a.manual ?? true]);
     ids.set(a.code, row.id);
   }
 
-  for (const t of UAE_TAX_CODES) {
-    await tx.query(`INSERT INTO fin.tax_codes (tenant_id, country_code, code, name, category, rate, einvoice_category)
-      VALUES (app.tenant(), 'AE', $1, $2, $3, $4, $5) ON CONFLICT (tenant_id, country_code, code) DO NOTHING`,
-      [t.code, t.name, t.category, t.rate, t.einvoice]);
+  for (const t of pack.taxCodes) {
+    await tx.query(`INSERT INTO fin.tax_codes (tenant_id, country_code, code, name, category, rate, einvoice_category, exemption_reason_code, exemption_reason)
+      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (tenant_id, country_code, code) DO NOTHING`,
+      [pack.country, t.code, t.name, t.category, t.rate, t.einvoice, t.exemptionCode ?? null, t.exemptionReason ?? null]);
+  }
+  for (const r of pack.contributions) {
+    await tx.query(`INSERT INTO hr.contribution_rules (tenant_id, company_id, code, name, applies_to, employee_pct, employer_pct, base, monthly_cap)
+      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8)`, [input.unitId, r.code, r.name, r.appliesTo, r.employeePct, r.employerPct, r.base, r.monthlyCap]);
   }
 
   await openPeriods(tx, input.unitId, input.openFrom, 12);
@@ -80,7 +84,7 @@ export async function setupCompany(tx: Tx, ctx: Ctx, input: CompanySetup) {
 export async function ensureRoleAccount(tx: Tx, companyId: string, role: string): Promise<string> {
   const found = await one(tx, 'SELECT id FROM fin.accounts WHERE company_id = $1 AND system_role = $2', [companyId, role]);
   if (found) return found.id;
-  const t = UAE_CHART.find((a) => a.role === role);
+  const t = (await companyPack(tx, companyId)).chart.find((a) => a.role === role);
   if (!t) throw new ValidationError(`no chart template for ${role}`);
   const parent = t.parent ? await one(tx, 'SELECT id FROM fin.accounts WHERE company_id = $1 AND code = $2', [companyId, t.parent]) : null;
   const row = await one(tx, `INSERT INTO fin.accounts (tenant_id, company_id, code, name, type, parent_id, is_group, control, system_role, allow_manual)
@@ -105,6 +109,6 @@ export async function createAccount(tx: Tx, ctx: Ctx, companyId: string, input: 
     VALUES (app.tenant(), $1, $2, $3, $4, $5) RETURNING *`, [companyId, input.code, input.name, parent.type, parent.id]);
 }
 
-export async function listTaxCodes(tx: Tx, countryCode = 'AE') {
+export async function listTaxCodes(tx: Tx, countryCode: string) {
   return many(tx, 'SELECT * FROM fin.tax_codes WHERE country_code = $1 AND active ORDER BY code', [countryCode]);
 }

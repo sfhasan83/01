@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Ctx, Tx } from '../core/db.ts';
 import * as kpi from '../bi/kpi.ts';
+import * as dash from '../bi/dashboard.ts';
 import * as rep from '../bi/reports.ts';
 import * as strat from '../bi/strategy.ts';
 import * as esg from '../bi/esg.ts';
@@ -32,6 +33,18 @@ export function registerPhase5(app: FastifyInstance, run: Run): void {
   app.get<{ Params: P }>('/v1/bi/companies/:company/kpis/:code/trend', async (req) =>
     run(req, (tx, ctx) => kpi.kpiTrend(tx, ctx, company(req), req.params.code, q(req).asOf ?? today(), Number(q(req).months ?? 12))));
   app.get<{ Params: P }>('/v1/bi/companies/:company/dashboard', async (req) => run(req, (tx, ctx) => kpi.dashboard(tx, ctx, company(req), q(req).asOf ?? today())));
+
+  // The interactive dashboard: any period, a comparison, drill-down and a personal layout
+  const period = (req: FastifyRequest): dash.PeriodInput => ({ period: q(req).period as dash.Preset | undefined, from: q(req).from, to: q(req).to,
+    compare: q(req).compare as dash.Compare | undefined });
+  app.get<{ Params: P }>('/v1/bi/companies/:company/analysis', async (req) => run(req, (tx, ctx) => dash.analyze(tx, ctx, company(req),
+    { ...period(req), codes: q(req).codes ? q(req).codes.split(',').filter(Boolean) : undefined, spark: q(req).spark === '1' || q(req).spark === 'true' })));
+  app.get<{ Params: P }>('/v1/bi/companies/:company/kpis/:code/drill', async (req) => run(req, (tx, ctx) => dash.kpiDrill(tx, ctx, company(req), req.params.code, period(req))));
+  app.get<{ Params: P }>('/v1/bi/companies/:company/dashboard/layout', async (req) => run(req, (tx, ctx) => dash.getLayout(tx, ctx, company(req))));
+  app.put<{ Params: P }>('/v1/bi/companies/:company/dashboard/layout', { schema: body(['tiles', 'period', 'compare'], {
+    tiles: { type: 'array', maxItems: 30, items: str }, period: { enum: [...dash.PRESETS] }, compare: { enum: [...dash.COMPARES] }, from: date, to: date }) },
+  async (req) => run(req, (tx, ctx) => dash.saveLayout(tx, ctx, company(req), req.body as B)));
+  app.delete<{ Params: P }>('/v1/bi/companies/:company/dashboard/layout', async (req) => run(req, (tx, ctx) => dash.resetLayout(tx, ctx, company(req))));
 
   // Report builder
   app.get('/v1/bi/datasets', async (req) => run(req, (tx, ctx) => rep.datasetCatalog(tx, ctx)));

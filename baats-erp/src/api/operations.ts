@@ -108,8 +108,8 @@ export function registerOperations(app: FastifyInstance, run: Run): void {
       annualLeaveDays: { type: 'integer', minimum: 0 }, wpsPersonId: str, bankRoutingCode: str, iban: str }),
   }, async (req, reply) => created(reply, run(req, (tx, ctx) => hr.createContract(tx, ctx, req.body as B))));
   app.get<{ Params: P }>('/v1/hr/companies/:company/contracts', async (req) => run(req, (tx, ctx) => hr.listContracts(tx, ctx, req.params.company)));
-  app.post<{ Params: P }>('/v1/hr/contracts/:id/end', { schema: body(['endDate'], { endDate: date }) },
-    async (req) => run(req, (tx, ctx) => hr.endContract(tx, ctx, req.params.id, (req.body as B).endDate)));
+  app.post<{ Params: P }>('/v1/hr/contracts/:id/end', { schema: body(['endDate'], { endDate: date, reason: { enum: hr.END_REASONS } }) },
+    async (req) => run(req, (tx, ctx) => hr.endContract(tx, ctx, req.params.id, (req.body as B).endDate, (req.body as B).reason)));
   app.post<{ Params: P }>('/v1/hr/contracts/:id/settlement', { schema: body(['date'], { date, bankAccount: str }) },
     async (req) => run(req, (tx, ctx) => hr.paySettlement(tx, ctx, req.params.id, req.body as B)));
   app.post('/v1/hr/leave', { schema: body(['employeeId', 'leaveType', 'dateFrom', 'dateTo'], { employeeId: uuid,
@@ -126,6 +126,11 @@ export function registerOperations(app: FastifyInstance, run: Run): void {
   app.get<{ Params: P }>('/v1/hr/payroll/:id', async (req) => run(req, (tx, ctx) => hr.getPayroll(tx, ctx, req.params.id)));
   app.post<{ Params: P }>('/v1/hr/payroll/:id/post',
     async (req) => run(req, (tx, ctx) => hr.postPayroll(tx, ctx, req.params.id, (req.body as B | undefined)?.date)));
-  app.post<{ Params: P }>('/v1/hr/payroll/:id/pay', { schema: body(['date', 'employerId', 'employerBankCode'], { date, bankAccount: str, employerId: str, employerBankCode: str }) },
+  app.post<{ Params: P }>('/v1/hr/payroll/:id/pay', { schema: body(['date'], { date, bankAccount: str, employerId: str, employerBankCode: str }) },
     async (req) => run(req, (tx, ctx) => hr.payPayroll(tx, ctx, req.params.id, req.body as B)));
+  app.get<{ Params: P }>('/v1/hr/companies/:company/contribution-rules', async (req) => run(req, (tx, ctx) => hr.listContributionRules(tx, ctx, req.params.company)));
+  app.put<{ Params: P }>('/v1/hr/companies/:company/contribution-rules', {
+    schema: body(['code'], { code: str, name: str, appliesTo: { enum: ['nationals', 'non_nationals', 'all'] }, employeePct: nonneg, employerPct: nonneg,
+      base: { enum: ['basic', 'basic_housing', 'gross'] }, monthlyCap: { type: ['number', 'null'], exclusiveMinimum: 0 }, active: { type: 'boolean' } }),
+  }, async (req) => run(req, (tx, ctx) => hr.saveContributionRule(tx, ctx, req.params.company, req.body as B)));
 }

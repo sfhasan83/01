@@ -3,9 +3,13 @@ import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
 import { insertDefinition, onWorkflowComplete, submit } from '../workflow/engine.ts';
 import { company, post, resolveAccount, round2, type PostingLine } from '../fin/ledger.ts';
+import { companyPack, uaeGratuity, type EndReason } from '../fin/country.ts';
+import { ensureRoleAccount } from '../fin/setup.ts';
 
 /**
- * HR and payroll, UAE first (BAATS Accounting rules):
+ * HR and payroll. The country pack of the company decides the end-of-service rule,
+ * social insurance (Saudi GOSI) and whether the UAE WPS file is produced.
+ * UAE rules (BAATS Accounting):
  *   contracts      basic + housing + transport + other allowances, WPS details
  *   leave          requests approved by the line manager (or HR) through the workflow engine;
  *                  annual leave accrues monthly; unpaid leave reduces pay
@@ -16,6 +20,10 @@ import { company, post, resolveAccount, round2, type PostingLine } from '../fin/
  *                  basic; daily wage = basic / 30. The provision is trued up with each payroll:
  *                  Dr 5920 | Cr 2500 for the change
  *   payment        Dr 2210 | Cr bank, with the WPS salary information file (SIF)
+ * Saudi Arabia: end-of-service per Labor Law articles 84 and 85 on basic plus housing;
+ *   GOSI from the company's contribution rules, by nationality, on basic plus housing up
+ *   to the cap: the employee share is deducted from net pay, the employer share is
+ *   Dr 5930 GOSI expense, and both are Cr 2220 GOSI payable.
  */
 
 export const LEAVE_WORKFLOW = 'hr.leave.approval';
@@ -25,13 +33,13 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 const days = (from: string, to: string) => Math.round((toDate(to).getTime() - toDate(from).getTime()) / DAY);
 const dstr = (v: Date | string | null) => (v === null ? null : typeof v === 'string' ? v : iso(v));
 
-/** BAATS eosb(): gratuity accrued at a date, from the join date and basic salary. */
-export function gratuity(basic: number, joined: string, at: string): number {
-  if (at <= joined) return 0;
-  const years = days(joined, at) / 365.25;
-  if (years < 1) return 0;
-  const dayCount = Math.min(years, 5) * 21 + Math.max(0, years - 5) * 30;
-  return round2(Math.min(dayCount * basic / 30, basic * 24));
+/** BAATS eosb(): UAE gratuity accrued at a date, from the join date and basic salary. */
+export const gratuity = uaeGratuity;
+
+/** The end-of-service benefit of a contract under its company's country rules. */
+async function endOfService(tx: Tx, k: { company_id: string; basic: unknown; housing: unknown; start_date: Date | string }, at: string, reason?: EndReason | null) {
+  const pack = await companyPack(tx, k.company_id);
+  return pack.endOfService({ basic: Number(k.basic), housing: Number(k.housing) }, dstr(k.start_date)!, at, reason);
 }
 
 export interface ContractInput {
@@ -47,7 +55,8 @@ export async function createContract(tx: Tx, ctx: Ctx, input: ContractInput) {
   const c = await company(tx, input.companyId);
   if (input.wpsPersonId && !/^\d{14}$/.test(input.wpsPersonId)) throw new ValidationError('the WPS personal number has 14 digits');
   if (input.bankRoutingCode && !/^\d{9}$/.test(input.bankRoutingCode)) throw new ValidationError('the bank routing code has 9 digits');
-  if (input.iban && !/^AE\d{21}$/.test(input.iban.replace(/\s/g, ''))) throw new ValidationError('a UAE IBAN is AE followed by 21 digits');
+  const pack = await companyPack(tx, input.companyId);
+  if (input.iban && !pack.iban.re.test(input.iban.replace(/\s/g, ''))) throw new ValidationError(pack.iban.message);
   if (await one(tx, `SELECT 1 FROM hr.contracts WHERE employee_id = $1 AND status = 'active'`, [input.employeeId])) {
     throw new ConflictError('the employee already has an active contract; end it first');
   }
@@ -61,16 +70,19 @@ export async function createContract(tx: Tx, ctx: Ctx, input: ContractInput) {
   return row;
 }
 
-/** End employment: the last payroll pro-rates to this date and the final gratuity is shown. */
-export async function endContract(tx: Tx, ctx: Ctx, contractId: string, endDate: string) {
+export const END_REASONS: EndReason[] = ['contract_end', 'termination', 'resignation', 'retirement', 'death', 'mutual'];
+
+/** End employment: the last payroll pro-rates to this date and the final end-of-service benefit is shown. */
+export async function endContract(tx: Tx, ctx: Ctx, contractId: string, endDate: string, reason: EndReason = 'termination') {
   const k = await one(tx, 'SELECT k.*, e.unit_id FROM hr.contracts k JOIN org.employees e ON e.id = k.employee_id WHERE k.id = $1', [contractId]);
   if (!k) throw new NotFoundError('contract');
   await authorize(tx, ctx, 'hr.manage', { unitId: k.unit_id });
   if (k.status !== 'active') throw new ConflictError('the contract has already ended');
   if (endDate < dstr(k.start_date)!) throw new ValidationError('the end date is before the start date');
-  await tx.query(`UPDATE hr.contracts SET status = 'ended', end_date = $2 WHERE id = $1`, [contractId, endDate]);
+  if (!END_REASONS.includes(reason)) throw new ValidationError(`the reason is one of ${END_REASONS.join(', ')}`);
+  await tx.query(`UPDATE hr.contracts SET status = 'ended', end_date = $2, end_reason = $3 WHERE id = $1`, [contractId, endDate, reason]);
   await tx.query(`UPDATE org.employees SET status = 'terminated' WHERE id = $1`, [k.employee_id]);
-  return { contractId, endDate, finalGratuity: gratuity(Number(k.basic), dstr(k.start_date)!, endDate) };
+  return { contractId, endDate, reason, finalGratuity: await endOfService(tx, k, endDate, reason) };
 }
 
 export async function listContracts(tx: Tx, ctx: Ctx, companyId: string) {
@@ -171,12 +183,16 @@ export async function runPayroll(tx: Tx, ctx: Ctx, input: { companyId: string; p
   const run = await one(tx, `INSERT INTO hr.payroll_runs (tenant_id, company_id, period, created_by) VALUES (app.tenant(), $1, $2, $3) RETURNING *`,
     [input.companyId, input.period, ctx.userId]);
 
-  const contracts = await many(tx, `SELECT k.*, e.unit_id FROM hr.contracts k JOIN org.employees e ON e.id = k.employee_id
+  const rules = await many(tx, `SELECT * FROM hr.contribution_rules WHERE company_id = $1 AND active ORDER BY code`, [input.companyId]);
+  const country = (await company(tx, input.companyId)).country_code;
+  const contracts = await many(tx, `SELECT k.*, e.unit_id, e.nationality, e.employee_no FROM hr.contracts k JOIN org.employees e ON e.id = k.employee_id
                                      WHERE k.company_id = $1 AND k.start_date <= $3 AND (k.end_date IS NULL OR k.end_date >= $2)
                                      ORDER BY e.employee_no`, [input.companyId, from, to]);
   if (!contracts.length) throw new ValidationError('no employment contracts in this company for the period');
   const extras = new Map((input.inputs ?? []).map((i) => [i.employeeId, i]));
-  let gross = 0, ded = 0, net = 0;
+  let gross = 0, ded = 0, net = 0, eeTotal = 0, erTotal = 0;
+  const unknownNationality = rules.some((r) => r.applies_to !== 'all') ? contracts.filter((k) => !k.nationality).map((k) => k.employee_no) : [];
+  if (unknownNationality.length) throw new ValidationError(`set the nationality of ${unknownNationality.join(', ')}; social insurance depends on it`);
   for (const k of contracts) {
     const start = dstr(k.start_date)! > from ? dstr(k.start_date)! : from;
     const end = k.end_date && dstr(k.end_date)! < to ? dstr(k.end_date)! : to;
@@ -191,20 +207,34 @@ export async function runPayroll(tx: Tx, ctx: Ctx, input: { companyId: string; p
     const x = extras.get(k.employee_id);
     const additions = round2(x?.additions ?? 0), deductions = round2(x?.deductions ?? 0);
     const g = round2(basic + allowances + additions);
-    const n = round2(g - deductions);
-    if (n < 0) throw new ValidationError(`deductions for employee ${k.employee_id} exceed the month's pay`);
-    const grat = gratuity(Number(k.basic), dstr(k.start_date)!, end);
+    // Social insurance on the contractual base, pro-rated like pay, up to the monthly cap.
+    const contributions = [];
+    for (const r of rules) {
+      const national = k.nationality === country;
+      if (r.applies_to === 'nationals' && !national) continue;
+      if (r.applies_to === 'non_nationals' && national) continue;
+      const full = r.base === 'basic' ? Number(k.basic) : r.base === 'basic_housing' ? Number(k.basic) + Number(k.housing)
+        : Number(k.basic) + Number(k.housing) + Number(k.transport) + Number(k.other_allowances);
+      const base = round2(Math.min(full, r.monthly_cap === null ? Infinity : Number(r.monthly_cap)) * share);
+      const employee = round2(base * Number(r.employee_pct) / 100), employer = round2(base * Number(r.employer_pct) / 100);
+      if (employee || employer) contributions.push({ code: r.code, name: r.name, base, employee, employer });
+    }
+    const ee = round2(contributions.reduce((x, c) => x + c.employee, 0)), er = round2(contributions.reduce((x, c) => x + c.employer, 0));
+    const n = round2(g - deductions - ee);
+    if (n < 0) throw new ValidationError(`deductions for employee ${k.employee_no} exceed the month's pay`);
+    const grat = await endOfService(tx, k, end);
     await tx.query(`INSERT INTO hr.payslips (tenant_id, run_id, employee_id, contract_id, unit_id, days_in_period, paid_days, unpaid_leave_days,
-        basic, allowances, additions, deductions, gross, net, gratuity_balance)
-      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-      [run.id, k.employee_id, k.id, k.unit_id, daysInPeriod, paidDays, unpaid.d, basic, allowances, additions, deductions, g, n, grat]);
-    gross += g; ded += deductions; net += n;
+        basic, allowances, additions, deductions, gross, net, gratuity_balance, employee_contributions, employer_contributions, contributions)
+      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+      [run.id, k.employee_id, k.id, k.unit_id, daysInPeriod, paidDays, unpaid.d, basic, allowances, additions, deductions, g, n, grat, ee, er, JSON.stringify(contributions)]);
+    gross += g; ded += deductions; net += n; eeTotal += ee; erTotal += er;
   }
   for (const id of extras.keys()) {
     if (!contracts.some((k) => k.employee_id === id)) throw new ValidationError(`employee ${id} has no contract in this payroll`);
   }
-  await tx.query('UPDATE hr.payroll_runs SET gross_total = $2, deductions_total = $3, net_total = $4 WHERE id = $1',
-    [run.id, round2(gross), round2(ded), round2(net)]);
+  await tx.query(`UPDATE hr.payroll_runs SET gross_total = $2, deductions_total = $3, net_total = $4,
+      employee_contributions_total = $5, employer_contributions_total = $6 WHERE id = $1`,
+    [run.id, round2(gross), round2(ded), round2(net), round2(eeTotal), round2(erTotal)]);
   return getPayroll(tx, ctx, run.id);
 }
 
@@ -241,6 +271,16 @@ export async function postPayroll(tx: Tx, ctx: Ctx, runId: string, date?: string
   const lines: PostingLine[] = byUnit.filter((u) => u.gross > 0).map((u) => ({ account: 'role:salaries', debit: round2(u.gross), unitId: u.unit_id, description: `Payroll ${run.period}` }));
   lines.push({ account: 'role:salaries_payable', credit: Number(run.net_total), description: `Net pay ${run.period}` });
   if (Number(run.deductions_total) > 0) lines.push({ account: 'role:employee_advances', credit: Number(run.deductions_total), description: 'Recovered from salaries' });
+  const ee = Number(run.employee_contributions_total), er = Number(run.employer_contributions_total);
+  if (ee > 0 || er > 0) {
+    const payable = await ensureRoleAccount(tx, run.company_id, 'social_insurance_payable');
+    if (er > 0) {
+      const expense = await ensureRoleAccount(tx, run.company_id, 'social_insurance_expense');
+      const erByUnit = await many(tx, `SELECT unit_id, sum(employer_contributions)::float AS er FROM hr.payslips WHERE run_id = $1 GROUP BY unit_id`, [runId]);
+      for (const u of erByUnit) if (u.er > 0) lines.push({ account: expense, debit: round2(u.er), unitId: u.unit_id, description: `Employer social insurance ${run.period}` });
+    }
+    lines.push({ account: payable, credit: round2(ee + er), description: `Social insurance ${run.period} (employees ${ee.toFixed(2)}, employer ${er.toFixed(2)})` });
+  }
   const j = await post(tx, ctx, { companyId: run.company_id, type: 'payroll', date: on, memo: `Payroll ${run.period}`, source: { type: 'hr.payroll', id: runId }, lines });
 
   // Gratuity: the provision equals what everyone on this payroll has accrued (a leaver's to the last day).
@@ -260,7 +300,12 @@ export async function postPayroll(tx: Tx, ctx: Ctx, runId: string, date?: string
   return getPayroll(tx, ctx, runId);
 }
 
-/** Final settlement for a leaver: the end-of-service gratuity is paid out of the 2500 provision. */
+/**
+ * Final settlement for a leaver: the end-of-service benefit, under the country's
+ * rule and the reason the contract ended, is paid out of the 2500 provision. The
+ * provision held the full entitlement; whatever a resignation does not pay is
+ * released by the next payroll's true-up.
+ */
 export async function paySettlement(tx: Tx, ctx: Ctx, contractId: string, input: { date: string; bankAccount?: string }) {
   const k = await one(tx, `SELECT k.*, e.employee_no, e.first_name || ' ' || e.last_name AS name FROM hr.contracts k
                              JOIN org.employees e ON e.id = k.employee_id WHERE k.id = $1`, [contractId]);
@@ -270,8 +315,8 @@ export async function paySettlement(tx: Tx, ctx: Ctx, contractId: string, input:
   if (await one(tx, `SELECT 1 FROM fin.journals WHERE source_type = 'hr.settlement' AND source_id = $1 AND status = 'posted'`, [contractId])) {
     throw new ConflictError('the settlement is already paid');
   }
-  const amount = gratuity(Number(k.basic), dstr(k.start_date)!, dstr(k.end_date)!);
-  if (amount === 0) return { amount: 0, journalId: null, note: 'no gratuity is due for less than one year of service' };
+  const amount = await endOfService(tx, k, dstr(k.end_date)!, k.end_reason);
+  if (amount === 0) return { amount: 0, journalId: null, note: 'no end-of-service benefit is due for this length of service and reason' };
   const bank = await resolveAccount(tx, k.company_id, input.bankAccount ?? 'role:bank');
   const j = await post(tx, ctx, { companyId: k.company_id, type: 'payroll_payment', date: input.date,
     memo: `End-of-service gratuity ${k.employee_no} ${k.name}`, source: { type: 'hr.settlement', id: contractId },
@@ -279,15 +324,17 @@ export async function paySettlement(tx: Tx, ctx: Ctx, contractId: string, input:
   return { amount, journalId: j.id };
 }
 
-/** Pay net salaries from a bank account and produce the WPS salary information file. */
-export async function payPayroll(tx: Tx, ctx: Ctx, runId: string, input: { date: string; bankAccount?: string; employerId: string; employerBankCode: string }) {
+/** Pay net salaries from a bank account; in the UAE also produce the WPS salary information file. */
+export async function payPayroll(tx: Tx, ctx: Ctx, runId: string, input: { date: string; bankAccount?: string; employerId?: string; employerBankCode?: string }) {
   const run = await one(tx, 'SELECT * FROM hr.payroll_runs WHERE id = $1 FOR UPDATE', [runId]);
   if (!run) throw new NotFoundError('payroll run');
   await authorize(tx, ctx, 'hr.payroll.run', { unitId: run.company_id, attrs: { amount: Number(run.net_total) } });
   if (run.status !== 'posted') throw new ConflictError(run.status === 'paid' ? 'the payroll is already paid' : 'post the payroll first');
   const bank = await resolveAccount(tx, run.company_id, input.bankAccount ?? 'role:bank');
-  const sif = await wpsFile(tx, runId, input.employerId, input.employerBankCode, new Date());
-  const j = await post(tx, ctx, { companyId: run.company_id, type: 'payroll_payment', date: input.date, memo: `Salaries paid ${run.period} (WPS)`,
+  const wps = (await companyPack(tx, run.company_id)).wps;
+  if (wps && (!input.employerId || !input.employerBankCode)) throw new ValidationError('the MOHRE employer id and the employer bank routing code are needed for the WPS file');
+  const sif = wps ? await wpsFile(tx, runId, input.employerId!, input.employerBankCode!, new Date()) : { fileName: null, content: null, records: 0, total: Number(run.net_total) };
+  const j = await post(tx, ctx, { companyId: run.company_id, type: 'payroll_payment', date: input.date, memo: `Salaries paid ${run.period}${wps ? ' (WPS)' : ''}`,
     source: { type: 'hr.payroll', id: runId },
     lines: [{ account: 'role:salaries_payable', debit: Number(run.net_total) }, { account: bank.id, credit: Number(run.net_total) }] });
   await tx.query(`UPDATE hr.payroll_runs SET status = 'paid', payment_journal_id = $2 WHERE id = $1`, [runId, j.id]);
@@ -321,4 +368,40 @@ export async function wpsFile(tx: Tx, runId: string, employerId: string, employe
   const scr = ['SCR', employerId, employerBankCode, stamp, hhmm, run.period.slice(5) + run.period.slice(0, 4), edr.length, m2(round2(total)), 'AED', `PAYROLL-${run.period}`].join(',');
   const fileName = `${employerId}${now.toISOString().replace(/[-:T]/g, '').slice(2, 14)}.SIF`;
   return { fileName, content: [...edr, scr].join('\r\n') + '\r\n', records: edr.length, total: round2(total) };
+}
+
+// --- Social insurance rules ----------------------------------------------------------------
+
+export async function listContributionRules(tx: Tx, ctx: Ctx, companyId: string) {
+  await authorize(tx, ctx, 'hr.manage', { unitId: companyId });
+  const pack = await companyPack(tx, companyId);
+  const rules = await many(tx, `SELECT id, code, name, applies_to, employee_pct::float, employer_pct::float, base, monthly_cap::float, active
+                                  FROM hr.contribution_rules WHERE company_id = $1 ORDER BY code`, [companyId]);
+  return { country: pack.country, endOfService: pack.endOfServiceRule, wps: pack.wps, rules };
+}
+
+export interface ContributionRuleInput {
+  code?: string; name?: string; appliesTo?: 'nationals' | 'non_nationals' | 'all'; employeePct?: number; employerPct?: number;
+  base?: 'basic' | 'basic_housing' | 'gross'; monthlyCap?: number | null; active?: boolean;
+}
+
+/** Add a rule, or change one by its code (rates change by law; payrolls already posted keep the old figures). */
+export async function saveContributionRule(tx: Tx, ctx: Ctx, companyId: string, input: ContributionRuleInput & { code: string }) {
+  await authorize(tx, ctx, 'hr.manage', { unitId: companyId });
+  await company(tx, companyId);
+  if (!/^[A-Z0-9_]{2,30}$/.test(input.code)) throw new ValidationError('the code is 2 to 30 capital letters, digits or _');
+  const old = await one(tx, 'SELECT * FROM hr.contribution_rules WHERE company_id = $1 AND code = $2', [companyId, input.code]);
+  if (!old && !input.name) throw new ValidationError('a new rule needs a name');
+  const v = {
+    name: input.name ?? old.name, applies_to: input.appliesTo ?? old?.applies_to ?? 'all', employee_pct: input.employeePct ?? old?.employee_pct ?? 0,
+    employer_pct: input.employerPct ?? old?.employer_pct ?? 0, base: input.base ?? old?.base ?? 'basic_housing',
+    monthly_cap: input.monthlyCap !== undefined ? input.monthlyCap : old?.monthly_cap ?? null, active: input.active ?? old?.active ?? true,
+  };
+  for (const k of ['employee_pct', 'employer_pct'] as const) if (!(Number(v[k]) >= 0 && Number(v[k]) <= 100)) throw new ValidationError('rates are 0 to 100 percent');
+  return one(tx, `INSERT INTO hr.contribution_rules (tenant_id, company_id, code, name, applies_to, employee_pct, employer_pct, base, monthly_cap, active)
+      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (tenant_id, company_id, code) DO UPDATE SET name = EXCLUDED.name, applies_to = EXCLUDED.applies_to, employee_pct = EXCLUDED.employee_pct,
+        employer_pct = EXCLUDED.employer_pct, base = EXCLUDED.base, monthly_cap = EXCLUDED.monthly_cap, active = EXCLUDED.active
+      RETURNING id, code, name, applies_to, employee_pct::float, employer_pct::float, base, monthly_cap::float, active`,
+    [companyId, input.code, v.name, v.applies_to, v.employee_pct, v.employer_pct, v.base, v.monthly_cap, v.active]);
 }

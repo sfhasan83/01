@@ -103,18 +103,20 @@ export async function createDesignation(tx: Tx, ctx: Ctx, input: { code: string;
 export interface EmployeeInput {
   employeeNo: string; firstName: string; lastName: string; email?: string; unitId: string;
   designationId?: string; managerId?: string; hireDate?: string; attributes?: Record<string, unknown>;
+  /** ISO country code; decides social insurance (for example GOSI for Saudi nationals). */
+  nationality?: string;
 }
 
 export async function createEmployee(tx: Tx, ctx: Ctx, input: EmployeeInput) {
   await authorize(tx, ctx, 'org.employee.manage', { unitId: input.unitId });
   return one(tx, `INSERT INTO org.employees (tenant_id, employee_no, first_name, last_name, email, unit_id,
-                                             designation_id, manager_id, hire_date, attributes)
-    VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+                                             designation_id, manager_id, hire_date, attributes, nationality)
+    VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
     [input.employeeNo, input.firstName, input.lastName, input.email ?? null, input.unitId,
-      input.designationId ?? null, input.managerId ?? null, input.hireDate ?? null, JSON.stringify(input.attributes ?? {})]);
+      input.designationId ?? null, input.managerId ?? null, input.hireDate ?? null, JSON.stringify(input.attributes ?? {}), input.nationality ?? null]);
 }
 
-export async function updateEmployee(tx: Tx, ctx: Ctx, id: string, patch: { unitId?: string; managerId?: string | null; designationId?: string; status?: string }) {
+export async function updateEmployee(tx: Tx, ctx: Ctx, id: string, patch: { unitId?: string; managerId?: string | null; designationId?: string; status?: string; nationality?: string }) {
   const e = await one(tx, 'SELECT unit_id FROM org.employees WHERE id = $1', [id]);
   if (!e) throw new NotFoundError('employee');
   await authorize(tx, ctx, 'org.employee.manage', { unitId: e.unit_id });
@@ -123,9 +125,10 @@ export async function updateEmployee(tx: Tx, ctx: Ctx, id: string, patch: { unit
       unit_id = coalesce($2, unit_id),
       manager_id = CASE WHEN $3::boolean THEN $4::uuid ELSE manager_id END,
       designation_id = coalesce($5, designation_id),
-      status = coalesce($6, status)
+      status = coalesce($6, status),
+      nationality = coalesce($7, nationality)
     WHERE id = $1 RETURNING *`,
-    [id, patch.unitId ?? null, 'managerId' in patch, patch.managerId ?? null, patch.designationId ?? null, patch.status ?? null]);
+    [id, patch.unitId ?? null, 'managerId' in patch, patch.managerId ?? null, patch.designationId ?? null, patch.status ?? null, patch.nationality ?? null]);
 }
 
 export async function listEmployees(tx: Tx, ctx: Ctx, opts: { unitId?: string; limit?: number; offset?: number } = {}) {

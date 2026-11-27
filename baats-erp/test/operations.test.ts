@@ -240,7 +240,7 @@ describe('HR and payroll', () => {
     await assert.rejects(tx(admin, (q) => hr.payPayroll(q, admin, run.id, pay)), /missing for E006/);
     await tx(admin, (q) => q.query(`UPDATE hr.contracts SET wps_person_id = '10000000000002', bank_routing_code = '803320101', iban = 'AE070331234567890123457' WHERE id = $1`, [kRep.id]));
     const r = await tx(admin, (q) => hr.payPayroll(q, admin, run.id, pay));
-    const rows = r.content.trim().split('\r\n');
+    const rows = r.content!.trim().split('\r\n');
     assert.equal(rows.length, 3);
     assert.match(rows[0], /^EDR,10000000000001,803320101,AE070331234567890123456,2026-03-01,2026-03-31,31,14000\.00,500\.00,0$/);
     assert.match(rows[2], /^SCR,1234567890123,803320101,\d{4}-\d{2}-\d{2},\d{4},032026,2,/);

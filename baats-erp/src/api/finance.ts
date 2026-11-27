@@ -6,6 +6,7 @@ import * as docs from '../fin/documents.ts';
 import * as tax from '../fin/tax.ts';
 import * as reports from '../fin/reports.ts';
 import * as einv from '../fin/einvoice.ts';
+import * as country from '../fin/country.ts';
 import * as bank from '../fin/bank.ts';
 import * as assets from '../fin/assets.ts';
 
@@ -46,6 +47,7 @@ export function registerFinance(app: FastifyInstance, run: Run): void {
   app.get<{ Params: P }>('/v1/fin/companies/:company/accounts', async (req) => run(req, (tx, ctx) => setup.listAccounts(tx, ctx, req.params.company)));
   app.post<{ Params: P }>('/v1/fin/companies/:company/accounts', { schema: body(['code', 'name', 'parentCode'], { code: str, name: str, parentCode: str }) },
     async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => setup.createAccount(tx, ctx, req.params.company, req.body as B)); });
+  app.get('/v1/fin/country-packs', async () => country.packSummary());
   app.get('/v1/fin/tax-codes', async (req) => run(req, (tx) => setup.listTaxCodes(tx, q(req).country ?? 'AE')));
   app.put<{ Params: P & { period: string } }>('/v1/fin/companies/:company/periods/:period', { schema: body(['status'], { status: { enum: ['open', 'closed'] } }) },
     async (req) => run(req, (tx, ctx) => ledger.setPeriodStatus(tx, ctx, req.params.company, req.params.period, (req.body as B).status)));
@@ -111,10 +113,11 @@ export function registerFinance(app: FastifyInstance, run: Run): void {
   // Company details used by e-invoices
   app.patch<{ Params: P }>('/v1/fin/companies/:company', {
     schema: body([], { street: str, city: str, emirate: { enum: ['AUH', 'DXB', 'SHJ', 'UAQ', 'FUJ', 'AJM', 'RAK'] }, email: str, phone: str, iban: str,
-      tradeLicenceNo: str, licenceAuthority: str, taxRegistrationNo: str }),
+      tradeLicenceNo: str, licenceAuthority: str, taxRegistrationNo: str, buildingNo: str, district: str, postalCode: str }),
   }, async (req) => run(req, (tx, ctx) => einv.updateCompanyDetails(tx, ctx, req.params.company, req.body as B)));
 
-  // E-invoicing (PINT AE)
+  // E-invoicing (PINT AE in the UAE, ZATCA in Saudi Arabia)
+  app.get<{ Params: P }>('/v1/fin/companies/:company/einvoices/chain', async (req) => run(req, (tx, ctx) => einv.checkChain(tx, ctx, req.params.company)));
   app.get<{ Params: P }>('/v1/fin/companies/:company/einvoices', async (req) => run(req, (tx, ctx) => einv.listEinvoices(tx, ctx, req.params.company)));
   app.get<{ Params: P }>('/v1/fin/invoices/:id/einvoice-check', async (req) => run(req, (tx, ctx) => einv.preview(tx, ctx, req.params.id)));
   app.post<{ Params: P }>('/v1/fin/invoices/:id/einvoice', async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => einv.issue(tx, ctx, req.params.id)); });

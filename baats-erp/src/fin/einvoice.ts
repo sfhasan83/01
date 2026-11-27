@@ -3,6 +3,8 @@ import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
 import { round2 } from './ledger.ts';
+import { companyPack } from './country.ts';
+import { verifyZatcaChain, zatcaIssue, zatcaPreview } from './zatca.ts';
 
 /**
  * UAE e-invoicing: PINT AE (Peppol International, UAE specialisation) UBL 2.1, ported
@@ -208,6 +210,11 @@ export function toXml(m: Model, uuid: string): string {
 
 /** Check a document is ready for e-invoicing, without issuing it. */
 export async function preview(tx: Tx, ctx: Ctx, invoiceId: string) {
+  const company = await documentCompany(tx, invoiceId);
+  if ((await companyPack(tx, company)).einvoice === 'zatca') {
+    await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: company });
+    return zatcaPreview(tx, invoiceId);
+  }
   const { inv, model, problems } = await buildModel(tx, invoiceId);
   await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: inv.company_id });
   return { ready: problems.length === 0, problems, xml: problems.length ? null : toXml(model, '00000000-0000-0000-0000-000000000000') };
@@ -215,6 +222,11 @@ export async function preview(tx: Tx, ctx: Ctx, invoiceId: string) {
 
 /** Issue the e-invoice: validate, write the XML once and keep it. */
 export async function issue(tx: Tx, ctx: Ctx, invoiceId: string) {
+  const company = await documentCompany(tx, invoiceId);
+  if ((await companyPack(tx, company)).einvoice === 'zatca') {
+    await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: company });
+    return zatcaIssue(tx, ctx, invoiceId);
+  }
   const { inv, model, problems } = await buildModel(tx, invoiceId);
   await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: inv.company_id });
   if (await one(tx, 'SELECT 1 FROM fin.einvoices WHERE invoice_id = $1', [invoiceId])) throw new ConflictError('the e-invoice for this document is already issued');
@@ -226,7 +238,20 @@ export async function issue(tx: Tx, ctx: Ctx, invoiceId: string) {
     [inv.company_id, invoiceId, id, PINT_AE_PROFILE.id, xml, createHash('sha256').update(xml).digest('hex'), ctx.userId]);
 }
 
-/** Record what the accredited service provider said about the e-invoice. */
+async function documentCompany(tx: Tx, invoiceId: string): Promise<string> {
+  const r = await one(tx, 'SELECT company_id FROM fin.invoices WHERE id = $1', [invoiceId]);
+  if (!r) throw new NotFoundError('document');
+  return r.company_id;
+}
+
+/** Saudi companies: check the e-invoice hash chain end to end. */
+export async function checkChain(tx: Tx, ctx: Ctx, companyId: string) {
+  await authorize(tx, ctx, 'fin.report.read', { unitId: companyId });
+  if ((await companyPack(tx, companyId)).einvoice !== 'zatca') throw new ValidationError('the hash chain applies to Saudi (ZATCA) e-invoices');
+  return verifyZatcaChain(tx, companyId);
+}
+
+/** Record what the accredited service provider (UAE) or ZATCA (Saudi Arabia) said about the e-invoice. */
 export async function recordAspResponse(tx: Tx, ctx: Ctx, einvoiceId: string, input: { status: 'submitted' | 'accepted' | 'rejected'; reference?: string; message?: string }) {
   const e = await one(tx, 'SELECT * FROM fin.einvoices WHERE id = $1', [einvoiceId]);
   if (!e) throw new NotFoundError('e-invoice');
@@ -246,19 +271,29 @@ export async function getEinvoice(tx: Tx, ctx: Ctx, einvoiceId: string) {
 export async function listEinvoices(tx: Tx, ctx: Ctx, companyId: string) {
   await authorize(tx, ctx, 'fin.report.read', { unitId: companyId });
   return many(tx, `SELECT i.id AS invoice_id, i.no, i.kind, i.date, i.gross_total, i.currency, p.name AS party_name,
-                          e.id AS einvoice_id, e.status, e.asp_reference, e.created_at AS issued_at
+                          e.id AS einvoice_id, e.status, e.asp_reference, e.created_at AS issued_at, e.counter, e.invoice_type, e.qr
                      FROM fin.invoices i JOIN mdm.parties p ON p.id = i.party_id LEFT JOIN fin.einvoices e ON e.invoice_id = i.id
                     WHERE i.company_id = $1 AND i.status = 'posted' AND i.kind IN ('sales_invoice','sales_credit')
                     ORDER BY i.date DESC, i.no DESC`, [companyId]);
 }
 
-/** Seller details on the company (address, emirate, licence, IBAN) used by e-invoices. */
+/**
+ * Seller details on the company used by e-invoices: address (with the emirate in
+ * the UAE, or the building number, district and postal code of the Saudi national
+ * address), licence or commercial registration, IBAN and tax number.
+ */
 export async function updateCompanyDetails(tx: Tx, ctx: Ctx, companyId: string, d: Record<string, string | undefined>) {
   await authorize(tx, ctx, 'fin.company.manage', { unitId: companyId });
-  if (d.iban && !/^AE\d{21}$/.test(d.iban.replace(/\s/g, ''))) throw new ValidationError('a UAE IBAN is AE followed by 21 digits');
-  if (d.taxRegistrationNo && !isTRN(d.taxRegistrationNo)) throw new ValidationError('a UAE TRN has 15 digits, starts with 1 and ends with 03');
+  const pack = await companyPack(tx, companyId);
+  if (d.iban && !pack.iban.re.test(d.iban.replace(/\s/g, ''))) throw new ValidationError(pack.iban.message);
+  if (pack.country === 'AE' && d.taxRegistrationNo && !isTRN(d.taxRegistrationNo)) throw new ValidationError('a UAE TRN has 15 digits, starts with 1 and ends with 03');
+  if (d.taxRegistrationNo && !pack.taxNumber.test(d.taxRegistrationNo)) throw new ValidationError(pack.taxNumber.message);
+  if (d.emirate && pack.country !== 'AE') throw new ValidationError('the emirate applies to UAE companies');
+  if (d.buildingNo && !/^\d{4}$/.test(d.buildingNo)) throw new ValidationError('the building number has 4 digits');
+  if (d.postalCode && !/^\d{5}$/.test(d.postalCode)) throw new ValidationError('the postal code has 5 digits');
   const cols: Record<string, string> = { street: 'street', city: 'city', emirate: 'emirate', email: 'email', phone: 'phone', iban: 'iban',
-    tradeLicenceNo: 'trade_licence_no', licenceAuthority: 'licence_authority', taxRegistrationNo: 'tax_registration_no' };
+    tradeLicenceNo: 'trade_licence_no', licenceAuthority: 'licence_authority', taxRegistrationNo: 'tax_registration_no',
+    buildingNo: 'building_no', district: 'district', postalCode: 'postal_code' };
   const sets: string[] = []; const vals: unknown[] = [companyId];
   for (const [k, c] of Object.entries(cols)) if (d[k] !== undefined) { vals.push(k === 'iban' ? d[k]!.replace(/\s/g, '') : d[k]); sets.push(`${c} = $${vals.length}`); }
   if (!sets.length) throw new ValidationError('nothing to change');

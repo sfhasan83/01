@@ -14,6 +14,7 @@ import { registerFinance } from './finance.ts';
 import { registerOperations } from './operations.ts';
 import { registerPhase3 } from './phase3.ts';
 import { registerPhase4 } from './phase4.ts';
+import { registerPhase5 } from './phase5.ts';
 
 declare module 'fastify' {
   interface FastifyRequest { ctx: Ctx; token: string }
@@ -196,6 +197,7 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
   registerOperations(app, run);
   registerPhase3(app, run);
   registerPhase4(app, run);
+  registerPhase5(app, run);
 
   return app;
 }

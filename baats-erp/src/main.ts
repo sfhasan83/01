@@ -6,7 +6,8 @@ const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) { console.error('DATABASE_URL is required (connect as baats_app, never as the schema owner)'); process.exit(1); }
 
 const db = new Db({ connectionString: databaseUrl });
-const app = buildServer({ db, platformAdminKey: process.env.PLATFORM_ADMIN_KEY, logger: true });
+const app = buildServer({ db, platformAdminKey: process.env.PLATFORM_ADMIN_KEY, logger: true,
+  ai: { secretKey: process.env.BAATS_SECRET_KEY, allowPrivateUrls: process.env.AI_ALLOW_PRIVATE_URLS === 'true' } });
 
 // Escalation sweep across all tenants. Each tenant runs in its own transaction.
 const SWEEP_MS = Number(process.env.ESCALATION_SWEEP_SECONDS ?? 300) * 1000;

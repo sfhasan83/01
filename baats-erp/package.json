@@ -10,6 +10,7 @@
   },
   "license": "UNLICENSED",
   "dependencies": {
+    "@anthropic-ai/sdk": "1.14.0",
     "fastify": "^5.12.8",
     "pg": "^8.23.1"
   },

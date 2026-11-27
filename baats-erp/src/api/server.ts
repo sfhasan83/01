@@ -15,12 +15,19 @@ import { registerOperations } from './operations.ts';
 import { registerPhase3 } from './phase3.ts';
 import { registerPhase4 } from './phase4.ts';
 import { registerPhase5 } from './phase5.ts';
+import { registerAssistant } from './assistant.ts';
+import { parseSecretKey } from '../ai/secrets.ts';
+import type { AiOptions } from '../ai/assistant.ts';
 
 declare module 'fastify' {
   interface FastifyRequest { ctx: Ctx; token: string }
 }
 
-export interface ServerOptions { db: Db; platformAdminKey?: string; logger?: boolean }
+export interface ServerOptions {
+  db: Db; platformAdminKey?: string; logger?: boolean;
+  /** AI assistant: secretKey encrypts provider API keys (32 bytes, base64 or hex); allowPrivateUrls permits local model servers. */
+  ai?: { secretKey?: string; allowPrivateUrls?: boolean; providerFactory?: AiOptions['providerFactory'] };
+}
 
 const str = { type: 'string', minLength: 1 } as const;
 const uuid = { type: 'string', format: 'uuid' } as const;
@@ -198,6 +205,7 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
   registerPhase3(app, run);
   registerPhase4(app, run);
   registerPhase5(app, run);
+  registerAssistant(app, run, db, { secretKey: parseSecretKey(opts.ai?.secretKey), allowPrivateUrls: opts.ai?.allowPrivateUrls ?? false, providerFactory: opts.ai?.providerFactory });
 
   return app;
 }

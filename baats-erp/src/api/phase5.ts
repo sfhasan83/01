@@ -16,17 +16,7 @@ const uuid = { type: 'string', format: 'uuid' } as const;
 const body = (required: string[], properties: Record<string, object>) =>
   ({ body: { type: 'object', required, properties, additionalProperties: false } });
 const today = () => new Date().toISOString().slice(0, 10);
-const spec = {
-  type: 'object', additionalProperties: false, properties: {
-    columns: { type: 'array', items: str, maxItems: 40 },
-    groupBy: { type: 'array', items: str, maxItems: 10 },
-    measures: { type: 'array', maxItems: 20, items: { type: 'object', required: ['field', 'agg'], additionalProperties: false, properties: { field: str, agg: { enum: ['sum', 'avg', 'min', 'max', 'count'] } } } },
-    filters: { type: 'array', maxItems: 20, items: { type: 'object', required: ['field', 'op'], additionalProperties: false,
-      properties: { field: str, op: { enum: ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'contains', 'in', 'is_empty', 'not_empty'] }, value: {} } } },
-    sort: { type: 'array', maxItems: 5, items: { type: 'object', required: ['by'], additionalProperties: false, properties: { by: str, dir: { enum: ['asc', 'desc'] } } } },
-    limit: { type: 'integer', minimum: 1, maximum: 5000 },
-  },
-};
+const spec = rep.REPORT_SPEC_SCHEMA;
 
 /** Dashboards, KPIs, report builder, scorecards, ESG and anomaly checks (v1). */
 export function registerPhase5(app: FastifyInstance, run: Run): void {

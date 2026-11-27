@@ -111,6 +111,20 @@ export const DATASETS: Record<string, Dataset> = {
 
 const AGGS = ['sum', 'avg', 'min', 'max', 'count'] as const;
 const OPS = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'contains', 'in', 'is_empty', 'not_empty'] as const;
+const STR = { type: 'string', minLength: 1 } as const;
+/** JSON schema of a report spec, shared by the API and the assistant. */
+export const REPORT_SPEC_SCHEMA = {
+  type: 'object', additionalProperties: false, properties: {
+    columns: { type: 'array', items: STR, maxItems: 40 },
+    groupBy: { type: 'array', items: STR, maxItems: 10 },
+    measures: { type: 'array', maxItems: 20, items: { type: 'object', required: ['field', 'agg'], additionalProperties: false, properties: { field: STR, agg: { enum: ['sum', 'avg', 'min', 'max', 'count'] } } } },
+    filters: { type: 'array', maxItems: 20, items: { type: 'object', required: ['field', 'op'], additionalProperties: false,
+      properties: { field: STR, op: { enum: ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'contains', 'in', 'is_empty', 'not_empty'] }, value: {} } } },
+    sort: { type: 'array', maxItems: 5, items: { type: 'object', required: ['by'], additionalProperties: false, properties: { by: STR, dir: { enum: ['asc', 'desc'] } } } },
+    limit: { type: 'integer', minimum: 1, maximum: 5000 },
+  },
+} as const;
+
 export interface ReportSpec {
   columns?: string[];
   groupBy?: string[];

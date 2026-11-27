@@ -104,6 +104,8 @@ async function main() {
       localKey: randomBytes(24).toString('base64url'),
     };
   }
+  // Encrypts AI provider keys at rest. Older installs get one on upgrade.
+  cfg.secretKey ??= randomBytes(32).toString('base64');
 
   // 1. Database cluster (first run only)
   if (firstRun) {
@@ -184,7 +186,7 @@ async function main() {
   const { Db } = await import(pathToFileURL(join(APP_DIR, 'src', 'core', 'db.ts')).href);
   const { buildServer } = await import(pathToFileURL(join(APP_DIR, 'src', 'api', 'server.ts')).href);
   const db = new Db({ connectionString: `postgres://baats_app:${encodeURIComponent(cfg.appDbPassword)}@127.0.0.1:${cfg.pgPort}/baats` });
-  const app = buildServer({ db, platformAdminKey: cfg.platformAdminKey, logger: false });
+  const app = buildServer({ db, platformAdminKey: cfg.platformAdminKey, logger: false, ai: { secretKey: cfg.secretKey, allowPrivateUrls: true } });
 
   const consoleHtml = readFileSync(join(HERE, 'console.html'), 'utf8');
   const version = (() => { try { return readFileSync(join(ROOT, 'VERSION.txt'), 'utf8').trim(); } catch { return 'dev'; } })();

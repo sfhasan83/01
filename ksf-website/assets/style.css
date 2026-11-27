@@ -463,3 +463,14 @@ form.enquiry .note { font-size: 13px; color: var(--muted-ink); margin: 0; }
 }
 .claim .ci { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: rgba(255,184,28,.12); color: var(--gold); }
 .claim .ci svg { width: 22px; height: 22px; }
+
+/* ---------- FAQ ---------- */
+.faq-sec { padding: 0 0 clamp(70px, 9vw, 120px); }
+.faq-list { margin-top: 36px; display: grid; gap: 12px; max-width: 880px; }
+.faq-item { border-radius: var(--radius); background: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); }
+.faq-item summary { cursor: pointer; list-style: none; padding: 20px 56px 20px 22px; font-family: var(--display); font-weight: 700; font-size: clamp(18px, 2vw, 21px); position: relative; }
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after { content: "+"; position: absolute; right: 22px; top: 50%; transform: translateY(-50%); color: var(--gold); font-size: 26px; transition: transform .3s var(--ease); }
+.faq-item[open] summary::after { transform: translateY(-50%) rotate(45deg); }
+.faq-item p { margin: 0; padding: 0 22px 22px; color: var(--muted); }
+.faq-item a { color: var(--gold); }

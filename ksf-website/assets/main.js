@@ -88,7 +88,7 @@
   }
 
   function cardHTML(f, idx) {
-    return '<article class="flavour reveal ' + (f.text === "light" ? "light-text" : "dark-text") + ' d' + (idx % 3 + 1) + '" data-line="' + f.line + '" style="--c:' + f.card[0] + ';--c2:' + f.card[1] + '">' +
+    return '<article id="' + f.id + '" class="flavour reveal ' + (f.text === "light" ? "light-text" : "dark-text") + ' d' + (idx % 3 + 1) + '" data-line="' + f.line + '" style="--c:' + f.card[0] + ';--c2:' + f.card[1] + '">' +
       '<span class="tag">' + f.tag + '</span>' +
       '<div class="bag-wrap">' + bagSVG(f) + '</div>' +
       '<h3>' + f.name + '</h3>' +

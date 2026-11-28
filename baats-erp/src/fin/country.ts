@@ -3,6 +3,7 @@ import { one, type Tx } from '../core/db.ts';
 import { minorUnits, roundMoney, useBaseCurrency } from '../core/money.ts';
 import { UAE_CHART, UAE_TAX_CODES, type AccountTemplate } from './coa.ts';
 import { EUROPE_PACKS } from './europe.ts';
+import { SOUTH_ASIA_PACKS } from './southasia.ts';
 
 /**
  * Country packs. Everything that differs by country sits here, behind one
@@ -31,17 +32,22 @@ export interface ContributionTemplate {
   monthlyThreshold?: number | null;
   /** The employee share is taken before income tax (pension under a net pay arrangement, deductible contributions). */
   preTax?: boolean;
+  /** Only employees whose gross pay is at most this much a month are covered (India's ESI). */
+  eligibleUpTo?: number | null;
 }
 /** How income tax is withheld from pay. */
 export interface IncomeTaxRule {
-  method: 'none' | 'uk_paye' | 'ie_paye' | 'rate';
+  method: 'none' | 'uk_paye' | 'ie_paye' | 'rate' | 'annual_slab';
   rule: string;
+  /** annual_slab: the tax on a year's taxable salary, and the month the tax year starts (4 April, 7 July). */
+  annualTax?: (yearlyPay: number) => number;
+  yearStartMonth?: number;
   /** What is not calculated, where employees' rates are entered instead. */
   gap?: string;
 }
 export interface CountryPack {
   country: string; name: string; currency: string;
-  region: 'GCC' | 'UK' | 'EU';
+  region: 'GCC' | 'UK' | 'EU' | 'SA';
   taxAuthority: string;
   /** The VAT return form, or null where the country has no VAT. */
   vatForm: string | null; vatFormName: string;
@@ -57,7 +63,7 @@ export interface CountryPack {
   corporateTax?: (profit: number, rate: number, threshold: number) => number;
   corporateTaxRule?: string;
   /** The e-invoice standard, or null where none is in force yet. */
-  einvoice: 'pint_ae' | 'zatca' | 'peppol' | 'xrechnung' | null;
+  einvoice: 'pint_ae' | 'zatca' | 'peppol' | 'xrechnung' | 'in_irp' | 'pk_fbr' | null;
   /** Why e-invoices are not issued, where einvoice is null. */
   einvoiceGap?: string;
   /** The UAE wage protection system file is produced when salaries are paid. */
@@ -371,7 +377,7 @@ const KUWAIT: CountryPack = {
   endOfService: kuwaitEndOfService,
 };
 
-export const PACKS: Record<string, CountryPack> = { AE: UAE, SA: SAUDI, OM: OMAN, BH: BAHRAIN, QA: QATAR, KW: KUWAIT, ...EUROPE_PACKS };
+export const PACKS: Record<string, CountryPack> = { AE: UAE, SA: SAUDI, OM: OMAN, BH: BAHRAIN, QA: QATAR, KW: KUWAIT, ...EUROPE_PACKS, ...SOUTH_ASIA_PACKS };
 
 export function packFor(country: string): CountryPack {
   const p = PACKS[country];
@@ -392,12 +398,13 @@ export const packSummary = () => Object.values(PACKS).map((p) => ({
   vat: p.vatForm ? `${p.taxCodes.find((t) => t.category === 'standard')?.rate ?? 0}%` : 'none', noVat: p.noVat ?? null,
   region: p.region,
   einvoice: p.einvoice === 'zatca' ? 'ZATCA (Fatoora) UBL 2.1 with QR code and hash chain' : p.einvoice === 'pint_ae' ? 'PINT AE (Peppol) UBL 2.1'
-    : p.einvoice === 'xrechnung' ? 'XRechnung 3.0 (EN 16931) UBL 2.1' : p.einvoice === 'peppol' ? 'Peppol BIS Billing 3.0 (EN 16931) UBL 2.1' : p.einvoiceGap ?? 'none',
+    : p.einvoice === 'xrechnung' ? 'XRechnung 3.0 (EN 16931) UBL 2.1' : p.einvoice === 'peppol' ? 'Peppol BIS Billing 3.0 (EN 16931) UBL 2.1'
+    : p.einvoice === 'in_irp' ? 'GST e-invoice JSON (IRP schema 1.1)' : p.einvoice === 'pk_fbr' ? 'FBR digital invoice JSON (DI API)' : p.einvoiceGap ?? 'none',
   incomeTax: p.incomeTax ? { rule: p.incomeTax.rule, gap: p.incomeTax.gap ?? null } : null,
   decimals: minorUnits(p.currency),
   taxCodes: p.taxCodes.map((t) => ({ code: t.code, name: t.name, rate: t.rate })),
   contributions: p.contributions.map((c) => ({ code: c.code, name: c.name, appliesTo: c.appliesTo, employeePct: c.employeePct, employerPct: c.employerPct, monthlyCap: c.monthlyCap,
-    afterYears: c.afterYears ?? null, employerPctAfter: c.employerPctAfter ?? null, monthlyThreshold: c.monthlyThreshold ?? null, preTax: c.preTax ?? false })),
+    afterYears: c.afterYears ?? null, employerPctAfter: c.employerPctAfter ?? null, monthlyThreshold: c.monthlyThreshold ?? null, preTax: c.preTax ?? false, eligibleUpTo: c.eligibleUpTo ?? null })),
   endOfService: p.endOfServiceRule, payrollFile: p.wps ? 'WPS salary information file (SIF)' : p.sepa ? 'SEPA credit transfer (pain.001)' : null, payrollFileGap: p.payrollFileGap ?? null,
   corporateTax: p.corporateTaxGap ? 'not covered yet' : p.corporateTaxRule ?? `${p.defaults.corporateTaxRate}% above ${p.defaults.corporateTaxThreshold.toLocaleString('en')}`,
 }));

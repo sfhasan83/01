@@ -95,6 +95,8 @@ export function registerFinance(app: FastifyInstance, run: Run): void {
     async (req, reply) => { reply.status(201); const b = req.body as B; return run(req, (tx, ctx) => tax.fileVatReturn(tx, ctx, req.params.company, b.from, b.to, b.filedRef)); });
   app.get<{ Params: P }>('/v1/fin/companies/:company/ec-sales-list', async (req) =>
     run(req, (tx, ctx) => tax.ecSalesList(tx, ctx, req.params.company, q(req).from, q(req).to)));
+  app.get<{ Params: P }>('/v1/fin/companies/:company/gstr1', async (req) =>
+    run(req, (tx, ctx) => tax.gstr1(tx, ctx, req.params.company, q(req).from, q(req).to)));
   app.get<{ Params: P }>('/v1/fin/companies/:company/vat-return/mtd', async (req) =>
     run(req, (tx, ctx) => tax.mtdVatReturn(tx, ctx, req.params.company, q(req).from, q(req).to, q(req).periodKey ?? '')));
   app.post<{ Params: P }>('/v1/fin/companies/:company/corporate-tax', { schema: body(['fiscalYear'], { fiscalYear: { type: 'integer' }, postingDate: date }) },
@@ -117,7 +119,7 @@ export function registerFinance(app: FastifyInstance, run: Run): void {
   // Company details used by e-invoices
   app.patch<{ Params: P }>('/v1/fin/companies/:company', {
     schema: body([], { street: str, city: str, emirate: { enum: ['AUH', 'DXB', 'SHJ', 'UAQ', 'FUJ', 'AJM', 'RAK'] }, email: str, phone: str, iban: str,
-      tradeLicenceNo: str, licenceAuthority: str, taxRegistrationNo: str, buildingNo: str, district: str, postalCode: str }),
+      tradeLicenceNo: str, licenceAuthority: str, taxRegistrationNo: str, buildingNo: str, district: str, postalCode: str, province: str }),
   }, async (req) => run(req, (tx, ctx) => einv.updateCompanyDetails(tx, ctx, req.params.company, req.body as B)));
 
   // E-invoicing (PINT AE in the UAE, ZATCA in Saudi Arabia)
@@ -127,7 +129,7 @@ export function registerFinance(app: FastifyInstance, run: Run): void {
   app.post<{ Params: P }>('/v1/fin/invoices/:id/einvoice', async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => einv.issue(tx, ctx, req.params.id)); });
   app.get<{ Params: P }>('/v1/fin/einvoices/:id/xml', async (req, reply) => {
     const e = await run(req, (tx, ctx) => einv.getEinvoice(tx, ctx, req.params.id));
-    reply.header('content-type', 'application/xml; charset=utf-8');
+    reply.header('content-type', /^in-irp|^pk-fbr/.test(e.profile) ? 'application/json; charset=utf-8' : 'application/xml; charset=utf-8');
     return e.xml;
   });
   app.post<{ Params: P }>('/v1/fin/einvoices/:id/asp-response', { schema: body(['status'], { status: { enum: ['submitted', 'accepted', 'rejected'] }, reference: str, message: str }) },

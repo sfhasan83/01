@@ -138,6 +138,6 @@ export function registerOperations(app: FastifyInstance, run: Run): void {
     schema: body(['code'], { code: str, name: str, appliesTo: { enum: ['nationals', 'non_nationals', 'all'] }, employeePct: nonneg, employerPct: nonneg,
       base: { enum: ['basic', 'basic_housing', 'gross'] }, monthlyCap: { type: ['number', 'null'], exclusiveMinimum: 0 }, active: { type: 'boolean' },
       afterYears: { type: ['number', 'null'], exclusiveMinimum: 0 }, employerPctAfter: { type: ['number', 'null'], minimum: 0 },
-      monthlyThreshold: { type: ['number', 'null'], minimum: 0 }, preTax: { type: 'boolean' } }),
+      monthlyThreshold: { type: ['number', 'null'], minimum: 0 }, preTax: { type: 'boolean' }, eligibleUpTo: { type: ['number', 'null'], exclusiveMinimum: 0 } }),
   }, async (req) => run(req, (tx, ctx) => hr.saveContributionRule(tx, ctx, req.params.company, req.body as B)));
 }

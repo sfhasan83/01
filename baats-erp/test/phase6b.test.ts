@@ -274,7 +274,7 @@ describe('country packs over HTTP', () => {
     const h = { authorization: `Bearer ${login.json().token}` };
     const packs = (await app.inject({ method: 'GET', url: '/v1/fin/country-packs', headers: h })).json();
     const kwPack = packs.find((p: any) => p.country === 'KW');
-    assert.deepEqual([packs.length, kwPack.decimals, kwPack.vat, kwPack.noVat], [13, 3, 'none', 'Kuwait has no VAT, so there is no VAT return']);
+    assert.deepEqual([packs.length, kwPack.decimals, kwPack.vat, kwPack.noVat], [15, 3, 'none', 'Kuwait has no VAT, so there is no VAT return']);
     const v = await app.inject({ method: 'GET', url: `/v1/fin/companies/${qa}/vat-return?from=2026-01-01&to=2026-03-31`, headers: h });
     assert.equal(v.statusCode, 422);
     await app.close();

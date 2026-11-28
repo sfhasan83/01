@@ -58,7 +58,7 @@ after(async () => { await t.drop(); });
 describe('the UK and EU packs', () => {
   it('sets up books with the country\'s currency, VAT number format, chart names and codes', async () => {
     const packs = country.packSummary();
-    assert.deepEqual(packs.slice(6).map((p) => [p.country, p.currency, p.vat, p.region]),
+    assert.deepEqual(packs.slice(6, 13).map((p) => [p.country, p.currency, p.vat, p.region]),
       [['GB', 'GBP', '20%', 'UK'], ['IE', 'EUR', '23%', 'EU'], ['DE', 'EUR', '19%', 'EU'], ['FR', 'EUR', '20%', 'EU'], ['NL', 'EUR', '21%', 'EU'], ['ES', 'EUR', '21%', 'EU'], ['IT', 'EUR', '22%', 'EU']]);
     assert.match(packs.find((p) => p.country === 'DE')!.einvoice, /XRechnung/);
     assert.match(packs.find((p) => p.country === 'IT')!.einvoice, /FatturaPA is not produced/);

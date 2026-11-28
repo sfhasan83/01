@@ -4,6 +4,7 @@ import { authorize } from '../iam/authz.ts';
 import { company, nextNumber, post, resolveAccount, roundMoney, type PostingLine } from './ledger.ts';
 import { roundIn } from '../core/money.ts';
 import { emit } from '../int/webhooks.ts';
+import { checkPlaceOfSupply } from './southasia.ts';
 
 /**
  * Receivables and payables. Posting rules follow BAATS Accounting:
@@ -87,6 +88,7 @@ export async function createInvoice(tx: Tx, ctx: Ctx, input: InvoiceInput) {
     const tc = await one(tx, 'SELECT * FROM fin.tax_codes WHERE country_code = $1 AND code = $2 AND active', [c.country_code, l.taxCode]);
     if (!tc) throw new ValidationError(`line ${i + 1}: unknown tax code ${l.taxCode}`);
     if (tc.category === 'reverse_charge' && SALES.has(input.kind)) throw new ValidationError('reverse charge applies to purchases only');
+    if (c.country_code === 'IN') checkPlaceOfSupply(c.tax_registration_no, party, tc.code, i + 1);
     let accountRef = l.account;
     if (!accountRef && l.itemId) {
       const item = await one(tx, 'SELECT attributes FROM mdm.items WHERE id = $1', [l.itemId]);

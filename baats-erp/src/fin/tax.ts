@@ -6,6 +6,7 @@ import { company, post, roundMoney, type PostingLine } from './ledger.ts';
 import { fiscalYear } from './reports.ts';
 import { companyPack } from './country.ts';
 import { EUROPE_RETURNS, ecSalesRows, mtdBody } from './vat_europe.ts';
+import { indiaGstr1, SOUTH_ASIA_RETURNS } from './gst.ts';
 
 /**
  * VAT returns and the corporate tax provision, following the BAATS Accounting
@@ -20,7 +21,8 @@ const SALES_TYPES = ['sales_invoice', 'sales_credit'];
 // Fuel receipts logged in fleet and approved expense claims carry input VAT like a purchase invoice.
 const PURCHASE_TYPES = ['purchase_invoice', 'purchase_credit', 'fuel', 'expense_claim'];
 
-export interface VatBox { amount: number; vat: number }
+/** heads: India's GST by head (IGST, CGST, SGST). */
+export interface VatBox { amount: number; vat: number; heads?: { igst: number; cgst: number; sgst: number } }
 export interface VatReturn {
   form: string; formName: string; authority: string; from: string; to: string;
   boxes: Record<string, VatBox>;
@@ -45,7 +47,7 @@ export async function computeVatReturn(tx: Tx, ctx: Ctx, companyId: string, from
   await authorize(tx, ctx, 'fin.report.read', { unitId: companyId });
   const pack = await companyPack(tx, companyId);
   if (!pack.vatForm) throw new ValidationError(pack.noVat ?? `${pack.name} has no VAT`);
-  const make = ({ AE: uaeVatReturn, SA: saudiVatReturn, BH: bahrainVatReturn, OM: omanVatReturn, ...EUROPE_RETURNS } as Record<string, (tx: Tx, c: string, f: string, t: string) => Promise<Omit<VatReturn, 'form' | 'formName' | 'authority' | 'from' | 'to'>>>)[pack.country];
+  const make = ({ AE: uaeVatReturn, SA: saudiVatReturn, BH: bahrainVatReturn, OM: omanVatReturn, ...EUROPE_RETURNS, ...SOUTH_ASIA_RETURNS } as Record<string, (tx: Tx, c: string, f: string, t: string) => Promise<Omit<VatReturn, 'form' | 'formName' | 'authority' | 'from' | 'to'>>>)[pack.country];
   if (!make) throw new ValidationError(`the ${pack.name} VAT return is not available`);
   const r = await make(tx, companyId, from, to);
   return { form: pack.vatForm, formName: pack.vatFormName, authority: pack.taxAuthority, from, to, ...r };
@@ -298,4 +300,12 @@ export async function mtdVatReturn(tx: Tx, ctx: Ctx, companyId: string, from: st
   const r = await computeVatReturn(tx, ctx, companyId, from, to);
   return { body: mtdBody(r, periodKey), fileName: `mtd-vat-${periodKey.replace('#', '_')}.json`,
     note: 'Submitting to HMRC needs software recognised by HMRC; send this body with your MTD bridging software, or enter the nine boxes in it.' };
+}
+
+/** India: GSTR-1, the invoice-level return of outward supplies, as the CSV the GST offline tool imports section by section. */
+export async function gstr1(tx: Tx, ctx: Ctx, companyId: string, from: string, to: string) {
+  await authorize(tx, ctx, 'fin.report.read', { unitId: companyId });
+  const pack = await companyPack(tx, companyId);
+  if (pack.country !== 'IN') throw new ValidationError('GSTR-1 is for companies in India');
+  return { authority: pack.taxAuthority, ...(await indiaGstr1(tx, companyId, from, to)) };
 }

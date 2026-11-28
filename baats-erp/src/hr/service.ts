@@ -7,7 +7,7 @@ import { insertDefinition, onWorkflowComplete, submit } from '../workflow/engine
 import { company, post, resolveAccount, roundMoney, type PostingLine } from '../fin/ledger.ts';
 import { companyPack, uaeGratuity, type EndReason } from '../fin/country.ts';
 import { ensureRoleAccount } from '../fin/setup.ts';
-import { irelandPaye, parseUkTaxCode, ukPaye, ukTaxMonth } from './incometax.ts';
+import { annualSlabWithholding, fiscalMonth, irelandPaye, parseUkTaxCode, ukPaye, ukTaxMonth } from './incometax.ts';
 import { normalizeIban } from '../fin/bankfiles.ts';
 
 /**
@@ -276,6 +276,9 @@ export async function runPayroll(tx: Tx, ctx: Ctx, input: { companyId: string; p
       if (r.applies_to === 'non_nationals' && national) continue;
       const full = r.base === 'basic' ? Number(k.basic) : r.base === 'basic_housing' ? Number(k.basic) + Number(k.housing)
         : Number(k.basic) + Number(k.housing) + Number(k.transport) + Number(k.other_allowances);
+      // Some schemes cover only employees paid up to a ceiling (India's ESI), judged on the contract's monthly gross.
+      const contractGross = Number(k.basic) + Number(k.housing) + Number(k.transport) + Number(k.other_allowances);
+      if (r.eligible_up_to !== null && contractGross > Number(r.eligible_up_to)) continue;
       const capped = Math.min(full, r.monthly_cap === null ? Infinity : Number(r.monthly_cap));
       const base = roundMoney(Math.max(0, capped - (r.monthly_threshold === null ? 0 : Number(r.monthly_threshold))) * share);
       // Some employer rates step up with service (Bahrain's leaving indemnity after three years).
@@ -286,7 +289,7 @@ export async function runPayroll(tx: Tx, ctx: Ctx, input: { companyId: string; p
     }
     const ee = roundMoney(contributions.reduce((x, c) => x + c.employee, 0)), er = roundMoney(contributions.reduce((x, c) => x + c.employer, 0));
     const taxablePay = roundMoney(g - contributions.filter((c) => c.preTax).reduce((x, c) => x + c.employee, 0));
-    const taxes = await incomeTaxFor(tx, method, input.companyId, input.period, k, taxablePay);
+    const taxes = await incomeTaxFor(tx, pack, input.companyId, input.period, k, taxablePay);
     const tax = roundMoney(taxes.reduce((x, t) => x + t.amount, 0));
     const n = roundMoney(g - deductions - ee - tax);
     if (n < 0) throw new ValidationError(`deductions for employee ${k.employee_no} exceed the month's pay`);
@@ -311,7 +314,7 @@ export async function runPayroll(tx: Tx, ctx: Ctx, input: { companyId: string; p
 /** Earlier taxable pay and tax of an employee in this company between two periods (this run's own payslips are gone by now). */
 async function earlier(tx: Tx, companyId: string, employeeId: string, fromPeriod: string, beforePeriod: string) {
   return one(tx, `SELECT coalesce(sum(s.taxable_pay), 0)::float AS pay,
-                         coalesce(sum((SELECT sum((x->>'amount')::numeric) FROM jsonb_array_elements(s.taxes) x WHERE x->>'code' IN ('PAYE'))), 0)::float AS paye,
+                         coalesce(sum((SELECT sum((x->>'amount')::numeric) FROM jsonb_array_elements(s.taxes) x WHERE x->>'code' IN ('PAYE', 'TDS'))), 0)::float AS paye,
                          coalesce(sum((SELECT sum((x->>'amount')::numeric) FROM jsonb_array_elements(s.taxes) x WHERE x->>'code' = 'USC')), 0)::float AS usc
                     FROM hr.payslips s JOIN hr.payroll_runs r ON r.id = s.run_id
                    WHERE r.company_id = $1 AND s.employee_id = $2 AND r.period >= $3 AND r.period < $4`, [companyId, employeeId, fromPeriod, beforePeriod]);
@@ -328,8 +331,28 @@ async function broughtForward(tx: Tx, companyId: string, employeeId: string, yea
 }
 
 /** Income tax on a month's taxable pay under the country's method; each tax is a line on the payslip. */
-async function incomeTaxFor(tx: Tx, method: string, companyId: string, period: string, k: Record<string, any>, pay: number): Promise<{ code: string; name: string; amount: number }[]> {
+async function incomeTaxFor(tx: Tx, pack: Awaited<ReturnType<typeof companyPack>>, companyId: string, period: string, k: Record<string, any>, pay: number): Promise<{ code: string; name: string; amount: number }[]> {
+  const method = pack.incomeTax?.method ?? 'none';
   if (method === 'none') return [];
+  if (method === 'annual_slab') {
+    const rule = pack.incomeTax!;
+    const fm = fiscalMonth(period, rule.yearStartMonth!);
+    // The months left in the tax year after this one, or to the end of a fixed-term contract if sooner.
+    let left = 12 - fm.month;
+    if (k.end_date) {
+      const end = dstr(k.end_date)!.slice(0, 7);
+      if (end < fm.yearTo) {
+        const [ey, em] = end.split('-').map(Number), [py, pm] = period.split('-').map(Number);
+        left = Math.max(0, (ey - py) * 12 + em - pm);
+      }
+    }
+    const prior = await earlier(tx, companyId, k.employee_id, fm.yearFrom, period);
+    const bf = await broughtForward(tx, companyId, k.employee_id, fm.yearFrom);
+    const regular = Number(k.basic) + Number(k.housing) + Number(k.transport) + Number(k.other_allowances);
+    const r = annualSlabWithholding(rule.annualTax!, pay, regular, left, prior.pay + (bf ? Number(k.previous_pay) : 0), prior.paye + (bf ? Number(k.previous_tax) : 0));
+    const law = pack.country === 'IN' ? 'TDS on salary (section 192)' : 'Income tax deducted from salary (section 149)';
+    return [{ code: 'TDS', name: `${law}: estimated year's salary ${r.projected.toLocaleString('en')}, year's tax ${r.yearTax.toLocaleString('en')}`, amount: r.tax }];
+  }
   if (method === 'rate') return [{ code: 'WHT', name: 'Income tax withheld', amount: roundMoney(pay * Number(k.withholding_pct) / 100) }];
   if (method === 'uk_paye') {
     const tm = ukTaxMonth(period);
@@ -546,7 +569,7 @@ export async function listContributionRules(tx: Tx, ctx: Ctx, companyId: string)
   await authorize(tx, ctx, 'hr.manage', { unitId: companyId });
   const pack = await companyPack(tx, companyId);
   const rules = await many(tx, `SELECT id, code, name, applies_to, employee_pct::float, employer_pct::float, base, monthly_cap::float, active,
-                                         after_years::float, employer_pct_after::float, monthly_threshold::float, pre_tax
+                                         after_years::float, employer_pct_after::float, monthly_threshold::float, pre_tax, eligible_up_to::float
                                   FROM hr.contribution_rules WHERE company_id = $1 ORDER BY code`, [companyId]);
   return { country: pack.country, endOfService: pack.endOfServiceRule, wps: pack.wps, sepa: pack.sepa ?? false, payrollFileGap: pack.payrollFileGap ?? null,
     incomeTax: pack.incomeTax ?? { method: 'none', rule: 'no income tax on pay' }, rules };
@@ -561,6 +584,8 @@ export interface ContributionRuleInput {
   monthlyThreshold?: number | null;
   /** The employee share is taken before income tax. */
   preTax?: boolean;
+  /** Only employees whose contract's monthly gross is at most this much are covered; null for everyone. */
+  eligibleUpTo?: number | null;
 }
 
 /** Add a rule, or change one by its code (rates change by law; payrolls already posted keep the old figures). */
@@ -578,7 +603,9 @@ export async function saveContributionRule(tx: Tx, ctx: Ctx, companyId: string, 
     employer_pct_after: input.employerPctAfter !== undefined ? input.employerPctAfter : old?.employer_pct_after ?? null,
     monthly_threshold: input.monthlyThreshold !== undefined ? input.monthlyThreshold : old?.monthly_threshold ?? null,
     pre_tax: input.preTax ?? old?.pre_tax ?? false,
+    eligible_up_to: input.eligibleUpTo !== undefined ? input.eligibleUpTo : old?.eligible_up_to ?? null,
   };
+  if (v.eligible_up_to !== null && !(Number(v.eligible_up_to) > 0)) throw new ValidationError('the pay ceiling for cover must be more than 0');
   if (v.monthly_threshold !== null && !(Number(v.monthly_threshold) >= 0)) throw new ValidationError('the monthly threshold cannot be negative');
   if (v.monthly_threshold !== null && v.monthly_cap !== null && Number(v.monthly_threshold) >= Number(v.monthly_cap)) throw new ValidationError('the monthly threshold must be below the cap');
   if ((v.after_years === null) !== (v.employer_pct_after === null)) throw new ValidationError('a stepped rate needs both the years of service and the later employer rate');
@@ -586,13 +613,14 @@ export async function saveContributionRule(tx: Tx, ctx: Ctx, companyId: string, 
   if (v.employer_pct_after !== null && !(Number(v.employer_pct_after) >= 0 && Number(v.employer_pct_after) <= 100)) throw new ValidationError('rates are 0 to 100 percent');
   for (const k of ['employee_pct', 'employer_pct'] as const) if (!(Number(v[k]) >= 0 && Number(v[k]) <= 100)) throw new ValidationError('rates are 0 to 100 percent');
   return one(tx, `INSERT INTO hr.contribution_rules (tenant_id, company_id, code, name, applies_to, employee_pct, employer_pct, base, monthly_cap, active,
-                     after_years, employer_pct_after, monthly_threshold, pre_tax)
-      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                     after_years, employer_pct_after, monthly_threshold, pre_tax, eligible_up_to)
+      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       ON CONFLICT (tenant_id, company_id, code) DO UPDATE SET name = EXCLUDED.name, applies_to = EXCLUDED.applies_to, employee_pct = EXCLUDED.employee_pct,
         employer_pct = EXCLUDED.employer_pct, base = EXCLUDED.base, monthly_cap = EXCLUDED.monthly_cap, active = EXCLUDED.active,
-        after_years = EXCLUDED.after_years, employer_pct_after = EXCLUDED.employer_pct_after, monthly_threshold = EXCLUDED.monthly_threshold, pre_tax = EXCLUDED.pre_tax
+        after_years = EXCLUDED.after_years, employer_pct_after = EXCLUDED.employer_pct_after, monthly_threshold = EXCLUDED.monthly_threshold, pre_tax = EXCLUDED.pre_tax,
+        eligible_up_to = EXCLUDED.eligible_up_to
       RETURNING id, code, name, applies_to, employee_pct::float, employer_pct::float, base, monthly_cap::float, active, after_years::float, employer_pct_after::float,
-        monthly_threshold::float, pre_tax`,
+        monthly_threshold::float, pre_tax, eligible_up_to::float`,
     [companyId, input.code, v.name, v.applies_to, v.employee_pct, v.employer_pct, v.base, v.monthly_cap, v.active, v.after_years, v.employer_pct_after,
-      v.monthly_threshold, v.pre_tax]);
+      v.monthly_threshold, v.pre_tax, v.eligible_up_to]);
 }

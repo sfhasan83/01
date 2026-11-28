@@ -7,6 +7,7 @@ import { fixed } from '../core/money.ts';
 import { companyPack } from './country.ts';
 import { verifyZatcaChain, zatcaIssue, zatcaPreview } from './zatca.ts';
 import { enIssue, enPreview } from './peppol.ts';
+import { isPkProvince, saIssue, saPreview } from './einvoice_sa.ts';
 
 /**
  * UAE e-invoicing: PINT AE (Peppol International, UAE specialisation) UBL 2.1, ported
@@ -223,6 +224,10 @@ export async function preview(tx: Tx, ctx: Ctx, invoiceId: string) {
     await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: company });
     return enPreview(tx, invoiceId, pack.einvoice);
   }
+  if (pack.einvoice === 'in_irp' || pack.einvoice === 'pk_fbr') {
+    await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: company });
+    return saPreview(tx, invoiceId, pack.einvoice);
+  }
   const { inv, model, problems } = await buildModel(tx, invoiceId);
   await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: inv.company_id });
   return { ready: problems.length === 0, problems, xml: problems.length ? null : toXml(model, '00000000-0000-0000-0000-000000000000') };
@@ -240,6 +245,10 @@ export async function issue(tx: Tx, ctx: Ctx, invoiceId: string) {
   if (pack.einvoice === 'peppol' || pack.einvoice === 'xrechnung') {
     await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: company });
     return enIssue(tx, ctx, invoiceId, pack.einvoice);
+  }
+  if (pack.einvoice === 'in_irp' || pack.einvoice === 'pk_fbr') {
+    await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: company });
+    return saIssue(tx, ctx, invoiceId, pack.einvoice);
   }
   const { inv, model, problems } = await buildModel(tx, invoiceId);
   await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: inv.company_id });
@@ -285,7 +294,7 @@ export async function getEinvoice(tx: Tx, ctx: Ctx, einvoiceId: string) {
 export async function listEinvoices(tx: Tx, ctx: Ctx, companyId: string) {
   await authorize(tx, ctx, 'fin.report.read', { unitId: companyId });
   return many(tx, `SELECT i.id AS invoice_id, i.no, i.kind, i.date, i.gross_total, i.currency, p.name AS party_name,
-                          e.id AS einvoice_id, e.status, e.asp_reference, e.created_at AS issued_at, e.counter, e.invoice_type, e.qr
+                          e.id AS einvoice_id, e.status, e.asp_reference, e.created_at AS issued_at, e.counter, e.invoice_type, e.qr, e.profile
                      FROM fin.invoices i JOIN mdm.parties p ON p.id = i.party_id LEFT JOIN fin.einvoices e ON e.invoice_id = i.id
                     WHERE i.company_id = $1 AND i.status = 'posted' AND i.kind IN ('sales_invoice','sales_credit')
                     ORDER BY i.date DESC, i.no DESC`, [companyId]);
@@ -304,11 +313,14 @@ export async function updateCompanyDetails(tx: Tx, ctx: Ctx, companyId: string, 
   if (d.taxRegistrationNo && !pack.taxNumber.test(d.taxRegistrationNo)) throw new ValidationError(pack.taxNumber.message);
   if (d.emirate && pack.country !== 'AE') throw new ValidationError('the emirate applies to UAE companies');
   if (pack.region === 'UK' && d.postalCode && !/^[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}$/i.test(d.postalCode)) throw new ValidationError('a UK postcode looks like SW1A 1AA');
+  if (d.province && pack.country !== 'PK') throw new ValidationError('the province applies to Pakistani companies');
+  if (d.province && !isPkProvince(d.province)) throw new ValidationError('the province is Punjab, Sindh, Khyber Pakhtunkhwa, Balochistan, Islamabad Capital Territory, Gilgit-Baltistan or Azad Jammu and Kashmir');
+  if (pack.country === 'IN' && d.postalCode && !/^[1-9]\d{5}$/.test(d.postalCode)) throw new ValidationError('an Indian PIN code has 6 digits');
   if (pack.country === 'SA' && d.buildingNo && !/^\d{4}$/.test(d.buildingNo)) throw new ValidationError('the building number has 4 digits');
   if (pack.country === 'SA' && d.postalCode && !/^\d{5}$/.test(d.postalCode)) throw new ValidationError('the postal code has 5 digits');
   const cols: Record<string, string> = { street: 'street', city: 'city', emirate: 'emirate', email: 'email', phone: 'phone', iban: 'iban',
     tradeLicenceNo: 'trade_licence_no', licenceAuthority: 'licence_authority', taxRegistrationNo: 'tax_registration_no',
-    buildingNo: 'building_no', district: 'district', postalCode: 'postal_code' };
+    buildingNo: 'building_no', district: 'district', postalCode: 'postal_code', province: 'province' };
   const sets: string[] = []; const vals: unknown[] = [companyId];
   for (const [k, c] of Object.entries(cols)) if (d[k] !== undefined) { vals.push(k === 'iban' ? d[k]!.replace(/\s/g, '') : d[k]); sets.push(`${c} = $${vals.length}`); }
   if (!sets.length) throw new ValidationError('nothing to change');

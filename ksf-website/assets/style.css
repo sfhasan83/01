@@ -522,3 +522,26 @@ html[lang="ur"] input, html[lang="ur"] textarea, html[lang="ur"] select { font-f
 [dir="rtl"] .flavour .tag { align-self: flex-start; }
 [dir="rtl"] .skip { left: auto; right: 8px; transform: translateY(-300%); }
 [dir="rtl"] .skip:focus { left: auto; transform: none; }
+
+/* ---------- Flavour pages ---------- */
+.flavour .fl-link::after { content: ""; position: absolute; inset: 0; z-index: 3; }
+.flavour-hero::before { background: radial-gradient(60% 80% at 80% 30%, var(--c), transparent 70%), radial-gradient(40% 50% at 0% 100%, rgba(229,50,45,.16), transparent 70%) !important; opacity: .55; }
+.fl-grid { display: grid; gap: 30px; align-items: center; }
+@media (min-width: 900px) { .fl-grid { grid-template-columns: 1.2fr .8fr; } }
+svg.fl-bag, .fl-bag svg { width: min(320px, 70%); margin-inline: auto; filter: drop-shadow(0 40px 40px rgba(0,0,0,.5)); transform: rotate(-6deg); }
+.crumbs { font-size: 14px; color: var(--muted); margin-bottom: 18px; }
+.crumbs a:hover { color: var(--gold); }
+.fl-body { display: grid; gap: 40px; }
+@media (min-width: 900px) { .fl-body { grid-template-columns: 1.3fr .7fr; } }
+.fl-text p { font-size: 18px; color: var(--cream); opacity: .88; max-width: 62ch; }
+.fl-text h2, .fl-facts h2 { font-size: 26px; margin: 30px 0 14px; }
+.fl-good { display: flex; flex-wrap: wrap; gap: 10px; list-style: none; padding: 0; margin: 0; }
+.fl-good li { padding: 8px 16px; border-radius: 999px; background: rgba(255,184,28,.12); color: var(--gold); font-weight: 600; }
+.fl-facts { margin: 0; padding: 26px; border-radius: var(--radius); background: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); align-self: start; }
+.fl-facts h2 { margin-top: 0; }
+.fl-facts div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); }
+.fl-facts dt { color: var(--muted); }
+.fl-facts dd { margin: 0; font-weight: 700; text-align: end; }
+.fl-more { display: flex; flex-wrap: wrap; gap: 12px; list-style: none; padding: 0; margin: 24px 0 0; }
+.fl-more a { display: inline-block; padding: 12px 20px; border-radius: 999px; background: var(--c); color: #fff; font-weight: 700; }
+.fl-more a:hover { transform: translateY(-2px); }

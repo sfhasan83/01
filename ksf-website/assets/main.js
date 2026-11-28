@@ -23,6 +23,7 @@
     "cheese-pops": { name: "چیز پاپس", desc: "مزیدار چیز میں لپٹے ہلکے پھلکے کارن پفس۔ ایک مٹھی کبھی کافی نہیں۔ فرائی نہیں، بیکڈ۔", tag: "بچوں کا پسندیدہ" },
     "tomato-pops": { name: "ٹینگی ٹماٹو پاپس", desc: "کرنچی کارن پفس پر کھٹا میٹھا ٹماٹو ذائقہ، بچوں اور بڑوں سب کا پسندیدہ۔ فرائی نہیں، بیکڈ۔", tag: "چٹپٹا" }
   };
+  var SLUG = { "yogurt-herbs": "yogurt-herbs-chips", "masala": "masala-chips", "bbq": "bbq-chips", "masala-pops": "masala-pops", "cheese-pops": "cheese-pops", "tomato-pops": "tomato-pops" };
   function txt(f, k) { return UR && UR_TEXT[f.id] ? UR_TEXT[f.id][k] : f[k]; }
 
   var uid = 0;
@@ -103,7 +104,7 @@
     return '<article id="' + f.id + '" class="flavour reveal ' + (f.text === "light" ? "light-text" : "dark-text") + ' d' + (idx % 3 + 1) + '" data-line="' + f.line + '" style="--c:' + f.card[0] + ';--c2:' + f.card[1] + '">' +
       '<span class="tag">' + txt(f, "tag") + '</span>' +
       '<div class="bag-wrap">' + bagSVG(f) + '</div>' +
-      '<h3>' + txt(f, "name") + '</h3>' +
+      '<h3><a class="fl-link" href="' + (UR ? "/ur/" : "/") + SLUG[f.id] + '.html">' + txt(f, "name") + '</a></h3>' +
       '<p>' + txt(f, "desc") + '</p>' +
       heatHTML(f.heat) +
       '</article>';

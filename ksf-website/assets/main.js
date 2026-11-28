@@ -266,6 +266,15 @@
     if (window.gtag) window.gtag("event", "generate_lead", { method: via, form: "distributor" });
   }
 
+  /* Analytics: count WhatsApp and email clicks */
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest("a[href]");
+    if (!a || !window.gtag) return;
+    var h = a.getAttribute("href");
+    if (h.indexOf("wa.me/") > -1) window.gtag("event", "whatsapp_click", { link_url: h.split("?")[0], page_language: UR ? "ur" : "en" });
+    else if (h.indexOf("mailto:") === 0) window.gtag("event", "email_click", { link_url: h.split("?")[0] });
+  });
+
   /* ---------------- Year ---------------- */
   document.querySelectorAll("[data-year]").forEach(function (el) { el.textContent = new Date().getFullYear(); });
 })();

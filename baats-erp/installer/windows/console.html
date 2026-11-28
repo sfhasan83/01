@@ -440,7 +440,7 @@ Object.assign(after, {
       const taxWord = countryOf() === 'IN' ? 'GST' : countryOf() === 'PK' ? 'Sales tax' : 'VAT';
       $('#vat-out').innerHTML = report(Object.entries(r.boxes).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true })).map(([k, v]) => ({ box: `${heads ? '' : 'Box '}${k}: ${r.labels?.[k] || VAT_BOXES[k] || ''}`, amount: v.amount, vat: v.vat, ...(v.heads || {}) })),
         [['box', heads ? 'Table' : 'Box'], ['amount', `${heads ? 'Taxable value' : 'Amount'} (${ccy()})`, 1], ['vat', `${taxWord} (${ccy()})`, 1], ...(heads ? [['igst', 'IGST', 1], ['cgst', 'CGST', 1], ['sgst', 'SGST', 1]] : [])]) +
-        `<p>Output tax <b>${money(r.outputTax)}</b> · Input tax <b>${money(r.inputTax)}</b> · <b>Net VAT ${r.netPayable >= 0 ? `payable to the ${esc(r.authority || 'FTA')}` : `refundable by the ${esc(r.authority || 'FTA')}`}: ${money(Math.abs(r.netPayable))} ${ccy()}</b></p>${(r.notes || []).map((n) => `<p class="muted">${esc(n)}</p>`).join('')}`;
+        `<p>Output tax <b>${money(r.outputTax)}</b> · Input tax <b>${money(r.inputTax)}</b> · <b>Net ${taxWord} ${r.netPayable >= 0 ? `payable to the ${esc(r.authority || 'FTA')}` : `refundable by the ${esc(r.authority || 'FTA')}`}: ${money(Math.abs(r.netPayable))} ${ccy()}</b></p>${(r.notes || []).map((n) => `<p class="muted">${esc(n)}</p>`).join('')}`;
     };
     bindForm('f-vat', calc);
     const mtd = $('#vat-mtd'); if (mtd) mtd.onclick = async () => { const b = form($('#f-vat')); try { if (!b.periodKey) throw new Error('Enter the period key HMRC shows for this VAT obligation');

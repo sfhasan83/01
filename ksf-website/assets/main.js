@@ -13,6 +13,18 @@
     { id: "tomato-pops", line: "pops", name: "Tangy Tomato Pops", l1: "TANGY", l2: "TOMATO", desc: "Sweet-tangy tomato flavour on crunchy corn puffs that kids and grown-ups love. Baked, not fried.", heat: 1, bag: ["#ff5a48", "#7e0a07"], band: "#ffd23f", card: ["#ef4a3c", "#7e0a07"], text: "light", tag: "Tangy" }
   ];
 
+  /* Urdu text for the /ur/ pages (pack art stays in English, as printed) */
+  var UR = document.documentElement.lang === "ur";
+  var UR_TEXT = {
+    "yogurt-herbs": { name: "یوگرٹ اینڈ ہربز", desc: "کرنکل کٹ آلو چپس پر ٹھنڈا، کریمی دہی اور تازہ ہربز۔ ہلکا، تازہ اور مزیدار۔", tag: "تازہ اور کریمی" },
+    "masala": { name: "مصالحہ", desc: "مرچ کے مزیدار تڑکے کے ساتھ دیسی مصالحہ۔ وہ ذائقہ جس کے ساتھ پاکستان بڑا ہوا، بالکل صحیح انداز میں۔", tag: "سب سے زیادہ پسندیدہ" },
+    "bbq": { name: "باربی کیو", desc: "دھواں دار، میٹھا اور چٹپٹا باربی کیو مصالحہ، جیسے لاہور کی چھت پر باربی کیو کی رات۔", tag: "دھواں دار" },
+    "masala-pops": { name: "یمی مصالحہ پاپس", desc: "دیسی مصالحے میں لپٹے ہلکے، کرنچی کارن پفس۔ فرائی نہیں، بیکڈ۔", tag: "فرائی نہیں، بیکڈ" },
+    "cheese-pops": { name: "چیز پاپس", desc: "مزیدار چیز میں لپٹے ہلکے پھلکے کارن پفس۔ ایک مٹھی کبھی کافی نہیں۔ فرائی نہیں، بیکڈ۔", tag: "بچوں کا پسندیدہ" },
+    "tomato-pops": { name: "ٹینگی ٹماٹو پاپس", desc: "کرنچی کارن پفس پر کھٹا میٹھا ٹماٹو ذائقہ، بچوں اور بڑوں سب کا پسندیدہ۔ فرائی نہیں، بیکڈ۔", tag: "چٹپٹا" }
+  };
+  function txt(f, k) { return UR && UR_TEXT[f.id] ? UR_TEXT[f.id][k] : f[k]; }
+
   var uid = 0;
 
   /* A stylised pillow-pack in SVG, so the site looks finished before product photography exists. */
@@ -56,7 +68,7 @@
         '<rect x="18" y="262" width="164" height="22" rx="5" fill="' + f.bag[1] + '"/>' +
         '<path d="' + crimp(6) + crimp(262) + '" stroke="rgba(0,0,0,.18)" stroke-width="1.4"/>' +
       '</g>' +
-      '<image href="assets/ksf-logo.webp" x="52" y="32" width="96" height="74"/>' +
+      '<image href="/assets/ksf-logo.webp" x="52" y="32" width="96" height="74"/>' +
       '<text x="100" y="117" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="8" letter-spacing="1.6" fill="#fff" opacity=".9">' + (isPops ? "CORN PUFFS" : "FLAVORED POTATO CHIPS") + '</text>' +
       '<text x="100" y="' + (f.l2 ? 140 : 152) + '" text-anchor="middle" font-family="Bricolage Grotesque, Arial Black, sans-serif" font-weight="800" font-size="' + fs + '" fill="#fff" stroke="#120d08" stroke-width="3" paint-order="stroke">' + f.l1 + '</text>' +
       '<text x="100" y="162" text-anchor="middle" font-family="Bricolage Grotesque, Arial Black, sans-serif" font-weight="800" font-size="' + fs + '" fill="#ffd23f" stroke="#120d08" stroke-width="3" paint-order="stroke">' + f.l2 + '</text>' +
@@ -82,17 +94,17 @@
   }
 
   function heatHTML(n) {
-    var s = '<div class="heat" aria-label="Spice level ' + n + ' of 3">';
+    var s = '<div class="heat" aria-label="' + (UR ? "تیزی " + n + " / 3" : "Spice level " + n + " of 3") + '">';
     for (var k = 1; k <= 3; k++) s += '<i class="' + (k <= n ? "on" : "") + '"></i>';
-    return s + '<b>' + (["Mild", "Light kick", "Medium heat", "Hot"][n]) + '</b></div>';
+    return s + '<b>' + ((UR ? ["ہلکا", "ہلکی تیزی", "درمیانی تیزی", "تیز"] : ["Mild", "Light kick", "Medium heat", "Hot"])[n]) + '</b></div>';
   }
 
   function cardHTML(f, idx) {
     return '<article id="' + f.id + '" class="flavour reveal ' + (f.text === "light" ? "light-text" : "dark-text") + ' d' + (idx % 3 + 1) + '" data-line="' + f.line + '" style="--c:' + f.card[0] + ';--c2:' + f.card[1] + '">' +
-      '<span class="tag">' + f.tag + '</span>' +
+      '<span class="tag">' + txt(f, "tag") + '</span>' +
       '<div class="bag-wrap">' + bagSVG(f) + '</div>' +
-      '<h3>' + f.name + '</h3>' +
-      '<p>' + f.desc + '</p>' +
+      '<h3>' + txt(f, "name") + '</h3>' +
+      '<p>' + txt(f, "desc") + '</p>' +
       heatHTML(f.heat) +
       '</article>';
   }
@@ -209,6 +221,7 @@
       e.preventDefault();
       if (!form.reportValidity()) return;
       var d = new FormData(form);
+      if (form.getAttribute("data-form") === "distributor") { sendDistributor(form, d, e.submitter); return; }
       var to = d.get("topic") === "marketing" ? "marketing@ksffood.com" : "sales@ksffood.com";
       var topicLabel = form.querySelector('select[name="topic"] option:checked').textContent;
       var subject = "Website enquiry: " + topicLabel + " (" + d.get("name") + ")";
@@ -225,6 +238,32 @@
       var note = form.querySelector(".note");
       if (note) note.textContent = "Your email app should open with your message ready to send to " + to + ".";
     });
+  }
+
+  /* Distributor application: WhatsApp (default) or email */
+  function sendDistributor(form, d, submitter) {
+    var via = submitter && submitter.value === "email" ? "email" : "whatsapp";
+    var typeLabel = form.querySelector('select[name="topic"] option:checked').textContent;
+    var lines = UR ? [
+      "KSF ڈسٹری بیوٹر درخواست",
+      "نام: " + d.get("name"), "کاروبار: " + (d.get("business") || "-"), "فون: " + d.get("phone"),
+      "شہر: " + d.get("city"), "علاقے: " + (d.get("area") || "-"), "قسم: " + typeLabel, "", d.get("message") || ""
+    ] : [
+      "KSF distributor application",
+      "Name: " + d.get("name"), "Business: " + (d.get("business") || "-"), "Phone: " + d.get("phone"),
+      "City: " + d.get("city"), "Areas: " + (d.get("area") || "-"), "Type: " + typeLabel, "", d.get("message") || ""
+    ];
+    var body = lines.join("\n");
+    var note = form.querySelector(".note");
+    if (via === "whatsapp") {
+      window.open("https://wa.me/923216806097?text=" + encodeURIComponent(body), "_blank", "noopener");
+      if (note) note.textContent = UR ? "واٹس ایپ میں آپ کا پیغام تیار ہے، بس بھیج دیں۔" : "WhatsApp has opened with your application ready. Just press send.";
+    } else {
+      var subject = "Distributor application: " + d.get("name") + " (" + d.get("city") + ")";
+      window.location.href = "mailto:sales@ksffood.com?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+      if (note) note.textContent = UR ? "آپ کی ای میل ایپ پیغام کے ساتھ کھل جائے گی۔" : "Your email app should open with your application ready to send to sales@ksffood.com.";
+    }
+    if (window.gtag) window.gtag("event", "generate_lead", { method: via, form: "distributor" });
   }
 
   /* ---------------- Year ---------------- */

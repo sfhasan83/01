@@ -474,3 +474,51 @@ form.enquiry .note { font-size: 13px; color: var(--muted-ink); margin: 0; }
 .faq-item[open] summary::after { transform: translateY(-50%) rotate(45deg); }
 .faq-item p { margin: 0; padding: 0 22px 22px; color: var(--muted); }
 .faq-item a { color: var(--gold); }
+
+/* ---------- Language switch ---------- */
+.lang-link { font-weight: 700; font-size: 15px; padding: 8px 14px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--line); color: var(--cream); margin-inline-start: auto; }
+.lang-link:hover { box-shadow: inset 0 0 0 1.5px var(--gold); color: var(--gold); }
+.lang-link[lang="ur"] { font-family: "Noto Nastaliq Urdu", var(--body); line-height: 1.4; padding-block: 4px 8px; }
+@media (max-width: 959px) { .lang-link { display: none; } }
+
+/* ---------- WhatsApp ---------- */
+.wa-float {
+  position: fixed; inset-inline-end: 18px; bottom: 18px; z-index: 60;
+  display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px 12px 14px;
+  border-radius: 999px; background: #25d366; color: #0b2e17; font-weight: 800; font-size: 15px;
+  box-shadow: 0 14px 34px -12px rgba(37, 211, 102, .8), 0 2px 8px rgba(0,0,0,.25);
+  transition: transform .3s var(--ease);
+}
+.wa-float:hover { transform: translateY(-3px); }
+.wa-float svg { width: 24px; height: 24px; }
+@media (max-width: 560px) { .wa-float span { display: none; } .wa-float { padding: 14px; } }
+.wa-card { background: linear-gradient(135deg, #25d366, #128c4a); color: #0b2e17; }
+.wa-card .addr svg { width: 26px; height: 26px; }
+.btn svg[viewBox="0 0 24 24"][fill="currentColor"] { width: 20px; height: 20px; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.dist-side { display: grid; gap: 22px; align-content: start; }
+.page-hero .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+
+/* ---------- Urdu (RTL) pages ---------- */
+html[lang="ur"] { --display: "Noto Nastaliq Urdu", "Bricolage Grotesque", serif; --body: "Noto Nastaliq Urdu", "Inter", system-ui, serif; }
+html[lang="ur"] body { font-size: 18px; line-height: 2.1; }
+html[lang="ur"] *, html[lang="ur"] *::before, html[lang="ur"] *::after { letter-spacing: 0 !important; text-transform: none !important; }
+html[lang="ur"] h1, html[lang="ur"] h2, html[lang="ur"] h3, html[lang="ur"] h4 { line-height: 1.9; font-weight: 700; }
+html[lang="ur"] .hero h1, html[lang="ur"] .page-hero h1 { font-size: clamp(38px, 6vw, 78px); line-height: 1.85; }
+html[lang="ur"] .section-title { font-size: clamp(30px, 4.4vw, 58px); }
+html[lang="ur"] .lede { line-height: 2.1; }
+html[lang="ur"] .brand-text { line-height: 1.5; }
+html[lang="ur"] .brand-text small { font-size: 12px; margin-top: 0; }
+html[lang="ur"] .mobile-menu a { font-size: 30px; line-height: 2; }
+html[lang="ur"] .footer-word, html[lang="ur"] .flavour svg text { font-family: "Bricolage Grotesque", "Arial Black", sans-serif; }
+html[lang="ur"] .footer-word { line-height: .8; }
+html[lang="ur"] input, html[lang="ur"] textarea, html[lang="ur"] select { font-family: var(--body); }
+[dir="rtl"] .btn svg { transform: scaleX(-1); }
+[dir="rtl"] .btn:hover svg { transform: scaleX(-1) translateX(4px); }
+[dir="rtl"] .btn svg[fill="currentColor"], [dir="rtl"] .btn:hover svg[fill="currentColor"] { transform: none; }
+[dir="rtl"] .flavour .heat b { margin-left: 0; margin-right: 8px; }
+[dir="rtl"] .faq-item summary { padding: 20px 22px 20px 56px; }
+[dir="rtl"] .faq-item summary::after { right: auto; left: 22px; }
+[dir="rtl"] .flavour .tag { align-self: flex-start; }
+[dir="rtl"] .skip { left: auto; right: 8px; transform: translateY(-300%); }
+[dir="rtl"] .skip:focus { left: auto; transform: none; }

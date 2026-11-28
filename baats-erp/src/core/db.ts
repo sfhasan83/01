@@ -19,6 +19,8 @@ export class Db {
   readonly pool: pg.Pool;
   constructor(config: pg.PoolConfig) {
     this.pool = new pg.Pool({ max: 20, ...config });
+    // An idle connection the database closed (a restart, a restore) is dropped from the pool and replaced on next use.
+    this.pool.on('error', () => {});
   }
 
   /**

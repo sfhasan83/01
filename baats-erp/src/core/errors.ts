@@ -22,6 +22,10 @@ export class ConflictError extends AppError {
 export class UnauthenticatedError extends AppError {
   constructor(message = 'authentication required') { super(401, 'unauthenticated', message); }
 }
+export class TooManyRequestsError extends AppError {
+  readonly retryAfter: number;
+  constructor(message: string, retryAfterSeconds: number) { super(429, 'too_many_requests', message); this.retryAfter = retryAfterSeconds; }
+}
 export class ForbiddenError extends AppError {
   readonly permission: string;
   readonly resource: unknown;

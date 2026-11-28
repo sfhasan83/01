@@ -18,7 +18,8 @@ async function audit(tx: Tx, action: string, userId: string | null, detail: obje
  * Every outcome is written to the audit trail as a security event.
  * Session tokens are "<tenant id>.<random>"; only a hash is stored.
  */
-export async function login(db: Db, input: { tenant: string; email: string; password: string; totp?: string }): Promise<Session> {
+export async function login(db: Db, input: { tenant: string; email: string; password: string; totp?: string },
+  meta: { ip?: string; userAgent?: string } = {}): Promise<Session> {
   const tenantId = await db.withTenant({ tenantId: '00000000-0000-0000-0000-000000000000', userId: null }, async (tx) =>
     (await one(tx, 'SELECT platform.tenant_id_by_code($1) AS id', [input.tenant]))?.id as string | null);
   if (!tenantId) throw new UnauthenticatedError('invalid credentials');
@@ -36,22 +37,27 @@ export async function login(db: Db, input: { tenant: string; email: string; pass
       await audit(tx, 'login_blocked', u.id, { reason: 'account locked' });
       return { ok: false, message: 'account temporarily locked' };
     }
-    const good = await verifyPassword(input.password, u.password_hash)
-      && (!u.mfa_enabled || (input.totp !== undefined && verifyTotp(u.mfa_secret, input.totp)));
+    const passwordOk = await verifyPassword(input.password, u.password_hash);
+    // The right password without the code: say a code is needed (only someone who knows the password learns this).
+    if (passwordOk && u.mfa_enabled && !input.totp) {
+      await audit(tx, 'login_failed', u.id, { email: input.email.toLowerCase(), reason: 'second factor required' });
+      return { ok: false, message: 'second factor required' };
+    }
+    const good = passwordOk && (!u.mfa_enabled || (input.totp !== undefined && verifyTotp(u.mfa_secret, input.totp)));
     if (!good) {
       const failed = u.failed_logins + 1;
       await tx.query(`UPDATE iam.users SET failed_logins = $2::int,
                         locked_until = CASE WHEN $2::int >= $3::int THEN now() + make_interval(mins => $4::int) END WHERE id = $1`,
         [u.id, failed, MAX_FAILED_LOGINS, LOCK_MINUTES]);
-      return fail(u.mfa_enabled && !input.totp ? 'second factor required' : 'bad password or code', u.id);
+      return fail(u.mfa_enabled && passwordOk ? 'bad code' : 'bad password', u.id);
     }
     await tx.query('UPDATE iam.users SET failed_logins = 0, locked_until = NULL WHERE id = $1', [u.id]);
     const secret = newToken();
     const token = `${tenantId}.${secret}`;
-    const s = await one(tx, `INSERT INTO iam.sessions (tenant_id, user_id, token_hash, mfa_verified, expires_at)
-      VALUES (app.tenant(), $1, $2, $3, now() + make_interval(hours => $4::int)) RETURNING expires_at`,
-      [u.id, sha256(token), u.mfa_enabled, SESSION_HOURS]);
-    await audit(tx, 'login', u.id, { mfa: u.mfa_enabled });
+    const s = await one(tx, `INSERT INTO iam.sessions (tenant_id, user_id, token_hash, mfa_verified, expires_at, ip, user_agent)
+      VALUES (app.tenant(), $1, $2, $3, now() + make_interval(hours => $4::int), $5, $6) RETURNING expires_at`,
+      [u.id, sha256(token), u.mfa_enabled, SESSION_HOURS, meta.ip?.slice(0, 64) ?? null, meta.userAgent?.slice(0, 300) ?? null]);
+    await audit(tx, 'login', u.id, { mfa: u.mfa_enabled, ip: meta.ip ?? null });
     return { ok: true, session: { token, userId: u.id, tenantId, expiresAt: s.expires_at.toISOString() } };
   });
   // The failed-attempt counter and audit entry must persist, so failure is returned, then thrown.

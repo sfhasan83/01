@@ -183,7 +183,10 @@ describe('authentication', () => {
     await assert.rejects(t.db.withTenant(ctx, (tx) => auth.confirmMfaEnrolment(tx, ctx, '000000')), ValidationError);
     await t.db.withTenant(ctx, (tx) => auth.confirmMfaEnrolment(tx, ctx, totp(secret)));
     const email = `cfo@${a.code}.test`;
-    await assert.rejects(auth.login(t.db, { tenant: a.code, email, password: PASSWORD }), UnauthenticatedError);
+    await assert.rejects(auth.login(t.db, { tenant: a.code, email, password: PASSWORD }), /second factor required/);
+    // A wrong password never says whether a code is needed.
+    await assert.rejects(auth.login(t.db, { tenant: a.code, email, password: 'Wrong-Passw0rd-9' }), /invalid credentials/);
+    await assert.rejects(auth.login(t.db, { tenant: a.code, email, password: PASSWORD, totp: '000000' }), /invalid credentials/);
     const s = await auth.login(t.db, { tenant: a.code, email, password: PASSWORD, totp: totp(secret) });
     assert.ok(s.token);
   });

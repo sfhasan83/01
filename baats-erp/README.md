@@ -58,6 +58,9 @@ This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (fi
 | BAATS Mobile (Phase 6c) | A phone web app at `/m/`, served by the BAATS server and added to the home screen (no app store): approvals with the claim and its receipts, leave balance and requests, payslips of posted payrolls, and expense claims with the camera, shrunk on the phone to about 200 KB. Self-service is limited to the signed-in user's own employee record (`/v1/ess/...`) |
 | API keys (Phase 6c) | Keys for other systems (`Authorization: Bearer <key>`), each acting as one user with exactly that user's roles; shown once, stored as a hash, optional expiry, revocable, last use recorded. Keys skip the second factor, so making one needs `int.manage` and a key for another user also `iam.user.manage` |
 | Webhooks (Phase 6c) | Events `invoice.posted`, `payment.recorded`, `payroll.posted`, `expense.approved`, `expense.paid`, `leave.approved`, `ticket.created`, written in the same transaction as the change (an outbox), sent as JSON with `X-BAATS-Signature: t=<unix time>,v1=<HMAC-SHA256 hex of "t.body">`, retried after 1, 2, 4 ... minutes up to 8 attempts, then marked failed and can be sent again. The signing secret is sealed with `BAATS_SECRET_KEY`. Private and local addresses are refused, also after DNS resolution, unless the server allows them |
+| Data import (Phase 7a) | Customers, suppliers, items with opening stock per warehouse, employees with their contracts, open customer invoices and supplier bills (with FX), and the opening trial balance, from CSV files as Excel saves them (comma, semicolon or tab; dates as 2026-12-31 or 31/12/2026; thousands commas). Each file is checked first, row by row, and saved all at once or not at all. Existing codes are skipped, so a file can be imported again. The trial balance must balance; receivables, payables and inventory are checked against the open items and stock already imported instead of being posted twice; the rest goes to one opening journal (OB-) and opening balance equity (3200) ends at zero. A BAATS Accounting book (Import / Export, All) is turned into the customer, supplier and item files. Every import is recorded with the file's SHA-256 and who ran it; importing needs `mig.import` |
+| Backup and restore (Phase 7a) | A backup of the whole database while it runs, in one consistent snapshot, without pg_dump: a gzip file of the rows exactly as PostgreSQL holds them, with the schema version. A restore builds a new database from the backup's own schema version, loads the rows with triggers off (so the audit hash chain and every total come back exactly), brings it up to the installed version, and only then swaps it in; the replaced database is kept. A backup from a newer BAATS is refused. In the Windows trial: one backup a day (14 kept), backups by hand, download, and restore of a kept or uploaded backup, all needing `sys.backup` |
+| Sign-in protection (Phase 7a) | Failed sign-ins limited per address (30 in 5 minutes) and per account (10), on top of the lockout after 5 wrong passwords; successful sign-ins are not counted. Each session or API key is limited to 1,200 requests a minute (`429` with `Retry-After`). Sign-ins say when an authenticator code is needed, only once the password is right. Security headers on every answer and `no-store` on the API. Users see where they are signed in (address and device) and can end those sessions, change their password (ending the other sessions) and set up an authenticator app; administrators can set a password, which unlocks the account and ends its sessions |
 | API | REST `/v1` with schema validation for all of the above |
 
 ## Run it
@@ -94,7 +97,8 @@ curl -X POST localhost:3000/v1/auth/login -H 'content-type: application/json' \
 ```
 db/migrations/    SQL schema: tenants, org, iam, audit, mdm, wf, RLS policies, triggers, reference data
 src/core/         database access (tenant-bound transactions), errors, rules engine, migrations
-src/platform/     tenant onboarding
+src/platform/     tenant onboarding; backup and restore (backup.ts)
+src/mig/          data import from CSV and BAATS Accounting books
 src/org/          organization engine
 src/iam/          authentication, authorization, roles, SoD, delegation
 src/workflow/     workflow and approval engine
@@ -110,6 +114,7 @@ src/ess/          employee self-service for BAATS Mobile
 src/int/          webhooks: event outbox, signing and delivery
 src/mobile/       BAATS Mobile (phone web app, served at /m/)
 installer/windows Windows trial installer (NSIS), launcher and trial console
+scripts/          load test (loadtest.ts)
 src/api/          HTTP API
 test/             unit, integration (real PostgreSQL) and API tests
 ```
@@ -126,6 +131,38 @@ test/             unit, integration (real PostgreSQL) and API tests
 | `ESCALATION_SWEEP_SECONDS` | server | Escalation sweep interval (default 300) |
 | `WEBHOOK_DISPATCH_SECONDS` | server | How often due webhook deliveries are sent (default 30) |
 | `WEBHOOK_ALLOW_PRIVATE_URLS` | server | `true` allows webhook receivers on http:// or private addresses (on-premises); leave unset for hosted servers |
+| `API_REQUESTS_PER_MINUTE` | server | Requests a minute for one session or API key (default 1200) |
+| `LOGINS_PER_5_MINUTES` | server | Failed sign-ins in 5 minutes from one address (default 30) |
+| `TRUST_PROXY` | server | Behind a reverse proxy: `true`, or the proxy's addresses, so limits and sessions see the client's address from `X-Forwarded-For` |
 | `MIGRATION_DATABASE_URL` | migrate | Owner connection |
 | `APP_DB_PASSWORD` | migrate | Enables login for `baats_app` with this password |
 | `TEST_ADMIN_DATABASE_URL` | tests | Superuser connection used to create per-file test databases |
+
+## Backups
+
+On a server, back up PostgreSQL with your platform's tools (managed database snapshots, or `pg_dump` and WAL archiving for point-in-time recovery) and rehearse a restore. `src/platform/backup.ts` makes and restores backups without them, from Node, as the database owner:
+
+```
+node -e "import('./src/platform/backup.ts').then(b => b.backupDatabase(process.env.MIGRATION_DATABASE_URL, 'baats.baatsbak', '0.12.0')).then(console.log)"
+```
+
+`restoreDatabase` needs the owner connection to another database of the cluster (to create, rename and drop databases) and stops all connections to the database it replaces for the moment of the swap. A backup file holds every tenant's data in the clear: store it encrypted.
+
+## Load test
+
+`scripts/loadtest.ts` signs in a number of workers, each sending one request after another for a fixed time over the busiest reads (dashboard, trial balance, invoice, stock, party and item lists, approvals inbox) and, with `--writes`, creating and posting sales invoices, then prints requests a second and the 50th, 95th and 99th percentile times:
+
+```
+node scripts/loadtest.ts --url http://127.0.0.1:3000 --tenant demo --email admin@demo.test --password '...' --workers 25 --seconds 30 --writes
+```
+
+Measured on the Windows trial's own setup (one Node process, PostgreSQL 16 on the same machine, 4 CPU cores, the demo company of about 1,200 records), 30 seconds, no errors, and the books balanced and the audit chain intact afterwards:
+
+| Workers | Requests a second | 50% | 95% | 99% | Dashboard 50% |
+|---|---|---|---|---|---|
+| 1 (reads) | 23 | 5 ms | 183 ms | 201 ms | 151 ms |
+| 10 (reads) | 107 | 13 ms | 466 ms | 512 ms | 403 ms |
+| 25 (reads, 17 invoices posted a second) | 94 | 83 ms | 1,119 ms | 2,105 ms | 965 ms |
+
+Everything but the executive dashboard answers in well under 100 ms at 10 simultaneous users. The dashboard computes 36 KPIs live, four periods each, and is the slowest page by far; under load it is what people will notice first. This is a small dataset on one machine: it is not yet a test at the scale of a large company (millions of journal lines), which needs a generated dataset and is still open in Phase 7.
+

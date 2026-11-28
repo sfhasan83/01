@@ -73,7 +73,9 @@ Android and iOS apps; localization packs for Saudi Arabia, United States, United
 
 ### Phase 7: Production readiness
 
-Independent penetration test; load and soak tests at target scale; failover and DR drills; data migration tooling and rehearsals; UAT with pilot customers; SaaS billing and subscription management at full scale; ISO 27001 and SOC 2 readiness.
+**Built and tested (7a, go-live readiness):** data import from CSV for customers, suppliers, items with opening stock, employees with contracts, open invoices and bills, and the opening trial balance (checked row by row before anything is saved, reconciled to the sub-ledgers, recorded with the file's fingerprint), and conversion of BAATS Accounting books; backup and restore of the whole database while it runs, restoring through the backup's own schema version and keeping the replaced database, with daily backups, download and restore in the Windows trial; limits on failed sign-ins per address and account and on requests per session, security headers, sessions a user can see and end, password change and administrator reset, authenticator app set-up in the console; a load test script and the first measurements (see the README). Still open: Excel workbooks (.xlsx) directly rather than CSV, importing open purchase and sales orders, fixed assets and bank balances by file, BAATS Accounting balances and open invoices read straight from its book, encrypted backup files and backups to cloud storage, point-in-time recovery, a load test at large-company scale.
+
+Next: independent penetration test; load and soak tests at target scale; failover and DR drills; data migration tooling and rehearsals; UAT with pilot customers; SaaS billing and subscription management at full scale; ISO 27001 and SOC 2 readiness.
 
 ## 4. Testing and deployment strategy
 

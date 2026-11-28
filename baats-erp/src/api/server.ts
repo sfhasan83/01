@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
-import { AppError, UnauthenticatedError } from '../core/errors.ts';
+import { AppError, TooManyRequestsError, UnauthenticatedError } from '../core/errors.ts';
+import { RateLimiter } from '../core/ratelimit.ts';
 import type { Ctx, Db, Tx } from '../core/db.ts';
 import { authorize, decide } from '../iam/authz.ts';
 import * as auth from '../iam/auth.ts';
@@ -17,6 +18,7 @@ import { registerPhase4 } from './phase4.ts';
 import { registerPhase5 } from './phase5.ts';
 import { registerAssistant } from './assistant.ts';
 import { MOBILE_PATHS, registerPhase6 } from './phase6.ts';
+import { registerPhase7 } from './phase7.ts';
 import { parseSecretKey } from '../ai/secrets.ts';
 import type { AiOptions } from '../ai/assistant.ts';
 
@@ -28,6 +30,10 @@ export interface ServerOptions {
   db: Db; platformAdminKey?: string; logger?: boolean;
   /** secretKey (32 bytes, base64 or hex) seals AI provider keys and webhook secrets; allowPrivateUrls permits local model servers and webhook receivers on the local network. */
   ai?: { secretKey?: string; allowPrivateUrls?: boolean; providerFactory?: AiOptions['providerFactory'] };
+  /** Requests a minute for one session or API key (default 1200), and sign-in attempts per 5 minutes from one address (default 30). */
+  limits?: { apiPerMinute?: number; loginsPer5Min?: number };
+  /** Behind a reverse proxy: take the client's address from X-Forwarded-For (the proxy's addresses, or true for any). */
+  trustProxy?: boolean | string;
 }
 
 const str = { type: 'string', minLength: 1 } as const;
@@ -38,9 +44,10 @@ const obj = (required: string[], properties: Record<string, object>) =>
 /** HTTP API (v1). Every route except login and onboarding needs a bearer session token. */
 export function buildServer(opts: ServerOptions): FastifyInstance {
   const { db } = opts;
-  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 1_048_576 });
+  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 1_048_576, trustProxy: opts.trustProxy ?? false });
 
   app.setErrorHandler((err, _req, reply) => {
+    if (err instanceof TooManyRequestsError) reply.header('retry-after', String(err.retryAfter));
     if (err instanceof AppError) return reply.status(err.status).send({ error: err.code, message: err.message, details: err.details });
     const e = err as { validation?: unknown; statusCode?: number; message: string };
     if (e.validation) return reply.status(400).send({ error: 'bad_request', message: e.message });
@@ -52,12 +59,26 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
   app.decorateRequest('ctx', null as unknown as Ctx);
   app.decorateRequest('token', '');
   const PUBLIC = new Set(['/v1/auth/login', '/v1/platform/tenants', '/health', ...MOBILE_PATHS]);
+  // Guessing passwords: failed sign-ins are limited per address and per account (on top of the lockout
+  // after 5 failures). Successful ones are not counted, so a whole office behind one address can sign in.
+  const loginsByIp = new RateLimiter(opts.limits?.loginsPer5Min ?? 30, 5 * 60_000, 'failed sign-ins from this address');
+  const loginsByAccount = new RateLimiter(10, 5 * 60_000, 'failed sign-ins for this account');
+  const calls = new RateLimiter(opts.limits?.apiPerMinute ?? 1200, 60_000, 'requests');
   app.addHook('onRequest', async (req: FastifyRequest) => {
-    if (PUBLIC.has(req.routeOptions.url ?? '')) return;
+    const url = req.routeOptions.url ?? '';
+    if (url === '/v1/auth/login') { loginsByIp.check(req.ip); return; }
+    if (PUBLIC.has(url)) return;
     const h = req.headers.authorization;
     if (!h?.startsWith('Bearer ')) throw new UnauthenticatedError();
     req.token = h.slice(7);
+    calls.hit(req.token.slice(-24));
     req.ctx = await auth.authenticate(db, req.token);
+  });
+  // Every answer: no sniffing, no framing, no referrer; API answers are never cached.
+  app.addHook('onSend', async (req, reply) => {
+    reply.header('x-content-type-options', 'nosniff').header('referrer-policy', 'no-referrer');
+    if (!reply.hasHeader('content-security-policy')) reply.header('x-frame-options', 'DENY');
+    if ((req.url ?? '').startsWith('/v1/') && !reply.hasHeader('cache-control')) reply.header('cache-control', 'no-store');
   });
   const run = <T>(req: FastifyRequest, fn: (tx: Tx, ctx: Ctx) => Promise<T>) => db.withTenant(req.ctx, (tx) => fn(tx, req.ctx));
   type B = any; // request bodies are validated by the route schemas below
@@ -83,7 +104,17 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
 
   // --- Auth and self-service ----------------------------------------------------
   app.post('/v1/auth/login', { schema: obj(['tenant', 'email', 'password'], { tenant: str, email: str, password: str, totp: str }) },
-    async (req) => auth.login(db, req.body as B));
+    async (req) => {
+      const b = req.body as B;
+      const account = `${String(b.tenant).toLowerCase()}/${String(b.email).toLowerCase()}`;
+      loginsByAccount.check(account);
+      try {
+        return await auth.login(db, b, { ip: req.ip, userAgent: String(req.headers['user-agent'] ?? '') });
+      } catch (err) {
+        if (err instanceof UnauthenticatedError) { loginsByIp.hit(req.ip); loginsByAccount.hit(account); }
+        throw err;
+      }
+    });
   app.post('/v1/auth/logout', async (req, reply) => { await auth.logout(db, req.token); reply.status(204); });
   app.post('/v1/auth/mfa/enrol', async (req) => run(req, (tx, ctx) => auth.beginMfaEnrolment(tx, ctx)));
   app.post('/v1/auth/mfa/confirm', { schema: obj(['code'], { code: str }) },
@@ -211,6 +242,7 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
   const allowPrivateUrls = opts.ai?.allowPrivateUrls ?? false;
   registerAssistant(app, run, db, { secretKey, allowPrivateUrls, providerFactory: opts.ai?.providerFactory });
   registerPhase6(app, run, { secretKey, allowPrivateUrls });
+  registerPhase7(app, run);
 
   return app;
 }

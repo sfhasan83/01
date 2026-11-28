@@ -2,7 +2,7 @@ Unicode true
 SetCompressor /SOLID lzma
 !include "MUI2.nsh"
 !define APPNAME "BAATS ERP"
-!define VERSION "0.11.0"
+!define VERSION "0.12.0"
 Name "BAATS Enterprise ERP ${VERSION} (trial)"
 OutFile "/home/claude/build/out/BAATS-ERP-Setup-${VERSION}.exe"
 InstallDir "$LOCALAPPDATA\Programs\BAATS ERP"
@@ -17,7 +17,7 @@ VIAddVersionKey "LegalCopyright" "BAATS"
 !define MUI_ICON "/home/claude/build/win/baats.ico"
 !define MUI_UNICON "/home/claude/build/win/baats.ico"
 !define MUI_WELCOMEPAGE_TITLE "Install BAATS Enterprise ERP"
-!define MUI_WELCOMEPAGE_TEXT "This installs a trial of BAATS Enterprise ERP, Phases 1 to 6c: the core platform, finance for all six GCC states, operations, corporate functions, analytics with an interactive dashboard, the AI assistant, BAATS Mobile for phones, expense claims, API keys and webhooks.$\r$\n$\r$\nEverything it needs is included: its own database and runtime. Nothing is shared on your network unless you switch on phone access, and no administrator rights are needed.$\r$\n$\r$\nAbout 200 MB of disk space is used."
+!define MUI_WELCOMEPAGE_TEXT "This installs a trial of BAATS Enterprise ERP, Phases 1 to 7a: the core platform, finance for all six GCC states, operations, corporate functions, analytics with an interactive dashboard, the AI assistant, BAATS Mobile for phones, expense claims, API keys and webhooks, data import from Excel and BAATS Accounting, and daily backups with restore.$\r$\n$\r$\nEverything it needs is included: its own database and runtime. Nothing is shared on your network unless you switch on phone access, and no administrator rights are needed.$\r$\n$\r$\nAbout 200 MB of disk space is used."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\BAATS ERP.cmd"
 !define MUI_FINISHPAGE_RUN_TEXT "Start BAATS ERP now"
 !insertmacro MUI_PAGE_WELCOME
@@ -56,7 +56,7 @@ Section "Uninstall"
   RMDir /r "$SMPROGRAMS\BAATS ERP"
   RMDir /r "$INSTDIR"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\BAATSERP"
-  MessageBox MB_YESNO|MB_ICONQUESTION "Also delete your BAATS data (companies, users and records you created)?$\r$\n$\r$\nChoose No to keep it for a later install." /SD IDNO IDNO keep
+  MessageBox MB_YESNO|MB_ICONQUESTION "Also delete your BAATS data (companies, users and records you created, and their backups)?$\r$\n$\r$\nChoose No to keep it for a later install." /SD IDNO IDNO keep
     RMDir /r "$LOCALAPPDATA\BAATS-ERP"
   keep:
 SectionEnd

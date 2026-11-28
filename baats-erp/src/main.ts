@@ -9,7 +9,9 @@ if (!databaseUrl) { console.error('DATABASE_URL is required (connect as baats_ap
 
 const db = new Db({ connectionString: databaseUrl });
 const app = buildServer({ db, platformAdminKey: process.env.PLATFORM_ADMIN_KEY, logger: true,
-  ai: { secretKey: process.env.BAATS_SECRET_KEY, allowPrivateUrls: process.env.AI_ALLOW_PRIVATE_URLS === 'true' } });
+  ai: { secretKey: process.env.BAATS_SECRET_KEY, allowPrivateUrls: process.env.AI_ALLOW_PRIVATE_URLS === 'true' },
+  limits: { apiPerMinute: Number(process.env.API_REQUESTS_PER_MINUTE) || undefined, loginsPer5Min: Number(process.env.LOGINS_PER_5_MINUTES) || undefined },
+  trustProxy: process.env.TRUST_PROXY === 'true' ? true : process.env.TRUST_PROXY || false });
 
 // Escalation sweep across all tenants. Each tenant runs in its own transaction.
 const SWEEP_MS = Number(process.env.ESCALATION_SWEEP_SECONDS ?? 300) * 1000;

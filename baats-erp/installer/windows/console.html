@@ -133,7 +133,7 @@ const pages = {
   async overview() {
     const me = await api('GET', '/v1/me');
     return `<div class="card"><h3>Welcome, ${esc(me.user.display_name)}</h3><p class="muted">Signed in to <b>${esc(S.tenant)}</b> as ${esc(me.user.email)}. MFA: ${me.user.mfa_enabled ? 'on' : 'off'}.</p>
-      <p>This console lets you try what BAATS can do today. Phase 6c: BAATS Mobile, a phone app for approvals, leave, payslips and expense claims with a receipt photo (see BAATS Mobile; switch on phone access there to use it on a phone on the same Wi-Fi), expense claims approved by the line manager and posted with their input VAT, and integrations: API keys for other systems and signed webhooks when invoices, payments, payroll, claims, leave and tickets happen. Phase 6b: the rest of the GCC beside the UAE and Saudi Arabia: Oman (5% VAT and its return, 15% income tax, the Social Protection Fund), Bahrain (10% VAT and the NBR return, SIO with the leaving indemnity), Qatar and Kuwait (no VAT; GRSIA and PIFSS), each with its own end-of-service rule, and money in three decimals for the dinar and rial (try it with Load GCC demo under Finance: setup). Phase 6a: an interactive dashboard (pick any period and a comparison, click a KPI to see its trend, breakdowns and the records behind it, and keep your own tiles), and country packs with Saudi Arabia beside the UAE: 15% VAT, the ZATCA VAT return, ZATCA e-invoices chained by hash with QR codes, GOSI and the Saudi end-of-service award (try it with Load Saudi demo under Finance: setup). Phase 5: an AI assistant that answers questions from your books and proposes changes for you to confirm (an administrator turns it on under Assistant settings, with Claude or a model on this computer), an executive dashboard computed live from the books, a report builder over governed datasets with CSV export, a strategy scorecard with KPI targets, ESG emissions and resource use, and anomaly checks on the whole ledger. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
+      <p>This console lets you try what BAATS can do today. Phase 7a, getting ready to go live: Data import brings customers, suppliers, items with their stock, employees with contracts, open invoices and bills and the opening trial balance in from Excel (CSV) or a BAATS Accounting book, each file checked before anything is saved; Backup and restore makes a backup of everything every day and lets you restore one (the data before it is backed up too); My sessions and password shows where you are signed in, changes your password and sets up an authenticator app; sign-ins and the API are limited against password guessing. Phase 6c: BAATS Mobile, a phone app for approvals, leave, payslips and expense claims with a receipt photo (see BAATS Mobile; switch on phone access there to use it on a phone on the same Wi-Fi), expense claims approved by the line manager and posted with their input VAT, and integrations: API keys for other systems and signed webhooks when invoices, payments, payroll, claims, leave and tickets happen. Phase 6b: the rest of the GCC beside the UAE and Saudi Arabia: Oman (5% VAT and its return, 15% income tax, the Social Protection Fund), Bahrain (10% VAT and the NBR return, SIO with the leaving indemnity), Qatar and Kuwait (no VAT; GRSIA and PIFSS), each with its own end-of-service rule, and money in three decimals for the dinar and rial (try it with Load GCC demo under Finance: setup). Phase 6a: an interactive dashboard (pick any period and a comparison, click a KPI to see its trend, breakdowns and the records behind it, and keep your own tiles), and country packs with Saudi Arabia beside the UAE: 15% VAT, the ZATCA VAT return, ZATCA e-invoices chained by hash with QR codes, GOSI and the Saudi end-of-service award (try it with Load Saudi demo under Finance: setup). Phase 5: an AI assistant that answers questions from your books and proposes changes for you to confirm (an administrator turns it on under Assistant settings, with Claude or a model on this computer), an executive dashboard computed live from the books, a report builder over governed datasets with CSV export, a strategy scorecard with KPI targets, ESG emissions and resource use, and anomaly checks on the whole ledger. Phase 4: documents with versions and fingerprints, contracts with approval, obligations and renewals, a risk register with controls, tests and a heat map, the compliance calendar, internal audit, one corrective action list with maker-checker verification, the service desk with SLAs, quality inspections and non-conformances carried into the books, health and safety with LTIFR, and facilities booking. Phase 3: projects (timesheets costed onto projects, time and material or milestone billing, budget against actuals), manufacturing (bills of materials with routing, work orders through work in progress at actual cost, multi-level MRP), maintenance (preventive plans by date or distance, work orders, spare parts) and fleet (vehicles, fuel with reclaimable VAT, trips, expiry alerts). Phase 2: finance (books with the BAATS UAE chart of accounts, invoices, receipts and payments, journals with approval, the UAE VAT return, PINT AE e-invoices, bank reconciliation, fixed assets and reports), inventory, purchasing with approval and three-way match, sales and CRM, and HR and payroll with the UAE WPS file and gratuity. Every module posts to the same ledger. Phase 1: organization structure, people, users and roles, master data with approvals, and a tamper-evident audit trail.</p><p><b>Quickest start:</b> open <b>Finance: setup</b> and press <b>Load demo data</b>, then look at Finance: reports and Finance: VAT return.</p></div>
       <div class="card"><h3>Your approvals waiting (${me.inbox.length})</h3>${table(me.inbox)}</div>
       <div class="card"><h3>Your permissions (${me.permissions.length})</h3>${me.permissions.map((p) => `<span class="pill">${esc(typeof p === 'string' ? p : p.permission || JSON.stringify(p))}</span>`).join('')}</div>`;
   },
@@ -159,6 +159,7 @@ const pages = {
   async access() {
     const [users, roles, us] = await Promise.all([api('GET', '/v1/iam/users'), api('GET', '/v1/iam/roles'), units()]);
     return `<div class="card"><h3>Users</h3>${table(users)}
+      <div class="row" style="flex-wrap:wrap">${users.filter((u) => u.status === 'active').map((u) => `<button class="btn sec" data-pw-reset="${esc(u.id)}" data-email="${esc(u.email)}">Set password: ${esc(u.email)}</button>`).join(' ')}</div>
       <form id="f-user"><div class="grid">${field('displayName', 'Name', 'required')}${field('email', 'Email', 'type="email" required')}${field('password', 'Password (12+ chars)', 'type="password"')}</div><div class="row"><button class="btn">Add user</button></div></form></div>
     <div class="card"><h3>Roles</h3>${table(roles.map((r) => ({ code: r.code, name: r.name, permissions: (r.permissions || []).filter((p) => p.permission).map((p) => p.permission).join(', ') })))}
       <form id="f-role"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}</div><div class="row"><button class="btn sec">Add role</button></div></form>
@@ -197,7 +198,7 @@ const pages = {
       <label style="margin-top:10px">JSON body<textarea name="body"></textarea></label><div class="row"><button class="btn">Send</button></div></form><pre id="api-out"></pre></div>`;
   },
 };
-const MENU = [['overview', 'Overview'], ['assistant', 'AI assistant'], ['analytics', 'Interactive dashboard'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['expenses', 'HR: expense claims'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['aisettings', 'Assistant settings'], ['integrations', 'Integrations (API keys, webhooks)'], ['mobile', 'BAATS Mobile'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audittrail', 'Audit trail'], ['apitester', 'API tester']];
+const MENU = [['overview', 'Overview'], ['assistant', 'AI assistant'], ['analytics', 'Interactive dashboard'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['expenses', 'HR: expense claims'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['aisettings', 'Assistant settings'], ['integrations', 'Integrations (API keys, webhooks)'], ['mobile', 'BAATS Mobile'], ['import', 'Data import'], ['backup', 'Backup and restore'], ['security', 'My sessions and password'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audittrail', 'Audit trail'], ['apitester', 'API tester']];
 let current = 'overview';
 const after = {};
 
@@ -2211,6 +2212,186 @@ Object.assign(after, {
         ok(r.on ? (r.urls.length ? `Phone access on: ${r.urls[0]}` : 'Phone access on, but no network address found') : 'Phone access off');
       } catch (e) { toast(e.message, false); }
     };
+  },
+});
+
+// ---------- Phase 7a: data import, backup and restore, sessions and passwords ----------
+const IMPORT_ORDER = ['customers', 'suppliers', 'items', 'employees', 'opening_balances', 'open_invoices', 'open_bills'];
+const IMPORT_HELP = {
+  customers: 'One row per customer. Codes already in BAATS are skipped, so the same file can be imported again safely. Country and currency default to the company\'s.',
+  suppliers: 'One row per supplier, as for customers.',
+  items: 'One row per item. Type is stock (the default) or service. For opening stock give the warehouse code, the quantity and the cost of one unit on the cut-over date: BAATS adds the stock and debits inventory (1300) against opening balance equity (3200). Units of measure that are missing are added.',
+  employees: 'One row per employee. Unit, manager (by employee number) and designation (by code or title) must exist already, apart from the manager, who may be further down the same file. With a basic salary a contract is made too, starting on contract_start or the cut-over date.',
+  opening_balances: 'The trial balance on the cut-over date, one row per account. It must balance. Receivables (1100), payables (2000) and inventory (1300) are not posted from this file: import the open invoices, open bills and items first, and BAATS checks that their totals match the rows here. Everything else is posted as one opening journal (OB-...). Only one opening balance import is allowed per company.',
+  open_invoices: 'Customer invoices not yet fully paid on the cut-over date: one row per invoice with what is still owed. Each becomes an open invoice you can receive money against, posted against opening balance equity (3200). Foreign currency invoices need fx_rate (base currency per unit).',
+  open_bills: 'Supplier bills not yet fully paid on the cut-over date, as for open invoices.',
+};
+const readText = (file) => new Promise((resolve, reject) => {
+  if (!file) return reject(new Error('choose a file first'));
+  if (file.size > 15 * 1048576) return reject(new Error('the file is larger than 15 MB; split it into smaller files'));
+  if (/\.xlsx?$/i.test(file.name)) return reject(new Error('this is an Excel workbook. In Excel use File, Save As, "CSV UTF-8 (Comma delimited)", and choose that file'));
+  const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(new Error('could not read the file')); r.readAsText(file, 'utf-8');
+});
+const saveBlob = (url, name) => { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10000); };
+const bytes = (n) => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+function importResult(r, kindTitle) {
+  const head = r.errors.length ? `<b style="color:var(--bad)">${r.errors.length} problem${r.errors.length === 1 ? '' : 's'} found; nothing was saved.</b> Fix them in the file and check again.`
+    : r.saved ? `<b style="color:var(--ok)">Imported.</b> ${r.created} added, ${r.skipped} already in BAATS and skipped.${r.journalNo ? ` Posted as ${esc(r.journalNo)}.` : ''}`
+      : `<b style="color:var(--ok)">The file is fine.</b> Importing it would add ${r.created} and skip ${r.skipped} already in BAATS.${r.journalNo ? ` It would post ${esc(r.journalNo)}.` : ''} Nothing has been saved yet.`;
+  const rowsOf = (list) => '<div class="tbl"><table><tr><th>Row</th><th>Problem</th></tr>' + list.map((e) => `<tr><td>${e.row || ''}</td><td>${esc(e.message)}</td></tr>`).join('') + '</table></div>';
+  return `<div class="card" style="border-color:${r.errors.length ? 'var(--bad)' : 'var(--ok)'}"><h4>${esc(kindTitle)}: ${r.rows} row${r.rows === 1 ? '' : 's'} read</h4><p>${head}</p>
+    ${r.errors.length ? rowsOf(r.errors) : ''}${r.warnings.length ? `<p class="muted">Please note:</p>${rowsOf(r.warnings)}` : ''}
+    ${!r.errors.length && !r.saved ? '<div class="row"><button class="btn" id="imp-go">Import it</button></div>' : ''}</div>`;
+}
+
+Object.assign(pages, {
+  async import() {
+    const cs = await companies(); if (!cs.length) return noBooks;
+    const [kinds, runs] = await Promise.all([api('GET', '/v1/mig/kinds'), api('GET', `/v1/mig/companies/${S.company}/imports`)]);
+    S.impKind = S.impKind || 'customers';
+    const k = kinds[S.impKind];
+    return companyBar(cs) + `<div class="card"><h3>Bring your data into BAATS</h3><p>When you start using BAATS, bring in what you already have from Excel or your old system, in this order: customers and suppliers, items with their stock, employees, then the balances on the day you switch over (the cut-over date): open customer invoices, open supplier bills, and the trial balance. Each file is checked first and nothing is saved until every row is right; then it is saved all at once.</p>
+      <p class="muted">Start from the template, fill it in Excel, and save it with File, Save As, <b>CSV UTF-8 (Comma delimited)</b>. Dates can be 2026-12-31 or 31/12/2026, amounts can have thousands commas. Columns marked * must be filled.</p>
+      <form id="f-imp"><div class="grid">${pick('kind', 'What to import', IMPORT_ORDER.map((x) => [x, `${IMPORT_ORDER.indexOf(x) + 1}. ${kinds[x].title}`]), 'id="imp-kind"')}
+        ${field('asOf', 'Cut-over date', `type="date" required value="${esc(S.impAsOf || today())}" id="imp-asof"`)}
+        <label>File (CSV)<input type="file" id="imp-file" accept=".csv,.txt,text/csv"></label></div>
+        <p class="muted" id="imp-help">${esc(IMPORT_HELP[S.impKind])}</p>
+        <p class="muted">Columns: ${k.columns.map((c) => `<code>${esc(c)}</code>`).join(' ')}</p>
+        <div class="row"><button class="btn">Check the file</button> <button type="button" class="btn sec" id="imp-template">Download the template</button></div></form>
+      <div id="imp-out"></div></div>
+    <div class="card"><h3>From BAATS Accounting</h3><p class="muted">In BAATS Accounting, use Import / Export, <b>All</b> to save the book as a JSON file, and choose it here. Its customers, suppliers and items are turned into the three files above, which you can download to look at or check and import straight away. For the balances, export its trial balance and its open invoices and bills on the cut-over date and import them with the opening balance files.</p>
+      <div class="row"><label>BAATS Accounting book (JSON)<input type="file" id="ba-file" accept=".json,application/json"></label><button class="btn sec" id="ba-read">Read the book</button></div><div id="ba-out"></div></div>
+    <div class="card"><h3>Imports done</h3>${report(runs.map((r) => ({ ...r, kind: kinds[r.kind]?.title || r.kind, as_of: d10(r.as_of), created_at: when(r.created_at), journal_no: r.journal_no || '' })),
+      [['created_at', 'When'], ['kind', 'What'], ['file_name', 'File'], ['as_of', 'Cut-over'], ['rows', 'Rows'], ['created', 'Added'], ['skipped', 'Skipped'], ['journal_no', 'Journal'], ['by', 'By']])}</div>`;
+  },
+
+  async backup() {
+    let b;
+    try { b = await api('GET', '/local/backups'); } catch (err) {
+      if (/sys\.backup/.test(err.message)) return '<div class="card"><h3>Backup and restore</h3><p>Only an administrator (the sys.backup permission) can make and restore backups.</p></div>';
+      return '<div class="card"><h3>Backup and restore</h3><p>Backups are made by the BAATS ERP program on the computer it runs on. On a server, back up the PostgreSQL database with the tools of your hosting (see Backups in the README).</p></div>';
+    }
+    const kindName = { auto: 'Daily', manual: 'Made by hand', 'before-restore': 'Before a restore', uploaded: 'Restored from a file' };
+    return `<div class="card"><h3>Backups</h3><p>BAATS makes a backup of all your data once a day while it runs, and keeps the last ${b.keepAuto} daily backups. Make one by hand before a big change, such as an import. A backup holds everything: every company, user, document and the audit trail, exactly as it was.</p>
+      <p class="muted">They are kept on this computer in <code>${esc(b.dir)}</code>. If this computer breaks, they go with it: download a backup now and then and keep it somewhere else (a USB drive or cloud storage). Each backup file holds all your data, so keep it as safe as the computer itself.</p>
+      <div class="row"><button class="btn" id="bk-make" ${b.busy ? 'disabled' : ''}>Make a backup now</button>${b.busy ? ' <span class="muted">A backup or restore is running...</span>' : ''}</div>
+      ${b.backups.length ? '<div class="tbl"><table><tr><th>Made</th><th>Kind</th><th style="text-align:right">Size</th><th></th></tr>' + b.backups.map((x) => `<tr><td>${esc(when(x.at))}</td><td>${esc(kindName[x.kind] || x.kind)}</td><td style="text-align:right">${bytes(x.bytes)}</td><td>${act('Download', 'bk-get', esc(x.name), 1)} ${act('Restore', 'bk-restore', esc(x.name), 1)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No backups yet. The first daily backup is made a minute after BAATS starts.</div>'}</div>
+    <div class="card"><h3>Restore</h3><p>Restoring puts all the data back as it was when the backup was made: everything done since is undone, for every user. BAATS makes a backup of the data as it is now first, so a restore can itself be undone by restoring that one. Everyone is signed out, and BAATS is unavailable for the few seconds it takes.</p>
+      <p class="muted">A backup from an earlier version of BAATS is brought up to this version as it is restored. A backup from a later version needs that version.</p>
+      <div class="row"><label>Restore from a backup file (.baatsbak)<input type="file" id="bk-file" accept=".baatsbak"></label><button class="btn sec" id="bk-upload">Restore this file</button></div><div id="bk-out"></div></div>`;
+  },
+
+  async security() {
+    const [me, ss] = await Promise.all([api('GET', '/v1/me'), api('GET', '/v1/me/sessions')]);
+    const device = (ua) => !ua ? 'unknown' : /BAATS-Mobile|Mobile|Android|iPhone/.test(ua) ? `Phone (${/iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : 'mobile browser'})` : /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : ua.slice(0, 40);
+    return `<div class="card"><h3>Where you are signed in</h3><p class="muted">Every sign-in as ${esc(me.user.email)} that has not ended. If you see one you do not recognise, sign it out and change your password. Sign-ins end by themselves after 8 hours.</p>
+      ${ss.length ? '<div class="tbl"><table><tr><th>Signed in</th><th>From</th><th>Device</th><th>Second factor</th><th>Ends</th><th></th></tr>' + ss.map((x) => `<tr><td>${esc(when(x.created_at))}</td><td>${esc(x.ip || '')}</td><td title="${esc(x.user_agent || '')}">${esc(device(x.user_agent))}</td><td>${x.mfa_verified ? 'yes' : 'no'}</td><td>${esc(when(x.expires_at))}</td><td>${x.current ? '<b>this one</b>' : act('Sign out', 'ss-end', x.id, 1)}</td></tr>`).join('') + '</table></div>' : ''}
+      ${ss.filter((x) => !x.current).length ? '<div class="row"><button class="btn sec" id="ss-others">Sign out everywhere else</button></div>' : ''}</div>
+    <div class="card"><h3>Change your password</h3><p class="muted">At least 12 characters, with upper and lower case letters and a digit. Changing it signs you out everywhere else.</p>
+      <form id="f-pw"><div class="grid">${field('current', 'Current password', 'type="password" required autocomplete="current-password"')}${field('next', 'New password', 'type="password" required minlength="12" autocomplete="new-password"')}${field('again', 'New password again', 'type="password" required minlength="12" autocomplete="new-password"')}</div>
+      <div class="row"><button class="btn">Change password</button></div></form></div>
+    <div class="card"><h3>Authenticator app</h3>${me.user.mfa_enabled ? '<p><b style="color:var(--ok)">On.</b> Signing in asks for the 6-digit code from your authenticator app as well as your password.</p>'
+      : `<p class="muted">With an authenticator app (Microsoft Authenticator, Google Authenticator and others), signing in needs the 6-digit code on your phone as well as your password, so a stolen password alone is not enough.</p><div class="row"><button class="btn sec" id="mfa-start">Set up an authenticator app</button></div><div id="mfa-out"></div>`}</div>
+    <div class="card"><h3>How BAATS protects sign-in</h3><p class="muted">After 5 wrong passwords an account is locked for 15 minutes. Failed sign-ins are also limited to 10 in 5 minutes for one account and 30 from one address, and each sign-in can make at most 1,200 requests a minute. Every sign-in, failed sign-in and password change is in the audit trail.</p></div>`;
+  },
+});
+
+Object.assign(after, {
+  async import(m, ok) {
+    bindCompanyPick();
+    const kindSel = $('#imp-kind'); if (!kindSel) return;
+    kindSel.value = S.impKind;
+    kindSel.onchange = () => { S.impKind = kindSel.value; show('import'); };
+    $('#imp-asof').onchange = (e) => { S.impAsOf = e.target.value; };
+    $('#imp-template').onclick = async () => { try { saveBlob(await authFetch(`/v1/mig/templates/${S.impKind}`), `baats-${S.impKind}.csv`); } catch (e) { toast(e.message, false); } };
+    const kinds = await api('GET', '/v1/mig/kinds');
+    // Check, then import the same text: what is imported is exactly what was checked.
+    const check = async (csv, fileName, kind) => {
+      const body = { kind, csv, fileName, asOf: $('#imp-asof').value || today() };
+      const r = await api('POST', `/v1/mig/companies/${S.company}/import`, { ...body, dryRun: true });
+      $('#imp-out').innerHTML = importResult(r, kinds[kind].title);
+      const go = $('#imp-go');
+      if (go) go.onclick = async () => {
+        go.disabled = true;
+        try {
+          const s = await api('POST', `/v1/mig/companies/${S.company}/import`, body);
+          await show('import');
+          $('#imp-out').innerHTML = importResult(s, kinds[kind].title);
+          toast(s.saved ? `${kinds[kind].title}: ${s.created} added` : 'Nothing was saved', s.saved);
+        } catch (e) { go.disabled = false; toast(e.message, false); }
+      };
+    };
+    bindForm('f-imp', async () => { const f = $('#imp-file').files[0]; const csv = await readText(f); await check(csv, f.name, S.impKind); });
+    $('#ba-read').onclick = async () => {
+      try {
+        const json = await readText($('#ba-file').files[0]);
+        const r = await api('POST', '/v1/mig/baats-accounting', { json });
+        const out = $('#ba-out');
+        out.innerHTML = `<p>The book has ${r.counts.customers} customers, ${r.counts.suppliers} suppliers and ${r.counts.items} items.</p>` +
+          ['customers', 'suppliers', 'items'].map((x) => `<div class="row">${act(`Check and import ${r.counts[x]} ${x}`, 'ba-check', x)} ${act(`Download ${x}.csv`, 'ba-get', x, 1)}</div>`).join('');
+        out.querySelectorAll('[data-ba-get]').forEach((el) => el.onclick = () => saveBlob(URL.createObjectURL(new Blob(['﻿' + r[el.dataset.baGet]], { type: 'text/csv' })), `baats-accounting-${el.dataset.baGet}.csv`));
+        out.querySelectorAll('[data-ba-check]').forEach((el) => el.onclick = async () => {
+          try { await check(r[el.dataset.baCheck], `BAATS Accounting ${el.dataset.baCheck}`, el.dataset.baCheck); $('#imp-out').scrollIntoView({ behavior: 'smooth' }); } catch (e) { toast(e.message, false); }
+        });
+      } catch (e) { toast(e.message, false); }
+    };
+  },
+
+  async backup(m, ok) {
+    const mk = $('#bk-make');
+    if (mk) mk.onclick = async () => { mk.disabled = true; mk.textContent = 'Making the backup...'; try { const r = await api('POST', '/local/backups'); ok(`Backup made: ${bytes(r.bytes)}, ${r.rows.toLocaleString()} records`); } catch (e) { mk.disabled = false; toast(e.message, false); } };
+    m.querySelectorAll('[data-bk-get]').forEach((el) => el.onclick = async () => { try { saveBlob(await authFetch(`/local/backups/${encodeURIComponent(el.dataset.bkGet)}`), el.dataset.bkGet); } catch (e) { toast(e.message, false); } });
+    // After a restore the sign-ins are those of the backup, so the console signs in again.
+    const done = (r) => {
+      $('#bk-out').innerHTML = `<div class="card" style="border-color:var(--ok)"><b>Restored the backup of ${esc(when(r.backupOf))}</b> (${r.rows.toLocaleString()} records, made with BAATS ${esc(r.fromVersion)}${r.updatedWith.length ? `, brought up to this version` : ''}). Signing you in again...</div>`;
+      setTimeout(() => { S = null; sessionStorage.removeItem('baats'); render(); toast('Restore finished. Please sign in again.'); }, 2500);
+    };
+    const confirmRestore = (what) => prompt(`Restore ${what}?\n\nEverything done since it was made is undone, for every user. The data as it is now is backed up first.\n\nType RESTORE to go ahead.`) === 'RESTORE';
+    m.querySelectorAll('[data-bk-restore]').forEach((el) => el.onclick = async () => {
+      if (!confirmRestore(`the backup of ${el.closest('tr').firstElementChild.textContent}`)) return;
+      el.disabled = true; $('#bk-out').innerHTML = '<p class="muted">Restoring; this takes a few seconds to a few minutes...</p>';
+      try { done(await api('POST', `/local/restore?name=${encodeURIComponent(el.dataset.bkRestore)}&confirm=RESTORE`)); } catch (e) { el.disabled = false; $('#bk-out').innerHTML = ''; toast(e.message, false); }
+    });
+    const up = $('#bk-upload');
+    if (up) up.onclick = async () => {
+      const f = $('#bk-file').files[0]; if (!f) return toast('Choose a backup file first', false);
+      if (!confirmRestore(f.name)) return;
+      up.disabled = true; $('#bk-out').innerHTML = '<p class="muted">Sending the file and restoring...</p>';
+      try {
+        const r = await fetch('/local/restore?confirm=RESTORE', { method: 'POST', headers: { authorization: 'Bearer ' + S.token, 'content-type': 'application/octet-stream' }, body: f });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.message || 'HTTP ' + r.status);
+        done(d);
+      } catch (e) { up.disabled = false; $('#bk-out').innerHTML = ''; toast(e.message, false); }
+    };
+  },
+
+  async security(m, ok) {
+    m.querySelectorAll('[data-ss-end]').forEach((el) => el.onclick = async () => { try { await api('DELETE', `/v1/me/sessions/${el.dataset.ssEnd}`); ok('Signed out there'); } catch (e) { toast(e.message, false); } });
+    const o = $('#ss-others'); if (o) o.onclick = async () => { try { const r = await api('POST', '/v1/me/sessions/revoke-others'); ok(`Signed out of ${r.revoked} other sign-in${r.revoked === 1 ? '' : 's'}`); } catch (e) { toast(e.message, false); } };
+    const ms = $('#mfa-start');
+    if (ms) ms.onclick = async () => {
+      try {
+        const e = await api('POST', '/v1/auth/mfa/enrol');
+        $('#mfa-out').innerHTML = `<p>In the app, add an account and choose to enter a setup key. Account: your email. Key (time based):</p><pre style="font-size:18px;letter-spacing:2px;white-space:pre-wrap;word-break:break-all">${esc(e.secret.replace(/(.{4})/g, '$1 ').trim())}</pre>
+          <p class="muted">Some apps can open this link instead: <code style="word-break:break-all">${esc(e.otpauthUrl)}</code></p>
+          <form id="f-mfa"><div class="grid">${field('code', 'The 6-digit code the app now shows', 'required inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code"')}</div><div class="row"><button class="btn">Switch it on</button></div></form>`;
+        bindForm('f-mfa', async (b) => { await api('POST', '/v1/auth/mfa/confirm', { code: b.code }); ok('Authenticator app on. Next time you sign in, BAATS asks for its code.'); });
+      } catch (e) { toast(e.message, false); }
+    };
+    bindForm('f-pw', async (b, el) => {
+      if (b.next !== b.again) throw new Error('the new passwords are not the same');
+      await api('POST', '/v1/me/password', { current: b.current, next: b.next });
+      el.reset(); ok('Password changed. You are signed out everywhere else.');
+    });
+  },
+
+  async access(m, ok) {
+    m.querySelectorAll('[data-pw-reset]').forEach((el) => el.onclick = async () => {
+      const pw = prompt(`New password for ${el.dataset.email} (at least 12 characters). They are signed out everywhere and a locked account is unlocked. Give them the password in person and ask them to change it under My sessions and password.`);
+      if (!pw) return;
+      try { await api('POST', `/v1/iam/users/${el.dataset.pwReset}/password`, { password: pw }); ok(`Password set for ${el.dataset.email}`); } catch (e) { toast(e.message, false); }
+    });
   },
 });
 

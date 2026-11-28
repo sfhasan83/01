@@ -5,7 +5,8 @@
 //        node launcher.mjs --stop   stop everything
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, rmSync, statSync, createReadStream, createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { createServer } from 'node:net';
 import { createServer as createHttpServer } from 'node:http';
 import { join, dirname } from 'node:path';
@@ -80,6 +81,20 @@ async function stopAll() {
   }
   stopPostgres();
   say('BAATS ERP is stopped.');
+}
+
+// Companies created by an older version: give their administrator role the permissions added since.
+async function grantNewPermissions(c) {
+  const tenants = (await c.query(`SELECT DISTINCT tenant_id FROM iam.roles WHERE code = 'TENANT_ADMIN'`)).rows;
+  for (const { tenant_id: tid } of tenants) {
+    await c.query('BEGIN');
+    await c.query(`SELECT set_config('app.tenant_id', $1, true), set_config('app.user_id', '', true)`, [tid]);
+    await c.query(`INSERT INTO iam.role_permissions (tenant_id, role_id, permission_code)
+      SELECT r.tenant_id, r.id, p.code FROM iam.roles r CROSS JOIN ref.permissions p
+       WHERE r.code = 'TENANT_ADMIN' AND r.tenant_id = $1
+         AND NOT EXISTS (SELECT 1 FROM iam.role_permissions x WHERE x.role_id = r.id AND x.permission_code = p.code)`, [tid]);
+    await c.query('COMMIT');
+  }
 }
 
 async function main() {
@@ -160,19 +175,7 @@ async function main() {
           await c.query('COMMIT');
         } catch (err) { await c.query('ROLLBACK'); throw new Error(`database update ${f} failed: ${err.message}`); }
       }
-      if (appliedNow) {
-        // Companies created by an older version: give their administrator role the new permissions.
-        const tenants = (await c.query(`SELECT DISTINCT tenant_id FROM iam.roles WHERE code = 'TENANT_ADMIN'`)).rows;
-        for (const { tenant_id: tid } of tenants) {
-          await c.query('BEGIN');
-          await c.query(`SELECT set_config('app.tenant_id', $1, true), set_config('app.user_id', '', true)`, [tid]);
-          await c.query(`INSERT INTO iam.role_permissions (tenant_id, role_id, permission_code)
-            SELECT r.tenant_id, r.id, p.code FROM iam.roles r CROSS JOIN ref.permissions p
-             WHERE r.code = 'TENANT_ADMIN' AND r.tenant_id = $1
-               AND NOT EXISTS (SELECT 1 FROM iam.role_permissions x WHERE x.role_id = r.id AND x.permission_code = p.code)`, [tid]);
-          await c.query('COMMIT');
-        }
-      }
+      if (appliedNow) await grantNewPermissions(c);
       await c.query(`ALTER ROLE baats_app LOGIN PASSWORD ${c.escapeLiteral(cfg.appDbPassword)}`);
     } finally { await c.end(); }
   }
@@ -187,7 +190,8 @@ async function main() {
   const { Db } = await import(pathToFileURL(join(APP_DIR, 'src', 'core', 'db.ts')).href);
   const { buildServer } = await import(pathToFileURL(join(APP_DIR, 'src', 'api', 'server.ts')).href);
   const db = new Db({ connectionString: `postgres://baats_app:${encodeURIComponent(cfg.appDbPassword)}@127.0.0.1:${cfg.pgPort}/baats` });
-  const app = buildServer({ db, platformAdminKey: cfg.platformAdminKey, logger: false, ai: { secretKey: cfg.secretKey, allowPrivateUrls: true } });
+  const app = buildServer({ db, platformAdminKey: cfg.platformAdminKey, logger: false, ai: { secretKey: cfg.secretKey, allowPrivateUrls: true },
+    limits: { apiPerMinute: Number(cfg.apiRequestsPerMinute) || undefined, loginsPer5Min: Number(cfg.loginsPer5Minutes) || undefined } });
 
   const consoleHtml = readFileSync(join(HERE, 'console.html'), 'utf8');
   const version = (() => { try { return readFileSync(join(ROOT, 'VERSION.txt'), 'utf8').trim(); } catch { return 'dev'; } })();
@@ -195,7 +199,7 @@ async function main() {
   const shutdown = async (why) => {
     if (shuttingDown) return; shuttingDown = true;
     say(`Stopping BAATS (${why})...`);
-    clearInterval(timer); clearInterval(hookTimer);
+    clearInterval(timer); clearInterval(hookTimer); clearInterval(backupTimer);
     try { server.close(); closePhoneAccess(); } catch { /* ignore */ }
     try { await app.close(); } catch { /* ignore */ }
     try { await db.close(); } catch { /* ignore */ }
@@ -227,11 +231,63 @@ async function main() {
   };
   const closePhoneAccess = () => { for (const x of phoneServers.splice(0)) x.srv.close(); };
   // Only someone who manages integrations in a company may switch phone access.
-  const mayManage = async (req) => {
-    const r = await app.inject({ method: 'POST', url: '/v1/iam/check', payload: { permission: 'int.manage' },
+  const mayManage = async (req, permission = 'int.manage') => {
+    const r = await app.inject({ method: 'POST', url: '/v1/iam/check', payload: { permission },
       headers: { authorization: req.headers.authorization ?? '', 'content-type': 'application/json' } });
     return r.statusCode === 200 && JSON.parse(r.body).allowed === true;
   };
+
+  // Backups: one a day while BAATS runs (the last 14 are kept), and any time from the console.
+  const BACKUP_DIR = join(DATA_ROOT, 'backups');
+  mkdirSync(BACKUP_DIR, { recursive: true });
+  const KEEP_AUTO = 14;
+  const backupMod = await import(pathToFileURL(join(APP_DIR, 'src', 'platform', 'backup.ts')).href);
+  const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  const listBackups = () => readdirSync(BACKUP_DIR).filter((n) => /^baats-\d{8}-\d{6}-[a-z-]+\.baatsbak$/.test(n)).sort().reverse()
+    .map((name) => { const st = statSync(join(BACKUP_DIR, name)); return { name, bytes: st.size, at: st.mtime.toISOString(), kind: name.slice(22, -9) }; });
+  let backupBusy = false;
+  const makeBackup = async (kind) => {
+    if (backupBusy) throw new Error('a backup or restore is already running');
+    backupBusy = true;
+    try {
+      const file = join(BACKUP_DIR, `baats-${stamp()}-${kind}.baatsbak`);
+      const r = await backupMod.backupDatabase(ownerUrl('baats'), file, version);
+      // Keep the last 14 daily backups and the last 5 made before a restore; manual ones stay until removed by hand.
+      const keep = { auto: KEEP_AUTO, 'before-restore': 5 };
+      for (const [k, n] of Object.entries(keep)) for (const old of listBackups().filter((b) => b.kind === k).slice(n)) rmSync(join(BACKUP_DIR, old.name), { force: true });
+      say(`Backup made: ${file} (${Math.round(r.bytes / 1024)} KB)`);
+      return { name: file.split(/[\\/]/).pop(), bytes: r.bytes, rows: r.rows, at: r.createdAt };
+    } finally { backupBusy = false; }
+  };
+  const restoreBackup = async (name) => {
+    // Check the file before anything else, so a wrong file changes nothing.
+    try { await backupMod.readBackupHeader(join(BACKUP_DIR, name)); } catch (err) { throw Object.assign(err, { status: 422 }); }
+    await makeBackup('before-restore');
+    backupBusy = true;
+    try {
+      say(`Restoring ${name}...`);
+      const r = await backupMod.restoreDatabase({ adminUrl: ownerUrl('postgres'), urlFor: ownerUrl, database: 'baats', file: join(BACKUP_DIR, name),
+        migrationsDir: join(APP_DIR, 'db', 'migrations'), log: say });
+      const c = new pg.Client({ connectionString: ownerUrl('baats') });
+      await c.connect();
+      try { await grantNewPermissions(c); } finally { await c.end(); }
+      // Keep only the database replaced by this restore; older ones go.
+      const kept = await backupMod.keptDatabases(ownerUrl('postgres'), 'baats');
+      if (kept.length > 1) {
+        const c2 = new pg.Client({ connectionString: ownerUrl('postgres') });
+        await c2.connect();
+        try { for (const k of kept.slice(0, -1)) await c2.query(`DROP DATABASE IF EXISTS "${k}" WITH (FORCE)`); } finally { await c2.end(); }
+      }
+      say(`Restored the backup of ${r.header.createdAt} (${r.rows} rows). The data before it was saved as a backup too.`);
+      return { restored: name, backupOf: r.header.createdAt, fromVersion: r.header.appVersion, rows: r.rows, updatedWith: r.newerMigrations };
+    } finally { backupBusy = false; }
+  };
+  const autoBackup = async () => {
+    const today = stamp().slice(0, 8);
+    if (listBackups().some((b) => b.kind === 'auto' && b.name.slice(6, 14) === today)) return;
+    try { await makeBackup('auto'); } catch (err) { say(`Automatic backup failed: ${err.message}`); }
+  };
+  const backupTimer = setInterval(autoBackup, 3_600_000);
 
   // Local-only routes for the trial console; everything else goes to the BAATS API unchanged.
   // Requests that come from the local network reach only BAATS Mobile and the API.
@@ -257,6 +313,35 @@ async function main() {
         writeFileSync(CONFIG, JSON.stringify(cfg, null, 2));
         if (on) await openPhoneAccess(); else { closePhoneAccess(); say('Phone access is off.'); }
         return send(res, 200, 'application/json', JSON.stringify({ on, urls: phoneUrls(), port: cfg.appPort }));
+      }
+      if (path === '/local/backups' || path.startsWith('/local/backups/') || path === '/local/restore') {
+        if (!(await mayManage(req, 'sys.backup'))) return send(res, 403, 'application/json', '{"error":"forbidden","message":"only someone with the sys.backup permission can work with backups"}');
+        if (req.method === 'GET' && path === '/local/backups') return send(res, 200, 'application/json', JSON.stringify({ dir: BACKUP_DIR, backups: listBackups(), keepAuto: KEEP_AUTO, busy: backupBusy }));
+        if (req.method === 'POST' && path === '/local/backups') { const b = await makeBackup('manual'); return send(res, 200, 'application/json', JSON.stringify(b)); }
+        if (req.method === 'GET' && path.startsWith('/local/backups/')) {
+          const name = decodeURIComponent(path.slice('/local/backups/'.length));
+          if (!listBackups().some((x) => x.name === name)) return send(res, 404, 'application/json', '{"error":"not_found","message":"no such backup"}');
+          res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-disposition': `attachment; filename="${name}"`, 'cache-control': 'no-store' });
+          return createReadStream(join(BACKUP_DIR, name)).pipe(res);
+        }
+        if (req.method === 'POST' && path === '/local/restore') {
+          // Either a backup kept here (?name=...), or a backup file sent as the request body.
+          const q = new URL(req.url, 'http://x').searchParams;
+          let name = q.get('name');
+          if (q.get('confirm') !== 'RESTORE') return send(res, 422, 'application/json', '{"error":"validation_failed","message":"type RESTORE to confirm"}');
+          if (!name) {
+            name = `baats-${stamp()}-uploaded.baatsbak`;
+            await pipeline(req, createWriteStream(join(BACKUP_DIR, name), { mode: 0o600 }));
+          } else if (!listBackups().some((x) => x.name === name)) return send(res, 404, 'application/json', '{"error":"not_found","message":"no such backup"}');
+          try {
+            const r = await restoreBackup(name);
+            return send(res, 200, 'application/json', JSON.stringify(r));
+          } catch (err) {
+            if (!q.get('name')) rmSync(join(BACKUP_DIR, name), { force: true });
+            if (err.status === 422) return send(res, 422, 'application/json', JSON.stringify({ error: 'validation_failed', message: err.message }));
+            throw err;
+          }
+        }
       }
       // A webhook receiver for trying webhooks without another system; keeps the last 50 messages in memory.
       if (req.method === 'POST' && path === '/local/test-receiver') {
@@ -317,6 +402,7 @@ async function main() {
   say('  To stop BAATS, close this window (or press Ctrl+C).');
   say('==========================================================');
   if (cfg.allowPhones) await openPhoneAccess();
+  setTimeout(autoBackup, 60_000);
   openBrowser(url);
 }
 

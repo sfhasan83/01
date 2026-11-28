@@ -131,15 +131,52 @@
 
   /* ---------------- Filters ---------------- */
   var filterBtns = document.querySelectorAll(".filters button");
-  filterBtns.forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var v = btn.getAttribute("data-filter");
-      filterBtns.forEach(function (b) { b.setAttribute("aria-pressed", String(b === btn)); });
-      document.querySelectorAll(".flavour").forEach(function (card) {
-        card.hidden = !(v === "all" || card.getAttribute("data-line") === v);
-      });
+  var filterBar = document.querySelector(".filters");
+  var filterStatus = null;
+  if (filterBar) {
+    filterStatus = document.createElement("p");
+    filterStatus.className = "filter-status";
+    filterStatus.setAttribute("role", "status");
+    filterStatus.setAttribute("aria-live", "polite");
+    filterBar.insertAdjacentElement("afterend", filterStatus);
+  }
+  var isUrdu = (document.documentElement.lang || "").indexOf("ur") === 0;
+  function applyFilter(v, fromClick) {
+    var btn = null, shown = [];
+    filterBtns.forEach(function (b) {
+      var on = b.getAttribute("data-filter") === v;
+      if (on) btn = b;
+      b.setAttribute("aria-pressed", String(on));
     });
+    if (!btn) return;
+    document.querySelectorAll(".flavour").forEach(function (card) {
+      var show = v === "all" || card.getAttribute("data-line") === v;
+      card.hidden = !show;
+      card.classList.remove("filter-in");
+      if (show) shown.push(card);
+    });
+    if (filterStatus) {
+      filterStatus.textContent = isUrdu
+        ? btn.textContent + " · " + shown.length + " ذائقے"
+        : btn.textContent + " · " + shown.length + (shown.length === 1 ? " flavour" : " flavours");
+    }
+    if (!fromClick) return;
+    // Replay a short entrance so the change is visible even when the first cards stay the same
+    void document.body.offsetWidth;
+    shown.forEach(function (card, i) { card.style.animationDelay = (i * 70) + "ms"; card.classList.add("in", "filter-in"); });
+    if (history.replaceState) history.replaceState(null, "", v === "all" ? location.pathname : "#" + v);
+    var grid = document.querySelector(".flavours");
+    if (grid && filterBar && filterBar.getBoundingClientRect().top < 0) {
+      filterBar.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+  filterBtns.forEach(function (btn) {
+    btn.addEventListener("click", function () { applyFilter(btn.getAttribute("data-filter"), true); });
   });
+  if (filterBtns.length) {
+    var startFilter = (location.hash || "").replace("#", "");
+    applyFilter(startFilter === "chips" || startFilter === "pops" ? startFilter : "all", false);
+  }
 
   /* ---------------- Header + menu ---------------- */
   var header = document.querySelector(".site-header");

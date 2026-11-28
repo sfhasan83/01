@@ -250,13 +250,16 @@ section { position: relative; }
 .flavour.light-text .heat i.on { background: var(--cream); }
 
 /* filter pills */
-.filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 34px; }
+.filters { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; scroll-margin-top: 110px; }
 .filters button {
   border: 0; padding: 11px 20px; border-radius: 999px; background: rgba(255,247,232,.07); color: var(--cream-2); font-weight: 600; font-size: 15px;
   transition: background .25s, color .25s;
 }
 .filters button:hover { background: rgba(255,247,232,.14); }
 .filters button[aria-pressed="true"] { background: var(--gold); color: var(--ink); }
+.filter-status { margin: 0 0 26px; font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
+.flavour.filter-in { animation: filterIn .5s var(--ease) both; }
+@keyframes filterIn { from { opacity: 0; transform: translateY(18px) scale(.98); } to { opacity: 1; transform: none; } }
 .flavour[hidden] { display: none; }
 
 /* ---------- Story / split ---------- */

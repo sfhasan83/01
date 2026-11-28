@@ -5,6 +5,7 @@ import { authorize } from '../iam/authz.ts';
 import { company, post, roundMoney, type PostingLine } from './ledger.ts';
 import { fiscalYear } from './reports.ts';
 import { companyPack } from './country.ts';
+import { EUROPE_RETURNS, ecSalesRows, mtdBody } from './vat_europe.ts';
 
 /**
  * VAT returns and the corporate tax provision, following the BAATS Accounting
@@ -44,7 +45,7 @@ export async function computeVatReturn(tx: Tx, ctx: Ctx, companyId: string, from
   await authorize(tx, ctx, 'fin.report.read', { unitId: companyId });
   const pack = await companyPack(tx, companyId);
   if (!pack.vatForm) throw new ValidationError(pack.noVat ?? `${pack.name} has no VAT`);
-  const make = { AE: uaeVatReturn, SA: saudiVatReturn, BH: bahrainVatReturn, OM: omanVatReturn }[pack.country];
+  const make = ({ AE: uaeVatReturn, SA: saudiVatReturn, BH: bahrainVatReturn, OM: omanVatReturn, ...EUROPE_RETURNS } as Record<string, (tx: Tx, c: string, f: string, t: string) => Promise<Omit<VatReturn, 'form' | 'formName' | 'authority' | 'from' | 'to'>>>)[pack.country];
   if (!make) throw new ValidationError(`the ${pack.name} VAT return is not available`);
   const r = await make(tx, companyId, from, to);
   return { form: pack.vatForm, formName: pack.vatFormName, authority: pack.taxAuthority, from, to, ...r };
@@ -256,8 +257,11 @@ export async function provideCorporateTax(tx: Tx, ctx: Ctx, companyId: string, f
       JOIN fin.accounts a ON a.id = l.account_id
      WHERE j.company_id = $1 AND j.date BETWEEN $2 AND $3`, [companyId, fy.from, fy.to]);
   const profit = roundMoney(r.revenue - r.expenses);
-  const taxable = Math.max(0, roundMoney(profit - Number(c.corporate_tax_threshold)));
-  const tax = roundMoney(taxable * Number(c.corporate_tax_rate) / 100);
+  const pack = await companyPack(tx, companyId);
+  // Countries with bands or marginal relief tax the whole profit; elsewhere the threshold is a tax-free amount.
+  const taxable = pack.corporateTax ? Math.max(0, profit) : Math.max(0, roundMoney(profit - Number(c.corporate_tax_threshold)));
+  const tax = pack.corporateTax ? pack.corporateTax(profit, Number(c.corporate_tax_rate), Number(c.corporate_tax_threshold))
+    : roundMoney(taxable * Number(c.corporate_tax_rate) / 100);
   const change = roundMoney(tax - r.provided);
   let journal = null;
   if (change !== 0) {
@@ -269,6 +273,29 @@ export async function provideCorporateTax(tx: Tx, ctx: Ctx, companyId: string, f
       ],
     });
   }
-  return { fiscalYear: fy, accountingProfit: profit, threshold: Number(c.corporate_tax_threshold), rate: Number(c.corporate_tax_rate),
+  return { fiscalYear: fy, accountingProfit: profit, threshold: Number(c.corporate_tax_threshold), rate: Number(c.corporate_tax_rate), rule: pack.corporateTaxRule ?? null,
     taxableAmount: taxable, tax, previouslyProvided: roundMoney(r.provided), posted: change, journalNo: journal?.no ?? null };
+}
+
+/** EC sales list for an EU company: supplies of goods and services to businesses in other EU states. */
+export async function ecSalesList(tx: Tx, ctx: Ctx, companyId: string, from: string, to: string) {
+  await authorize(tx, ctx, 'fin.report.read', { unitId: companyId });
+  const pack = await companyPack(tx, companyId);
+  if (pack.region !== 'EU') throw new ValidationError('the EC sales list is for companies in the EU');
+  const rows = await ecSalesRows(tx, companyId, from, to);
+  const missing = rows.filter((r) => !r.vat_number).map((r) => r.customer);
+  const csv = ['Country,VAT number,Customer,Goods,Services', ...rows.map((r) =>
+    [r.country, r.vat_number ?? '', `"${String(r.customer).replace(/"/g, '""')}"`, fixed(r.goods), fixed(r.services)].join(','))].join('\r\n') + '\r\n';
+  return { from, to, authority: pack.taxAuthority, rows, csv, fileName: `ec-sales-list-${from}-${to}.csv`,
+    problems: missing.length ? [`add the VAT number of ${missing.join(', ')}; EU supplies without the customer's VAT number are not zero rated`] : [] };
+}
+
+/** UK: the VAT return as the JSON body Making Tax Digital accepts, for the period key HMRC shows for the obligation. */
+export async function mtdVatReturn(tx: Tx, ctx: Ctx, companyId: string, from: string, to: string, periodKey: string) {
+  const pack = await companyPack(tx, companyId);
+  if (pack.country !== 'GB') throw new ValidationError('Making Tax Digital applies to UK companies');
+  if (!/^[A-Z0-9#]{4}$/.test(periodKey)) throw new ValidationError('the period key has 4 characters, as HMRC shows it for the obligation (for example 26A1)');
+  const r = await computeVatReturn(tx, ctx, companyId, from, to);
+  return { body: mtdBody(r, periodKey), fileName: `mtd-vat-${periodKey.replace('#', '_')}.json`,
+    note: 'Submitting to HMRC needs software recognised by HMRC; send this body with your MTD bridging software, or enter the nine boxes in it.' };
 }

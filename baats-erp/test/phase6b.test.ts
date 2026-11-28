@@ -93,7 +93,7 @@ describe('money in three decimals', () => {
 
 describe('GCC country packs', () => {
   it('sets up books for each country with its currency, tax number, chart and codes', async () => {
-    assert.deepEqual(country.packSummary().map((p) => [p.country, p.currency, p.decimals, p.vat]),
+    assert.deepEqual(country.packSummary().slice(0, 6).map((p) => [p.country, p.currency, p.decimals, p.vat]),
       [['AE', 'AED', 2, '5%'], ['SA', 'SAR', 2, '15%'], ['OM', 'OMR', 3, '5%'], ['BH', 'BHD', 3, '10%'], ['QA', 'QAR', 2, 'none'], ['KW', 'KWD', 3, 'none']]);
     await assert.rejects(tx(admin, (q) => setup.setupCompany(q, admin, { unitId: bh, legalName: 'Acme Bahrain WLL', taxRegistrationNo: 'BH123', openFrom: '2026-01-01' })), /15 digits/);
     await tx(admin, (q) => setup.setupCompany(q, admin, { unitId: bh, legalName: 'Acme Bahrain WLL', taxRegistrationNo: '200000000000003', openFrom: '2026-01-01' }));
@@ -268,13 +268,13 @@ describe('GCC payroll', () => {
 });
 
 describe('country packs over HTTP', () => {
-  it('lists the six packs with their decimals and VAT', async () => {
+  it('lists the packs with their decimals and VAT', async () => {
     const app = buildServer({ db: t.db, platformAdminKey: 'k' });
     const login = await app.inject({ method: 'POST', url: '/v1/auth/login', payload: { tenant: s.code, email: `admin@${s.code}.test`, password: PASSWORD } });
     const h = { authorization: `Bearer ${login.json().token}` };
     const packs = (await app.inject({ method: 'GET', url: '/v1/fin/country-packs', headers: h })).json();
     const kwPack = packs.find((p: any) => p.country === 'KW');
-    assert.deepEqual([packs.length, kwPack.decimals, kwPack.vat, kwPack.noVat], [6, 3, 'none', 'Kuwait has no VAT, so there is no VAT return']);
+    assert.deepEqual([packs.length, kwPack.decimals, kwPack.vat, kwPack.noVat], [13, 3, 'none', 'Kuwait has no VAT, so there is no VAT return']);
     const v = await app.inject({ method: 'GET', url: `/v1/fin/companies/${qa}/vat-return?from=2026-01-01&to=2026-03-31`, headers: h });
     assert.equal(v.statusCode, 422);
     await app.close();

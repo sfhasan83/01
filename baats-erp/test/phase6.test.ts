@@ -172,8 +172,9 @@ describe('interactive dashboard', () => {
 
 describe('country packs', () => {
   it('lists the packs and refuses a country without one', async () => {
-    assert.deepEqual(country.packSummary().map((p) => p.country), ['AE', 'SA', 'OM', 'BH', 'QA', 'KW']);
-    await assert.rejects(tx(admin, (q) => setup.setupCompany(q, admin, { unitId: s.units.uk, legalName: 'Acme UK Ltd', openFrom: '2026-01-01' })), /GB localisation pack is not available/);
+    assert.deepEqual(country.packSummary().map((p) => p.country).slice(0, 6), ['AE', 'SA', 'OM', 'BH', 'QA', 'KW']);
+    const be = await tx(admin, async (q) => (await org.createUnit(q, admin, { typeCode: 'company', parentId: s.units.root, code: 'BE01', name: 'Acme Belgium', countryCode: 'BE', currencyCode: 'EUR' })).id as string);
+    await assert.rejects(tx(admin, (q) => setup.setupCompany(q, admin, { unitId: be, legalName: 'Acme Belgium', openFrom: '2026-01-01' })), /BE localisation pack is not available/);
   });
 
   it('sets up Saudi books: chart, 15% VAT codes with exemption reasons, and GOSI rules', async () => {

@@ -93,6 +93,10 @@ export function registerFinance(app: FastifyInstance, run: Run): void {
     run(req, (tx, ctx) => tax.computeVatReturn(tx, ctx, req.params.company, q(req).from, q(req).to)));
   app.post<{ Params: P }>('/v1/fin/companies/:company/vat-returns', { schema: body(['from', 'to'], { from: date, to: date, filedRef: str }) },
     async (req, reply) => { reply.status(201); const b = req.body as B; return run(req, (tx, ctx) => tax.fileVatReturn(tx, ctx, req.params.company, b.from, b.to, b.filedRef)); });
+  app.get<{ Params: P }>('/v1/fin/companies/:company/ec-sales-list', async (req) =>
+    run(req, (tx, ctx) => tax.ecSalesList(tx, ctx, req.params.company, q(req).from, q(req).to)));
+  app.get<{ Params: P }>('/v1/fin/companies/:company/vat-return/mtd', async (req) =>
+    run(req, (tx, ctx) => tax.mtdVatReturn(tx, ctx, req.params.company, q(req).from, q(req).to, q(req).periodKey ?? '')));
   app.post<{ Params: P }>('/v1/fin/companies/:company/corporate-tax', { schema: body(['fiscalYear'], { fiscalYear: { type: 'integer' }, postingDate: date }) },
     async (req) => { const b = req.body as B; return run(req, (tx, ctx) => tax.provideCorporateTax(tx, ctx, req.params.company, b.fiscalYear, b.postingDate)); });
 

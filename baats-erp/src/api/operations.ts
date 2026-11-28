@@ -102,11 +102,16 @@ export function registerOperations(app: FastifyInstance, run: Run): void {
   app.post<{ Params: P }>('/v1/sal/orders/:id/cancel', async (req) => run(req, (tx, ctx) => sal.cancelOrder(tx, ctx, req.params.id)));
 
   // HR and payroll
+  const TAX_FIELDS = { taxCode: { type: ['string', 'null'], maxLength: 20 }, taxCredits: { type: ['number', 'null'], minimum: 0 },
+    rateCutOff: { type: ['number', 'null'], minimum: 0 }, withholdingPct: { type: ['number', 'null'], minimum: 0, maximum: 100 },
+    previousPay: { type: 'number', minimum: 0 }, previousTax: { type: 'number' }, previousUsc: { type: 'number', minimum: 0 } };
   app.post('/v1/hr/contracts', {
     schema: body(['employeeId', 'companyId', 'startDate', 'basic'], { employeeId: uuid, companyId: uuid, startDate: date, endDate: date,
       contractType: { enum: ['limited', 'unlimited'] }, basic: pos, housing: nonneg, transport: nonneg, otherAllowances: nonneg, currency: str,
-      annualLeaveDays: { type: 'integer', minimum: 0 }, wpsPersonId: str, bankRoutingCode: str, iban: str }),
+      annualLeaveDays: { type: 'integer', minimum: 0 }, wpsPersonId: str, bankRoutingCode: str, iban: str, ...TAX_FIELDS }),
   }, async (req, reply) => created(reply, run(req, (tx, ctx) => hr.createContract(tx, ctx, req.body as B))));
+  app.patch<{ Params: P }>('/v1/hr/contracts/:id/tax', { schema: body([], TAX_FIELDS) },
+    async (req) => run(req, (tx, ctx) => hr.setContractTax(tx, ctx, req.params.id, req.body as B)));
   app.get<{ Params: P }>('/v1/hr/companies/:company/contracts', async (req) => run(req, (tx, ctx) => hr.listContracts(tx, ctx, req.params.company)));
   app.post<{ Params: P }>('/v1/hr/contracts/:id/end', { schema: body(['endDate'], { endDate: date, reason: { enum: hr.END_REASONS } }) },
     async (req) => run(req, (tx, ctx) => hr.endContract(tx, ctx, req.params.id, (req.body as B).endDate, (req.body as B).reason)));
@@ -132,6 +137,7 @@ export function registerOperations(app: FastifyInstance, run: Run): void {
   app.put<{ Params: P }>('/v1/hr/companies/:company/contribution-rules', {
     schema: body(['code'], { code: str, name: str, appliesTo: { enum: ['nationals', 'non_nationals', 'all'] }, employeePct: nonneg, employerPct: nonneg,
       base: { enum: ['basic', 'basic_housing', 'gross'] }, monthlyCap: { type: ['number', 'null'], exclusiveMinimum: 0 }, active: { type: 'boolean' },
-      afterYears: { type: ['number', 'null'], exclusiveMinimum: 0 }, employerPctAfter: { type: ['number', 'null'], minimum: 0 } }),
+      afterYears: { type: ['number', 'null'], exclusiveMinimum: 0 }, employerPctAfter: { type: ['number', 'null'], minimum: 0 },
+      monthlyThreshold: { type: ['number', 'null'], minimum: 0 }, preTax: { type: 'boolean' } }),
   }, async (req) => run(req, (tx, ctx) => hr.saveContributionRule(tx, ctx, req.params.company, req.body as B)));
 }

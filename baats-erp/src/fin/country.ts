@@ -2,6 +2,7 @@ import { ValidationError } from '../core/errors.ts';
 import { one, type Tx } from '../core/db.ts';
 import { minorUnits, roundMoney, useBaseCurrency } from '../core/money.ts';
 import { UAE_CHART, UAE_TAX_CODES, type AccountTemplate } from './coa.ts';
+import { EUROPE_PACKS } from './europe.ts';
 
 /**
  * Country packs. Everything that differs by country sits here, behind one
@@ -26,9 +27,21 @@ export interface ContributionTemplate {
   base: 'basic' | 'basic_housing' | 'gross'; monthlyCap: number | null;
   /** A higher employer rate from this many years of service (Bahrain's leaving indemnity). */
   afterYears?: number; employerPctAfter?: number;
+  /** Earnings up to this much a month are not charged (UK National Insurance thresholds). */
+  monthlyThreshold?: number | null;
+  /** The employee share is taken before income tax (pension under a net pay arrangement, deductible contributions). */
+  preTax?: boolean;
+}
+/** How income tax is withheld from pay. */
+export interface IncomeTaxRule {
+  method: 'none' | 'uk_paye' | 'ie_paye' | 'rate';
+  rule: string;
+  /** What is not calculated, where employees' rates are entered instead. */
+  gap?: string;
 }
 export interface CountryPack {
   country: string; name: string; currency: string;
+  region: 'GCC' | 'UK' | 'EU';
   taxAuthority: string;
   /** The VAT return form, or null where the country has no VAT. */
   vatForm: string | null; vatFormName: string;
@@ -40,12 +53,19 @@ export interface CountryPack {
   defaults: { corporateTaxRate: number; corporateTaxThreshold: number };
   /** Why the corporate tax provision is not available for this country, or null when it is. */
   corporateTaxGap: string | null;
+  /** Tax on a year's profit, where it is not a flat rate above the threshold (bands, marginal relief). */
+  corporateTax?: (profit: number, rate: number, threshold: number) => number;
+  corporateTaxRule?: string;
   /** The e-invoice standard, or null where none is in force yet. */
-  einvoice: 'pint_ae' | 'zatca' | null;
+  einvoice: 'pint_ae' | 'zatca' | 'peppol' | 'xrechnung' | null;
   /** Why e-invoices are not issued, where einvoice is null. */
   einvoiceGap?: string;
   /** The UAE wage protection system file is produced when salaries are paid. */
   wps: boolean;
+  /** A SEPA credit transfer file (pain.001) is produced when salaries are paid. */
+  sepa?: boolean;
+  /** Income tax withheld from pay; none in the GCC. */
+  incomeTax?: IncomeTaxRule;
   /** The wage protection file this country uses that is not produced yet, if any. */
   payrollFileGap?: string;
   contributions: ContributionTemplate[];
@@ -153,7 +173,7 @@ export function kuwaitEndOfService(pay: { basic: number; housing: number }, join
 }
 
 const UAE: CountryPack = {
-  country: 'AE', name: 'United Arab Emirates', currency: 'AED', taxAuthority: 'FTA', vatForm: 'AE-VAT201', vatFormName: 'FTA VAT return (VAT 201)',
+  region: 'GCC', country: 'AE', name: 'United Arab Emirates', currency: 'AED', taxAuthority: 'FTA', vatForm: 'AE-VAT201', vatFormName: 'FTA VAT return (VAT 201)',
   chart: UAE_CHART,
   taxCodes: UAE_TAX_CODES.map((t) => ({ ...t })),
   taxNumber: { test: (s) => /^\d{15}$/.test(s), message: 'a UAE TRN has 15 digits' },
@@ -208,7 +228,7 @@ export const SAUDI_CONTRIBUTIONS: ContributionTemplate[] = [
 ];
 
 const SAUDI: CountryPack = {
-  country: 'SA', name: 'Saudi Arabia', currency: 'SAR', taxAuthority: 'ZATCA', vatForm: 'SA-VAT', vatFormName: 'ZATCA VAT return',
+  region: 'GCC', country: 'SA', name: 'Saudi Arabia', currency: 'SAR', taxAuthority: 'ZATCA', vatForm: 'SA-VAT', vatFormName: 'ZATCA VAT return',
   chart: SAUDI_CHART,
   taxCodes: SAUDI_TAX_CODES,
   taxNumber: { test: (s) => /^3\d{13}3$/.test(s), message: 'a Saudi VAT number has 15 digits and starts and ends with 3' },
@@ -246,7 +266,7 @@ const NO_VAT_CODES = (country: string): TaxCodeTemplate[] => [
  * injury 1% employer for everyone; on gross pay up to OMR 3,000 a month.
  */
 const OMAN: CountryPack = {
-  country: 'OM', name: 'Oman', currency: 'OMR', taxAuthority: 'Oman Tax Authority', vatForm: 'OM-VAT', vatFormName: 'Oman VAT return',
+  region: 'GCC', country: 'OM', name: 'Oman', currency: 'OMR', taxAuthority: 'Oman Tax Authority', vatForm: 'OM-VAT', vatFormName: 'Oman VAT return',
   chart: chartWith({ '2110': 'VAT Payable to the Tax Authority', '2400': 'Income Tax Payable', '5950': 'Income Tax Expense',
     '2220': 'Social Protection Fund Contributions Payable', '5930': 'Social Protection Employer Contributions' }),
   taxCodes: gccVatCodes(5, 'basic foodstuffs, medicines and healthcare', 'financial services and residential property'),
@@ -277,7 +297,7 @@ const OMAN: CountryPack = {
  * wages up to BHD 4,000 a month.
  */
 const BAHRAIN: CountryPack = {
-  country: 'BH', name: 'Bahrain', currency: 'BHD', taxAuthority: 'NBR', vatForm: 'BH-VAT', vatFormName: 'NBR VAT return',
+  region: 'GCC', country: 'BH', name: 'Bahrain', currency: 'BHD', taxAuthority: 'NBR', vatForm: 'BH-VAT', vatFormName: 'NBR VAT return',
   chart: chartWith({ '2110': 'VAT Payable to the NBR', '2400': 'Tax Payable', '5950': 'Tax Expense',
     '2220': 'SIO Contributions Payable', '5930': 'SIO Employer Contributions' }),
   taxCodes: gccVatCodes(10, 'basic foodstuffs, healthcare and education', 'financial services and residential property'),
@@ -305,7 +325,7 @@ const BAHRAIN: CountryPack = {
  * profits. GRSIA for Qatari employees: pension 7% employee and 14% employer.
  */
 const QATAR: CountryPack = {
-  country: 'QA', name: 'Qatar', currency: 'QAR', taxAuthority: 'GTA', vatForm: null, vatFormName: 'No VAT return',
+  region: 'GCC', country: 'QA', name: 'Qatar', currency: 'QAR', taxAuthority: 'GTA', vatForm: null, vatFormName: 'No VAT return',
   noVat: 'Qatar has no VAT, so there is no VAT return',
   chart: chartWith({ '2110': 'Tax Settlement Payable to the GTA', '2400': 'Income Tax Payable', '5950': 'Income Tax Expense',
     '2220': 'GRSIA Pension Contributions Payable', '5930': 'GRSIA Employer Pension Contributions' }),
@@ -331,7 +351,7 @@ const QATAR: CountryPack = {
  * employees: about 10.5% employee and 11.5% employer on wages up to KWD 2,750.
  */
 const KUWAIT: CountryPack = {
-  country: 'KW', name: 'Kuwait', currency: 'KWD', taxAuthority: 'Ministry of Finance', vatForm: null, vatFormName: 'No VAT return',
+  region: 'GCC', country: 'KW', name: 'Kuwait', currency: 'KWD', taxAuthority: 'Ministry of Finance', vatForm: null, vatFormName: 'No VAT return',
   noVat: 'Kuwait has no VAT, so there is no VAT return',
   chart: chartWith({ '2110': 'Tax Settlement Payable', '2400': 'Income Tax, Zakat and NLST Payable', '5950': 'Income Tax, Zakat and NLST Expense',
     '2220': 'PIFSS Contributions Payable', '5930': 'PIFSS Employer Contributions' }),
@@ -351,7 +371,7 @@ const KUWAIT: CountryPack = {
   endOfService: kuwaitEndOfService,
 };
 
-export const PACKS: Record<string, CountryPack> = { AE: UAE, SA: SAUDI, OM: OMAN, BH: BAHRAIN, QA: QATAR, KW: KUWAIT };
+export const PACKS: Record<string, CountryPack> = { AE: UAE, SA: SAUDI, OM: OMAN, BH: BAHRAIN, QA: QATAR, KW: KUWAIT, ...EUROPE_PACKS };
 
 export function packFor(country: string): CountryPack {
   const p = PACKS[country];
@@ -370,11 +390,14 @@ export async function companyPack(tx: Tx, companyId: string): Promise<CountryPac
 export const packSummary = () => Object.values(PACKS).map((p) => ({
   country: p.country, name: p.name, currency: p.currency, taxAuthority: p.taxAuthority, vatForm: p.vatFormName,
   vat: p.vatForm ? `${p.taxCodes.find((t) => t.category === 'standard')?.rate ?? 0}%` : 'none', noVat: p.noVat ?? null,
-  einvoice: p.einvoice === 'zatca' ? 'ZATCA (Fatoora) UBL 2.1 with QR code and hash chain' : p.einvoice === 'pint_ae' ? 'PINT AE (Peppol) UBL 2.1' : p.einvoiceGap ?? 'none',
+  region: p.region,
+  einvoice: p.einvoice === 'zatca' ? 'ZATCA (Fatoora) UBL 2.1 with QR code and hash chain' : p.einvoice === 'pint_ae' ? 'PINT AE (Peppol) UBL 2.1'
+    : p.einvoice === 'xrechnung' ? 'XRechnung 3.0 (EN 16931) UBL 2.1' : p.einvoice === 'peppol' ? 'Peppol BIS Billing 3.0 (EN 16931) UBL 2.1' : p.einvoiceGap ?? 'none',
+  incomeTax: p.incomeTax ? { rule: p.incomeTax.rule, gap: p.incomeTax.gap ?? null } : null,
   decimals: minorUnits(p.currency),
   taxCodes: p.taxCodes.map((t) => ({ code: t.code, name: t.name, rate: t.rate })),
   contributions: p.contributions.map((c) => ({ code: c.code, name: c.name, appliesTo: c.appliesTo, employeePct: c.employeePct, employerPct: c.employerPct, monthlyCap: c.monthlyCap,
-    afterYears: c.afterYears ?? null, employerPctAfter: c.employerPctAfter ?? null })),
-  endOfService: p.endOfServiceRule, payrollFile: p.wps ? 'WPS salary information file (SIF)' : null, payrollFileGap: p.payrollFileGap ?? null,
-  corporateTax: p.corporateTaxGap ? 'not covered yet' : `${p.defaults.corporateTaxRate}% above ${p.defaults.corporateTaxThreshold.toLocaleString('en')}`,
+    afterYears: c.afterYears ?? null, employerPctAfter: c.employerPctAfter ?? null, monthlyThreshold: c.monthlyThreshold ?? null, preTax: c.preTax ?? false })),
+  endOfService: p.endOfServiceRule, payrollFile: p.wps ? 'WPS salary information file (SIF)' : p.sepa ? 'SEPA credit transfer (pain.001)' : null, payrollFileGap: p.payrollFileGap ?? null,
+  corporateTax: p.corporateTaxGap ? 'not covered yet' : p.corporateTaxRule ?? `${p.defaults.corporateTaxRate}% above ${p.defaults.corporateTaxThreshold.toLocaleString('en')}`,
 }));

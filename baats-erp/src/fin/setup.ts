@@ -59,9 +59,10 @@ export async function setupCompany(tx: Tx, ctx: Ctx, input: CompanySetup) {
   }
   for (const r of pack.contributions) {
     await tx.query(`INSERT INTO hr.contribution_rules (tenant_id, company_id, code, name, applies_to, employee_pct, employer_pct, base, monthly_cap,
-                       after_years, employer_pct_after)
-      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [input.unitId, r.code, r.name, r.appliesTo, r.employeePct, r.employerPct, r.base, r.monthlyCap, r.afterYears ?? null, r.employerPctAfter ?? null]);
+                       after_years, employer_pct_after, monthly_threshold, pre_tax)
+      VALUES (app.tenant(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [input.unitId, r.code, r.name, r.appliesTo, r.employeePct, r.employerPct, r.base, r.monthlyCap, r.afterYears ?? null, r.employerPctAfter ?? null,
+        r.monthlyThreshold ?? null, r.preTax ?? false]);
   }
 
   await openPeriods(tx, input.unitId, input.openFrom, 12);

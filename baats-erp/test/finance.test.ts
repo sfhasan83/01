@@ -8,6 +8,7 @@ import * as docs from '../src/fin/documents.ts';
 import * as tax from '../src/fin/tax.ts';
 import * as reports from '../src/fin/reports.ts';
 import * as wf from '../src/workflow/engine.ts';
+import * as org from '../src/org/service.ts';
 import { buildServer } from '../src/api/server.ts';
 import { createTestDb, giveRole, PASSWORD, seedOrg, type Seed, type TestDb } from './helpers.ts';
 
@@ -71,7 +72,8 @@ describe('company books', () => {
   });
   it('only legal entities with a supported country keep books', async () => {
     await assert.rejects(tx(admin, (q) => setup.setupCompany(q, admin, { unitId: s.units.sales, legalName: 'x', openFrom: '2026-01-01' })), /legal-entity/);
-    await assert.rejects(tx(admin, (q) => setup.setupCompany(q, admin, { unitId: s.units.uk, legalName: 'x', openFrom: '2026-01-01' })), /set the unit|localisation/);
+    const be = await tx(admin, async (q) => (await org.createUnit(q, admin, { typeCode: 'company', parentId: s.units.root, code: 'BE01', name: 'Acme Belgium', countryCode: 'BE', currencyCode: 'EUR' })).id as string);
+    await assert.rejects(tx(admin, (q) => setup.setupCompany(q, admin, { unitId: be, legalName: 'x', openFrom: '2026-01-01' })), /localisation/);
     await assert.rejects(tx(admin, (q) => setup.setupCompany(q, admin, { unitId: co, legalName: 'x', openFrom: '2026-01-01' })), ConflictError);
   });
   it('lets the company add its own accounts under a group', async () => {
@@ -325,9 +327,11 @@ describe('finance API', () => {
       };
       const login = await call('POST', '/v1/auth/login', undefined, { tenant: s.code, email: `admin@${s.code}.test`, password: PASSWORD });
       const tok = login.body.token;
-      // Give the UK company a GB country so the localisation check is what refuses it.
-      const uk = await call('POST', '/v1/fin/companies', tok, { unitId: s.units.uk, legalName: 'Acme UK Ltd', openFrom: '2026-01-01' });
-      assert.equal(uk.status, 422);
+      // A country without a localisation pack (Belgium) is refused.
+      const units = await call('GET', '/v1/org/units', tok);
+      const be = (units.body as any[]).find((u) => u.code === 'BE01');
+      const refused = await call('POST', '/v1/fin/companies', tok, { unitId: be.id, legalName: 'Acme Belgium', openFrom: '2026-01-01' });
+      assert.equal(refused.status, 422);
       const inv = await call('POST', `/v1/fin/companies/${co}/invoices`, tok, { kind: 'sales_invoice', partyId: customer, date: '2027-01-05',
         lines: [{ description: 'API work', quantity: 2, unitPrice: 250, taxCode: 'SR' }] });
       assert.equal(inv.status, 201, JSON.stringify(inv.body));

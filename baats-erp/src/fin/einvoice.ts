@@ -6,6 +6,7 @@ import { roundMoney } from './ledger.ts';
 import { fixed } from '../core/money.ts';
 import { companyPack } from './country.ts';
 import { verifyZatcaChain, zatcaIssue, zatcaPreview } from './zatca.ts';
+import { enIssue, enPreview } from './peppol.ts';
 
 /**
  * UAE e-invoicing: PINT AE (Peppol International, UAE specialisation) UBL 2.1, ported
@@ -218,6 +219,10 @@ export async function preview(tx: Tx, ctx: Ctx, invoiceId: string) {
     await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: company });
     return zatcaPreview(tx, invoiceId);
   }
+  if (pack.einvoice === 'peppol' || pack.einvoice === 'xrechnung') {
+    await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: company });
+    return enPreview(tx, invoiceId, pack.einvoice);
+  }
   const { inv, model, problems } = await buildModel(tx, invoiceId);
   await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: inv.company_id });
   return { ready: problems.length === 0, problems, xml: problems.length ? null : toXml(model, '00000000-0000-0000-0000-000000000000') };
@@ -231,6 +236,10 @@ export async function issue(tx: Tx, ctx: Ctx, invoiceId: string) {
   if (pack.einvoice === 'zatca') {
     await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: company });
     return zatcaIssue(tx, ctx, invoiceId);
+  }
+  if (pack.einvoice === 'peppol' || pack.einvoice === 'xrechnung') {
+    await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: company });
+    return enIssue(tx, ctx, invoiceId, pack.einvoice);
   }
   const { inv, model, problems } = await buildModel(tx, invoiceId);
   await authorize(tx, ctx, 'fin.einvoice.manage', { unitId: inv.company_id });
@@ -294,6 +303,7 @@ export async function updateCompanyDetails(tx: Tx, ctx: Ctx, companyId: string, 
   if (pack.country === 'AE' && d.taxRegistrationNo && !isTRN(d.taxRegistrationNo)) throw new ValidationError('a UAE TRN has 15 digits, starts with 1 and ends with 03');
   if (d.taxRegistrationNo && !pack.taxNumber.test(d.taxRegistrationNo)) throw new ValidationError(pack.taxNumber.message);
   if (d.emirate && pack.country !== 'AE') throw new ValidationError('the emirate applies to UAE companies');
+  if (pack.region === 'UK' && d.postalCode && !/^[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}$/i.test(d.postalCode)) throw new ValidationError('a UK postcode looks like SW1A 1AA');
   if (pack.country === 'SA' && d.buildingNo && !/^\d{4}$/.test(d.buildingNo)) throw new ValidationError('the building number has 4 digits');
   if (pack.country === 'SA' && d.postalCode && !/^\d{5}$/.test(d.postalCode)) throw new ValidationError('the postal code has 5 digits');
   const cols: Record<string, string> = { street: 'street', city: 'city', emirate: 'emirate', email: 'email', phone: 'phone', iban: 'iban',

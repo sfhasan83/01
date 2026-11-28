@@ -64,7 +64,7 @@ export const PASSWORD = 'Correct-Horse-9-Battery';
 export async function seedOrg(db: Db, code = `acme-${randomBytes(3).toString('hex')}`) {
   const t = await onboardTenant(db, {
     code, name: 'Acme Group', baseCurrency: 'AED', countryCode: 'AE',
-    admin: { email: `admin@${code}.test`, displayName: 'Admin', password: PASSWORD },
+    admin: { email: `admin@${code}.test`, displayName: 'Admin', password: PASSWORD }, plan: 'ONPREM',
   });
   const adminCtx: Ctx = { tenantId: t.tenantId, userId: t.adminUserId };
   const ids = await db.withTenant(adminCtx, async (tx) => {

@@ -5,7 +5,7 @@
 //        node launcher.mjs --stop   stop everything
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, rmSync, statSync, createReadStream, createWriteStream } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, rmSync, statSync, copyFileSync, createReadStream, createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { createServer } from 'node:net';
 import { createServer as createHttpServer } from 'node:http';
@@ -193,6 +193,8 @@ async function main() {
   const app = buildServer({ db, platformAdminKey: cfg.platformAdminKey, logger: false, ai: { secretKey: cfg.secretKey, allowPrivateUrls: true },
     limits: { apiPerMinute: Number(cfg.apiRequestsPerMinute) || undefined, loginsPer5Min: Number(cfg.loginsPer5Minutes) || undefined },
     // publicUrl: the address people reach this PC at, when it is published (sign-in return and card payment pages).
+    // The organizations made on this PC are on the on-premises licence: no user, company or time limits.
+    defaultPlan: 'ONPREM',
     connectors: { publicUrl: typeof cfg.publicUrl === 'string' && cfg.publicUrl ? cfg.publicUrl : undefined, ssoAllowHttp: cfg.ssoAllowHttp === true } });
 
   const consoleHtml = readFileSync(join(HERE, 'console.html'), 'utf8');
@@ -246,30 +248,50 @@ async function main() {
   const backupMod = await import(pathToFileURL(join(APP_DIR, 'src', 'platform', 'backup.ts')).href);
   const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
   const listBackups = () => readdirSync(BACKUP_DIR).filter((n) => /^baats-\d{8}-\d{6}-[a-z-]+\.baatsbak$/.test(n)).sort().reverse()
-    .map((name) => { const st = statSync(join(BACKUP_DIR, name)); return { name, bytes: st.size, at: st.mtime.toISOString(), kind: name.slice(22, -9) }; });
+    .map((name) => { const st = statSync(join(BACKUP_DIR, name)); return { name, bytes: st.size, at: st.mtime.toISOString(), kind: name.slice(22, -9), encrypted: backupMod.isEncrypted(join(BACKUP_DIR, name)) }; });
+  // Encryption protects the backups that leave this PC (downloads, the second folder); the passphrase is kept in config.json
+  // so the daily backups can be made unattended, and it is needed to restore them anywhere else.
+  const passphrase = () => (typeof cfg.backupPassphrase === 'string' && cfg.backupPassphrase ? cfg.backupPassphrase : undefined);
+  // A second folder (another disk, a network share, a OneDrive or Google Drive folder) gets a copy of every backup.
+  const copyDir = () => (typeof cfg.backupCopyDir === 'string' && cfg.backupCopyDir ? cfg.backupCopyDir : null);
+  const DRILLS = join(DATA_ROOT, 'restore-drills.json');
+  const drills = () => { try { return JSON.parse(readFileSync(DRILLS, 'utf8')); } catch { return []; } };
   let backupBusy = false;
   const makeBackup = async (kind) => {
     if (backupBusy) throw new Error('a backup or restore is already running');
     backupBusy = true;
     try {
       const file = join(BACKUP_DIR, `baats-${stamp()}-${kind}.baatsbak`);
-      const r = await backupMod.backupDatabase(ownerUrl('baats'), file, version);
+      const r = await backupMod.backupDatabase(ownerUrl('baats'), file, version, { passphrase: passphrase() });
       // Keep the last 14 daily backups and the last 5 made before a restore; manual ones stay until removed by hand.
       const keep = { auto: KEEP_AUTO, 'before-restore': 5 };
       for (const [k, n] of Object.entries(keep)) for (const old of listBackups().filter((b) => b.kind === k).slice(n)) rmSync(join(BACKUP_DIR, old.name), { force: true });
-      say(`Backup made: ${file} (${Math.round(r.bytes / 1024)} KB)`);
-      return { name: file.split(/[\\/]/).pop(), bytes: r.bytes, rows: r.rows, at: r.createdAt };
+      say(`Backup made: ${file} (${Math.round(r.bytes / 1024)} KB${r.encrypted ? ', encrypted' : ''})`);
+      const name = file.split(/[\\/]/).pop();
+      let copied = null;
+      if (copyDir()) {
+        try {
+          copyFileSync(file, join(copyDir(), name));
+          // The second folder keeps the same number of daily backups.
+          const there = readdirSync(copyDir()).filter((n) => /^baats-\d{8}-\d{6}-auto\.baatsbak$/.test(n)).sort().reverse();
+          for (const old of there.slice(KEEP_AUTO)) rmSync(join(copyDir(), old), { force: true });
+          copied = join(copyDir(), name);
+        } catch (err) { say(`The copy to ${copyDir()} failed: ${err.message}`); copied = `failed: ${err.message}`; }
+      }
+      return { name, bytes: r.bytes, rows: r.rows, at: r.createdAt, encrypted: r.encrypted, copied };
     } finally { backupBusy = false; }
   };
   const restoreBackup = async (name) => {
     // Check the file before anything else, so a wrong file changes nothing.
-    try { await backupMod.readBackupHeader(join(BACKUP_DIR, name)); } catch (err) { throw Object.assign(err, { status: 422 }); }
+    const pass = typeof name === 'object' ? name.passphrase : passphrase();
+    if (typeof name === 'object') name = name.name;
+    try { await backupMod.readBackupHeader(join(BACKUP_DIR, name), pass); } catch (err) { throw Object.assign(err, { status: 422 }); }
     await makeBackup('before-restore');
     backupBusy = true;
     try {
       say(`Restoring ${name}...`);
       const r = await backupMod.restoreDatabase({ adminUrl: ownerUrl('postgres'), urlFor: ownerUrl, database: 'baats', file: join(BACKUP_DIR, name),
-        migrationsDir: join(APP_DIR, 'db', 'migrations'), log: say });
+        migrationsDir: join(APP_DIR, 'db', 'migrations'), passphrase: pass, log: say });
       const c = new pg.Client({ connectionString: ownerUrl('baats') });
       await c.connect();
       try { await grantNewPermissions(c); } finally { await c.end(); }
@@ -284,10 +306,34 @@ async function main() {
       return { restored: name, backupOf: r.header.createdAt, fromVersion: r.header.appVersion, rows: r.rows, updatedWith: r.newerMigrations };
     } finally { backupBusy = false; }
   };
+  // A restore drill: the backup is restored beside the live database, checked (audit chains, balanced journals) and dropped.
+  const drill = async (name) => {
+    if (backupBusy) throw new Error('a backup or restore is already running');
+    const b = name ? listBackups().find((x) => x.name === name) : listBackups()[0];
+    if (!b) throw Object.assign(new Error(name ? 'no such backup' : 'there is no backup yet; make one first'), { status: 404 });
+    backupBusy = true;
+    try {
+      say(`Restore drill with ${b.name}...`);
+      const r = await backupMod.verifyBackup({ adminUrl: ownerUrl('postgres'), urlFor: ownerUrl, database: 'baats', file: join(BACKUP_DIR, b.name),
+        migrationsDir: join(APP_DIR, 'db', 'migrations'), passphrase: passphrase() });
+      const entry = { at: new Date().toISOString(), backup: b.name, ok: r.ok, rows: r.rows, seconds: r.seconds, tenants: r.tenants, problems: r.problems };
+      writeFileSync(DRILLS, JSON.stringify([entry, ...drills()].slice(0, 20), null, 2));
+      say(r.ok ? `Restore drill passed: ${r.rows} rows in ${r.seconds} s, audit trails intact` : `Restore drill FAILED: ${r.problems.join('; ')}`);
+      return entry;
+    } catch (err) {
+      const entry = { at: new Date().toISOString(), backup: b.name, ok: false, problems: [err.message] };
+      writeFileSync(DRILLS, JSON.stringify([entry, ...drills()].slice(0, 20), null, 2));
+      say(`Restore drill FAILED: ${err.message}`);
+      return entry;
+    } finally { backupBusy = false; }
+  };
   const autoBackup = async () => {
     const today = stamp().slice(0, 8);
     if (listBackups().some((b) => b.kind === 'auto' && b.name.slice(6, 14) === today)) return;
-    try { await makeBackup('auto'); } catch (err) { say(`Automatic backup failed: ${err.message}`); }
+    try { await makeBackup('auto'); } catch (err) { say(`Automatic backup failed: ${err.message}`); return; }
+    // Once a week, prove the newest backup can be restored.
+    const last = drills()[0];
+    if (!last || Date.now() - Date.parse(last.at) > 7 * 86_400_000) await drill().catch(() => {});
   };
   const backupTimer = setInterval(autoBackup, 3_600_000);
 
@@ -318,7 +364,30 @@ async function main() {
       }
       if (path === '/local/backups' || path.startsWith('/local/backups/') || path === '/local/restore') {
         if (!(await mayManage(req, 'sys.backup'))) return send(res, 403, 'application/json', '{"error":"forbidden","message":"only someone with the sys.backup permission can work with backups"}');
-        if (req.method === 'GET' && path === '/local/backups') return send(res, 200, 'application/json', JSON.stringify({ dir: BACKUP_DIR, backups: listBackups(), keepAuto: KEEP_AUTO, busy: backupBusy }));
+        if (req.method === 'GET' && path === '/local/backups') return send(res, 200, 'application/json', JSON.stringify({ dir: BACKUP_DIR, backups: listBackups(), keepAuto: KEEP_AUTO, busy: backupBusy,
+          encrypting: !!passphrase(), copyDir: copyDir(), drills: drills() }));
+        if (req.method === 'POST' && path === '/local/backups/settings') {
+          const b = JSON.parse((await readBody(req)) || '{}');
+          if ('passphrase' in b) {
+            if (b.passphrase !== null && (typeof b.passphrase !== 'string' || b.passphrase.length < 12)) return send(res, 422, 'application/json', '{"error":"validation_failed","message":"the passphrase needs at least 12 characters"}');
+            cfg.backupPassphrase = b.passphrase || undefined;
+          }
+          if ('copyDir' in b) {
+            if (b.copyDir) {
+              try {
+                if (!statSync(b.copyDir).isDirectory()) throw new Error('not a folder');
+                const probe = join(b.copyDir, `.baats-write-test-${process.pid}`); writeFileSync(probe, 'x'); rmSync(probe);
+              } catch (err) { return send(res, 422, 'application/json', JSON.stringify({ error: 'validation_failed', message: `BAATS cannot write to ${b.copyDir}: ${err.message}` })); }
+            }
+            cfg.backupCopyDir = b.copyDir || undefined;
+          }
+          writeFileSync(CONFIG, JSON.stringify(cfg, null, 2));
+          return send(res, 200, 'application/json', JSON.stringify({ encrypting: !!passphrase(), copyDir: copyDir() }));
+        }
+        if (req.method === 'POST' && path === '/local/backups/drill') {
+          const name = new URL(req.url, 'http://x').searchParams.get('name');
+          try { return send(res, 200, 'application/json', JSON.stringify(await drill(name))); } catch (err) { return send(res, err.status ?? 500, 'application/json', JSON.stringify({ error: 'failed', message: err.message })); }
+        }
         if (req.method === 'POST' && path === '/local/backups') { const b = await makeBackup('manual'); return send(res, 200, 'application/json', JSON.stringify(b)); }
         if (req.method === 'GET' && path.startsWith('/local/backups/')) {
           const name = decodeURIComponent(path.slice('/local/backups/'.length));
@@ -336,7 +405,8 @@ async function main() {
             await pipeline(req, createWriteStream(join(BACKUP_DIR, name), { mode: 0o600 }));
           } else if (!listBackups().some((x) => x.name === name)) return send(res, 404, 'application/json', '{"error":"not_found","message":"no such backup"}');
           try {
-            const r = await restoreBackup(name);
+            const typed = req.headers['x-backup-passphrase'];
+            const r = await restoreBackup(typed ? { name, passphrase: String(typed) } : name);
             return send(res, 200, 'application/json', JSON.stringify(r));
           } catch (err) {
             if (!q.get('name')) rmSync(join(BACKUP_DIR, name), { force: true });
@@ -344,6 +414,15 @@ async function main() {
             throw err;
           }
         }
+      }
+      // The service operator's pages (plans, subscriptions, billing): this PC holds the platform key, so they are
+      // passed on with it for someone who has sys.platform in their organization.
+      if (path.startsWith('/local/platform/')) {
+        if (!(await mayManage(req, 'sys.platform'))) return send(res, 403, 'application/json', '{"error":"forbidden","message":"only someone with the sys.platform permission can operate the service"}');
+        const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readBody(req) : undefined;
+        const r = await app.inject({ method: req.method, url: '/v1/platform/' + req.url.slice('/local/platform/'.length), payload: body,
+          headers: { 'x-platform-admin-key': cfg.platformAdminKey, ...(body ? { 'content-type': 'application/json' } : {}) } });
+        return send(res, r.statusCode, 'application/json', r.body);
       }
       // A webhook receiver for trying webhooks without another system; keeps the last 50 messages in memory.
       if (req.method === 'POST' && path === '/local/test-receiver') {

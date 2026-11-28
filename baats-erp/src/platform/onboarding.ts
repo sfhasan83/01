@@ -4,6 +4,7 @@ import { insertAssignment, insertUser } from '../iam/service.ts';
 import { DEFAULT_UNIT_TYPES } from '../org/service.ts';
 import { insertDefinition } from '../workflow/engine.ts';
 import { PARTY_WORKFLOW } from '../mdm/service.ts';
+import { startSubscription } from './billing.ts';
 
 export interface OnboardInput {
   code: string;
@@ -11,6 +12,9 @@ export interface OnboardInput {
   baseCurrency: string;
   countryCode: string;
   admin: { email: string; displayName: string; password: string };
+  /** The plan the organization subscribes to (the server's default plan when left out). */
+  plan?: string;
+  billingEmail?: string;
 }
 
 /**
@@ -19,11 +23,12 @@ export interface OnboardInput {
  * the first administrator, and a default approval workflow for partners.
  * All in one transaction; nothing is left half-created on failure.
  */
-export async function onboardTenant(db: Db, input: OnboardInput) {
+export async function onboardTenant(db: Db, input: OnboardInput, defaultPlan = 'TRIAL') {
   const tenantId = randomUUID();
   return db.withTenant({ tenantId, userId: null }, async (tx) => {
     await tx.query(`INSERT INTO platform.tenants (id, code, name, base_currency) VALUES ($1, $2, $3, $4)`,
       [tenantId, input.code, input.name, input.baseCurrency]);
+    await startSubscription(tx, input.plan ?? defaultPlan, input.billingEmail ?? input.admin.email);
     for (const t of DEFAULT_UNIT_TYPES) {
       await tx.query(`INSERT INTO org.unit_types (tenant_id, code, name, rank, is_legal_entity) VALUES ($1, $2, $3, $4, $5)`,
         [tenantId, t.code, t.name, t.rank, t.legal ?? false]);

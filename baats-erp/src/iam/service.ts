@@ -2,6 +2,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../core/errors.ts
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { validateCondition, type Condition } from '../core/rules.ts';
 import { authorize } from './authz.ts';
+import { checkSeat } from '../platform/billing.ts';
 import { hashPassword, passwordProblems } from './crypto.ts';
 
 export interface User {
@@ -11,6 +12,7 @@ const USER_COLS = 'id, email, display_name, employee_id, status, mfa_enabled';
 
 export async function createUser(tx: Tx, ctx: Ctx, input: { email: string; displayName: string; password?: string; employeeId?: string }): Promise<User> {
   await authorize(tx, ctx, 'iam.user.manage');
+  await checkSeat(tx);
   return insertUser(tx, input);
 }
 
@@ -30,6 +32,7 @@ export async function insertUser(tx: Tx, input: { email: string; displayName: st
 
 export async function setUserStatus(tx: Tx, ctx: Ctx, userId: string, status: 'active' | 'disabled'): Promise<User> {
   await authorize(tx, ctx, 'iam.user.manage');
+  if (status === 'active' && (await one(tx, `SELECT status FROM iam.users WHERE id = $1`, [userId]))?.status !== 'active') await checkSeat(tx);
   const u = await one<User>(tx, `UPDATE iam.users SET status = $2 WHERE id = $1 RETURNING ${USER_COLS}`, [userId, status]);
   if (!u) throw new NotFoundError('user');
   // Revoking access must take effect at once: end every open session.

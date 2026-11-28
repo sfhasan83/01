@@ -3,12 +3,15 @@ import { ConflictError, ValidationError } from '../core/errors.ts';
 import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { roundIn } from '../core/money.ts';
 import { authorize } from '../iam/authz.ts';
-import { company, post } from '../fin/ledger.ts';
+import { company, nextNumber, post } from '../fin/ledger.ts';
 import * as docs from '../fin/documents.ts';
 import * as mdm from '../mdm/service.ts';
 import * as org from '../org/service.ts';
 import * as inv from '../inv/service.ts';
 import * as hr from '../hr/service.ts';
+import * as assets from '../fin/assets.ts';
+import * as pur from '../pur/service.ts';
+import * as sal from '../sal/service.ts';
 
 /**
  * Bringing a company's data into BAATS when it starts using it: customers,
@@ -31,6 +34,9 @@ export const IMPORT_KINDS = {
   open_invoices: { title: 'Open customer invoices', columns: ['customer_code*', 'number*', 'date*', 'due_date', 'currency', 'fx_rate', 'amount_due*'] },
   open_bills: { title: 'Open supplier bills', columns: ['supplier_code*', 'number*', 'date*', 'due_date', 'currency', 'fx_rate', 'amount_due*'] },
   opening_balances: { title: 'Opening trial balance', columns: ['account*', 'debit', 'credit'] },
+  fixed_assets: { title: 'Fixed assets', columns: ['code*', 'name*', 'category*', 'acquired_on*', 'useful_life_months*', 'cost*', 'depreciation_to_date', 'residual_value', 'cost_center'] },
+  open_purchase_orders: { title: 'Open purchase orders', columns: ['supplier_code*', 'number*', 'date*', 'expected_date', 'currency', 'fx_rate', 'warehouse', 'item_code', 'description*', 'quantity_open*', 'unit_price*', 'tax_code'] },
+  open_sales_orders: { title: 'Open sales orders', columns: ['customer_code*', 'number*', 'date*', 'currency', 'fx_rate', 'warehouse', 'item_code', 'description*', 'quantity_open*', 'unit_price*', 'discount', 'tax_code'] },
 } as const;
 export type ImportKind = keyof typeof IMPORT_KINDS;
 
@@ -183,6 +189,7 @@ export async function listImportRuns(tx: Tx, ctx: Ctx, companyId: string) {
 interface Run {
   tx: Tx; ctx: Ctx; co: { unit_id: string; base_currency: string; country_code: string; legal_name: string }; asOf: string; res: ImportResult;
   stock?: Map<string, { itemId: string; qty: number; unitCost: number }[]>;
+  orders?: Map<string, { row: number; head: Record<string, string>; lines: { row: number; x: Record<string, string> }[] }>;
   tb?: { account: string; id: string; role: string | null; control: string | null; amount: number; row: number }[];
 }
 type Handler = { row: (r: Run, row: Record<string, string>, n: number) => Promise<void>; finish?: (r: Run) => Promise<void> };
@@ -233,7 +240,119 @@ async function openItem(r: Run, x: Record<string, string>, sales: boolean) {
   r.res.created++;
 }
 
+/** Order lines are grouped by their number; each order is checked as a whole when the file has been read. */
+function collectOrderLine(r: Run, x: Record<string, string>, n: number, partyCol: string) {
+  const number = need(x.number, 'number'); need(x[partyCol], partyCol); need(x.date, 'date'); need(x.description, 'description');
+  const qty = num(need(x.quantity_open, 'quantity_open'), 'quantity_open')!;
+  if (!(qty > 0)) throw new ValidationError('quantity_open is what is still to be delivered; it must be more than zero');
+  const price = num(need(x.unit_price, 'unit_price'), 'unit_price')!;
+  if (price < 0) throw new ValidationError('unit_price cannot be negative');
+  r.orders ??= new Map();
+  const o = r.orders.get(number);
+  if (!o) r.orders.set(number, { row: n, head: x, lines: [{ row: n, x }] });
+  else {
+    for (const k of [partyCol, 'date', 'currency']) if ((x[k] || '') !== (o.head[k] || '')) throw new ValidationError(`order ${number}: ${k} differs from row ${o.row}`);
+    o.lines.push({ row: n, x });
+  }
+}
+
+/** The tax code lines get when the file leaves it empty: the country's standard rate, or no VAT where there is none. */
+async function defaultTaxCode(r: Run): Promise<string> {
+  const t = await one(r.tx, `SELECT code FROM fin.tax_codes WHERE country_code = $1 AND active ORDER BY (category = 'standard') DESC, (category = 'out_of_scope') DESC, code LIMIT 1`, [r.co.country_code]);
+  if (!t) throw new ValidationError('this company has no tax codes');
+  return t.code;
+}
+
+async function orderLines(r: Run, lines: { row: number; x: Record<string, string> }[], purchase: boolean) {
+  const tax = await defaultTaxCode(r);
+  let stock = false;
+  const out = [];
+  for (const { row, x } of lines) {
+    let itemId: string | undefined;
+    if (x.item_code) {
+      const it = await one(r.tx, 'SELECT id, item_type FROM mdm.items WHERE code = $1', [x.item_code]);
+      if (!it) throw new ValidationError(`row ${row}: no item ${x.item_code}; import items first`);
+      itemId = it.id; stock ||= it.item_type === 'stock';
+    }
+    const disc = purchase ? null : num(x.discount, 'discount');
+    out.push({ itemId, description: x.description, quantity: num(x.quantity_open, 'quantity_open')!, unitPrice: num(x.unit_price, 'unit_price')!,
+      ...(disc ? { discount: disc } : {}), taxCode: upper(x.tax_code) ?? tax });
+  }
+  return { lines: out, stock };
+}
+
+async function orderWarehouse(r: Run, code: string | undefined, needed: boolean, number: string) {
+  if (code) {
+    const w = await one(r.tx, 'SELECT id FROM inv.warehouses WHERE company_id = $1 AND code = $2', [r.co.unit_id, code]);
+    if (!w) throw new ValidationError(`order ${number}: no warehouse ${code}`);
+    return w.id as string;
+  }
+  if (!needed) return undefined;
+  const ws = await many(r.tx, 'SELECT id FROM inv.warehouses WHERE company_id = $1', [r.co.unit_id]);
+  if (ws.length !== 1) throw new ValidationError(`order ${number} has stock items; give the warehouse`);
+  return ws[0].id as string;
+}
+
+async function importOrders(r: Run, purchase: boolean) {
+  for (const [number, o] of r.orders ?? []) {
+    const tag = `Imported open order ${number}`;
+    const table = purchase ? 'pur.orders' : 'sal.orders';
+    if (await one(r.tx, `SELECT 1 FROM ${table} WHERE company_id = $1 AND notes = $2`, [r.co.unit_id, tag])) { r.res.skipped++; continue; }
+    const h = o.head;
+    const code = purchase ? h.supplier_code : h.customer_code;
+    const p = await one(r.tx, `SELECT id FROM mdm.parties WHERE code = $1 AND ${purchase ? 'is_supplier' : 'is_customer'}`, [code]);
+    if (!p) throw new ValidationError(`row ${o.row}: no ${purchase ? 'supplier' : 'customer'} with code ${code}; import ${purchase ? 'suppliers' : 'customers'} first`);
+    const date = dateOf(h.date, 'date')!;
+    if (date > r.asOf) throw new ValidationError(`row ${o.row}: the date ${date} is after the cut-over date ${r.asOf}`);
+    const currency = upper(h.currency) ?? undefined;
+    const fx = currency && currency !== r.co.base_currency ? num(h.fx_rate, 'fx_rate') ?? undefined : undefined;
+    if (currency && currency !== r.co.base_currency && !fx) throw new ValidationError(`row ${o.row}: fx_rate is needed for an order in ${currency}`);
+    const { lines, stock } = await orderLines(r, o.lines, purchase);
+    const warehouseId = await orderWarehouse(r, h.warehouse || undefined, stock, number);
+    try {
+      if (purchase) {
+        const po = await pur.createOrder(r.tx, r.ctx, { companyId: r.co.unit_id, supplierId: p.id, date, expectedDate: dateOf(h.expected_date, 'expected_date') ?? undefined,
+          currency, fxRate: fx, warehouseId, notes: tag, lines: lines as any });
+        // Approved in the old system already: it comes in approved, with its own number in BAATS.
+        const no = await nextNumber(r.tx, r.co.unit_id, 'pur_order', 'PO', date);
+        await r.tx.query(`UPDATE pur.orders SET status = 'approved', no = $2 WHERE id = $1`, [po.id, no]);
+      } else {
+        const so = await sal.createQuotation(r.tx, r.ctx, { companyId: r.co.unit_id, customerId: p.id, date, currency, fxRate: fx, warehouseId, notes: tag, lines: lines as any });
+        await sal.confirmOrder(r.tx, r.ctx, so.id);
+      }
+    } catch (err) {
+      throw new ValidationError(`order ${number} (row ${o.row}): ${(err as Error).message}`);
+    }
+    r.res.created++;
+  }
+}
+
 const HANDLERS: Record<ImportKind, Handler> = {
+  fixed_assets: {
+    async row(r, x) {
+      const code = need(x.code, 'code');
+      if (await one(r.tx, 'SELECT 1 FROM fin.assets WHERE company_id = $1 AND code = $2', [r.co.unit_id, code])) { r.res.skipped++; return; }
+      const acquired = dateOf(need(x.acquired_on, 'acquired_on'), 'acquired_on')!;
+      if (acquired > r.asOf) throw new ValidationError(`acquired_on ${acquired} is after the cut-over date ${r.asOf}`);
+      const life = num(need(x.useful_life_months, 'useful_life_months'), 'useful_life_months')!;
+      if (!Number.isInteger(life) || life < 1) throw new ValidationError('useful_life_months is a whole number of months, at least 1');
+      const cost = num(need(x.cost, 'cost'), 'cost')!;
+      if (!(cost > 0)) throw new ValidationError('cost must be more than zero');
+      const acc = num(x.depreciation_to_date, 'depreciation_to_date') ?? 0;
+      if (acc < 0 || acc > cost) throw new ValidationError('depreciation_to_date is between zero and the cost');
+      let unitId: string | undefined;
+      if (x.cost_center) {
+        const u = await one(r.tx, 'SELECT id FROM org.units WHERE code = $1', [x.cost_center]);
+        if (!u) throw new ValidationError(`no unit with code ${x.cost_center}`);
+        unitId = u.id;
+      }
+      await assets.registerAsset(r.tx, r.ctx, { companyId: r.co.unit_id, code, name: need(x.name, 'name'), category: need(x.category, 'category'), unitId,
+        acquisitionDate: acquired, usefulLifeMonths: life, residualValue: num(x.residual_value, 'residual_value') ?? undefined, cost, openingAccumulated: acc, openingDate: r.asOf });
+      r.res.created++;
+    },
+  },
+  open_purchase_orders: { row: (r, x, n) => { collectOrderLine(r, x, n, 'supplier_code'); return Promise.resolve(); }, finish: (r) => importOrders(r, true) },
+  open_sales_orders: { row: (r, x, n) => { collectOrderLine(r, x, n, 'customer_code'); return Promise.resolve(); }, finish: (r) => importOrders(r, false) },
   customers: { row: (r, x) => partyRow(r, x, true) },
   suppliers: { row: (r, x) => partyRow(r, x, false) },
 
@@ -328,7 +447,10 @@ const HANDLERS: Record<ImportKind, Handler> = {
       const total = roundIn(r.co.base_currency, tb.reduce((s, l) => s + l.amount, 0));
       if (Math.abs(total) > 0.0005) throw new ValidationError(`the trial balance does not balance: debits are ${total > 0 ? 'more' : 'less'} than credits by ${Math.abs(total)}`);
       // Customers, suppliers and stock come from their own imports; here they are only checked.
-      const sub = tb.filter((l) => l.control || l.role === 'inventory');
+      // Fixed assets imported from the register are checked against it, like customers and stock.
+      const faImported = !!(await one(r.tx, 'SELECT 1 FROM fin.assets WHERE company_id = $1 LIMIT 1', [r.co.unit_id]));
+      const isSub = (l: { control: string | null; role: string | null }) => !!l.control || l.role === 'inventory' || (faImported && (l.role === 'fixed_assets' || l.role === 'accumulated_depreciation'));
+      const sub = tb.filter(isSub);
       for (const l of sub) {
         const bal = Number((await one(r.tx, `SELECT coalesce(sum(jl.debit - jl.credit), 0) AS b FROM fin.journal_lines jl
             JOIN fin.journals j ON j.id = jl.journal_id AND j.status = 'posted' WHERE jl.account_id = $1 AND j.date <= $2`, [l.id, r.asOf])).b);
@@ -338,13 +460,13 @@ const HANDLERS: Record<ImportKind, Handler> = {
           continue;
         }
         if (Math.abs(roundIn(r.co.base_currency, bal - l.amount)) > 0.0005) {
-          const what = l.control === 'receivable' ? 'open customer invoices' : l.control === 'payable' ? 'open supplier bills' : 'opening stock';
+          const what = l.control === 'receivable' ? 'open customer invoices' : l.control === 'payable' ? 'open supplier bills' : l.role === 'inventory' ? 'opening stock' : 'fixed assets';
           throw new ValidationError(`row ${l.row}: account ${l.account} is ${l.amount} here but the imported ${what} come to ${bal}; import the ${what} first, or correct the amount`);
         }
       }
-      const lines = tb.filter((l) => !l.control && l.role !== 'inventory')
+      const lines = tb.filter((l) => !isSub(l))
         .map((l) => ({ account: l.id, ...(l.amount > 0 ? { debit: l.amount } : { credit: -l.amount }), description: 'Opening balance' }));
-      const rest = roundIn(r.co.base_currency, sub.filter((l) => l.control || l.role === 'inventory').reduce((s, l) => s + l.amount, 0));
+      const rest = roundIn(r.co.base_currency, sub.filter(isSub).reduce((s, l) => s + l.amount, 0));
       // What the sub-ledger imports put on opening balance equity is taken back out here.
       if (rest) lines.push({ account: 'role:opening_balance_equity', ...(rest > 0 ? { debit: rest } : { credit: -rest }), description: 'Customers, suppliers and stock imported separately' } as any);
       if (lines.length < 2) { r.res.created = tb.length; return; }

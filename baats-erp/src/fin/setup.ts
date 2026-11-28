@@ -3,6 +3,7 @@ import { many, one, type Ctx, type Tx } from '../core/db.ts';
 import { authorize } from '../iam/authz.ts';
 import { insertDefinition } from '../workflow/engine.ts';
 import { companyPack, packFor } from './country.ts';
+import { checkCompanySlot } from '../platform/billing.ts';
 import { JOURNAL_WORKFLOW, openPeriods } from './ledger.ts';
 
 export interface CompanySetup {
@@ -25,6 +26,7 @@ export interface CompanySetup {
  */
 export async function setupCompany(tx: Tx, ctx: Ctx, input: CompanySetup) {
   await authorize(tx, ctx, 'fin.company.manage', { unitId: input.unitId });
+  if (!(await one(tx, 'SELECT 1 FROM fin.companies WHERE unit_id = $1', [input.unitId]))) await checkCompanySlot(tx);
   const unit = await one(tx, `SELECT u.id, u.country_code, u.currency_code, t.is_legal_entity
                                 FROM org.units u JOIN org.unit_types t ON t.id = u.type_id WHERE u.id = $1`, [input.unitId]);
   if (!unit) throw new ValidationError('unknown org unit');

@@ -1,5 +1,4 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
-import { timingSafeEqual } from 'node:crypto';
 import { AppError, TooManyRequestsError, UnauthenticatedError } from '../core/errors.ts';
 import { RateLimiter } from '../core/ratelimit.ts';
 import type { Ctx, Db, Tx } from '../core/db.ts';
@@ -20,6 +19,9 @@ import { registerAssistant } from './assistant.ts';
 import { MOBILE_PATHS, registerPhase6 } from './phase6.ts';
 import { registerPhase7 } from './phase7.ts';
 import { CONNECTOR_PUBLIC_PATHS, registerPhase8, type ConnectorOptions } from './phase8.ts';
+import { OPERATOR_PUBLIC_PATHS, keyMatches, registerPhase9 } from './phase9.ts';
+import { WriteGate } from '../platform/billing.ts';
+import { Metrics } from '../platform/metrics.ts';
 import { parseSecretKey } from '../ai/secrets.ts';
 import type { AiOptions } from '../ai/assistant.ts';
 
@@ -37,17 +39,36 @@ export interface ServerOptions {
   connectors?: Omit<ConnectorOptions, 'secretKey'>;
   /** Behind a reverse proxy: take the client's address from X-Forwarded-For (the proxy's addresses, or true for any). */
   trustProxy?: boolean | string;
+  /** The plan a new organization starts on (default TRIAL; the Windows trial uses ONPREM). */
+  defaultPlan?: string;
+  /** Bearer token for /metrics (the platform key works too). */
+  metricsToken?: string;
 }
+
+/**
+ * Changes that are allowed while a subscription is inactive: signing out, the
+ * user's own password and sessions, and requests that only read (queries,
+ * previews and checks sent as POST).
+ */
+const ALLOWED_WHILE_READ_ONLY = new Set(['/v1/auth/logout', '/v1/me/password', '/v1/me/sessions/revoke-others', '/v1/me/sessions/:id',
+  '/v1/bi/query', '/v1/bi/query.csv', '/v1/iam/check', '/v1/mig/xlsx', '/v1/mig/baats-accounting']);
 
 const str = { type: 'string', minLength: 1 } as const;
 const uuid = { type: 'string', format: 'uuid' } as const;
 const obj = (required: string[], properties: Record<string, object>) =>
   ({ body: { type: 'object', required, properties, additionalProperties: false } });
 
+export interface RouteInfo { method: string; url: string; public: boolean }
+/** Every route of a server and whether it is reached without a session (for the security self-tests). */
+export const ROUTES = new WeakMap<FastifyInstance, RouteInfo[]>();
+
 /** HTTP API (v1). Every route except login and onboarding needs a bearer session token. */
 export function buildServer(opts: ServerOptions): FastifyInstance {
   const { db } = opts;
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 1_048_576, trustProxy: opts.trustProxy ?? false });
+  const routes: RouteInfo[] = [];
+  app.addHook('onRoute', (r) => { for (const m of [r.method].flat()) if (m !== 'HEAD') routes.push({ method: m, url: r.url, public: PUBLIC.has(r.url) }); });
+  ROUTES.set(app, routes);
 
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof TooManyRequestsError) reply.header('retry-after', String(err.retryAfter));
@@ -61,7 +82,9 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
 
   app.decorateRequest('ctx', null as unknown as Ctx);
   app.decorateRequest('token', '');
-  const PUBLIC = new Set(['/v1/auth/login', '/v1/platform/tenants', '/health', ...MOBILE_PATHS, ...CONNECTOR_PUBLIC_PATHS]);
+  const PUBLIC = new Set(['/v1/auth/login', '/v1/platform/tenants', '/health', ...MOBILE_PATHS, ...CONNECTOR_PUBLIC_PATHS, ...OPERATOR_PUBLIC_PATHS]);
+  const gate = new WriteGate(db);
+  const metrics = new Metrics();
   // Guessing passwords: failed sign-ins are limited per address and per account (on top of the lockout
   // after 5 failures). Successful ones are not counted, so a whole office behind one address can sign in.
   const loginsByIp = new RateLimiter(opts.limits?.loginsPer5Min ?? 30, 5 * 60_000, 'failed sign-ins from this address');
@@ -76,6 +99,11 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
     req.token = h.slice(7);
     calls.hit(req.token.slice(-24));
     req.ctx = await auth.authenticate(db, req.token);
+    // An ended trial or a suspended subscription: everything can be read and exported, nothing changed.
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !ALLOWED_WHILE_READ_ONLY.has(url)) await gate.check(req.ctx.tenantId);
+  });
+  app.addHook('onResponse', async (req, reply) => {
+    metrics.record(req.method, req.routeOptions.url ?? 'unmatched', reply.statusCode, reply.elapsedTime / 1000);
   });
   // Every answer: no sniffing, no framing, no referrer; API answers are never cached.
   app.addHook('onSend', async (req, reply) => {
@@ -87,22 +115,22 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
   type B = any; // request bodies are validated by the route schemas below
   type P = { id: string };
 
-  app.get('/health', async () => ({ ok: true }));
+  // ?deep=1 also asks the database, for load balancers that should take a server out when its database is gone.
+  app.get('/health', async (req, reply) => {
+    if (!(req.query as B)?.deep) return { ok: true };
+    try { await db.pool.query('SELECT 1'); return { ok: true, database: 'up' }; } catch { reply.status(503); return { ok: false, database: 'down' }; }
+  });
 
   // --- Platform ---------------------------------------------------------------
   app.post('/v1/platform/tenants', {
     schema: obj(['code', 'name', 'baseCurrency', 'countryCode', 'admin'], {
-      code: str, name: str, baseCurrency: str, countryCode: str,
+      code: str, name: str, baseCurrency: str, countryCode: str, plan: str, billingEmail: str,
       admin: { type: 'object', required: ['email', 'displayName', 'password'], properties: { email: str, displayName: str, password: str } },
     }),
   }, async (req, reply) => {
-    const key = String(req.headers['x-platform-admin-key'] ?? '');
-    const expected = opts.platformAdminKey ?? '';
-    if (!expected || key.length !== expected.length || !timingSafeEqual(Buffer.from(key), Buffer.from(expected))) {
-      throw new UnauthenticatedError('platform administrator key required');
-    }
+    if (!keyMatches(String(req.headers['x-platform-admin-key'] ?? ''), opts.platformAdminKey)) throw new UnauthenticatedError('platform administrator key required');
     reply.status(201);
-    return onboardTenant(db, req.body as B);
+    return onboardTenant(db, req.body as B, opts.defaultPlan ?? 'TRIAL');
   });
 
   // --- Auth and self-service ----------------------------------------------------
@@ -247,6 +275,7 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
   registerPhase6(app, run, { secretKey, allowPrivateUrls });
   registerPhase7(app, run);
   registerPhase8(app, run, db, { ...opts.connectors, secretKey });
+  registerPhase9(app, run, db, { platformAdminKey: opts.platformAdminKey, metricsToken: opts.metricsToken, metrics, gate });
 
   return app;
 }

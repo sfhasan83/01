@@ -202,7 +202,7 @@ const pages = {
       <label style="margin-top:10px">JSON body<textarea name="body"></textarea></label><div class="row"><button class="btn">Send</button></div></form><pre id="api-out"></pre></div>`;
   },
 };
-const MENU = [['overview', 'Overview'], ['assistant', 'AI assistant'], ['analytics', 'Interactive dashboard'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['expenses', 'HR: expense claims'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['aisettings', 'Assistant settings'], ['integrations', 'Integrations (API keys, webhooks)'], ['connectors', 'Connectors (email, sign-in, card payments)'], ['mobile', 'BAATS Mobile'], ['import', 'Data import'], ['backup', 'Backup and restore'], ['security', 'My sessions and password'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audittrail', 'Audit trail'], ['apitester', 'API tester']];
+const MENU = [['overview', 'Overview'], ['assistant', 'AI assistant'], ['analytics', 'Interactive dashboard'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['expenses', 'HR: expense claims'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['aisettings', 'Assistant settings'], ['integrations', 'Integrations (API keys, webhooks)'], ['connectors', 'Connectors (email, sign-in, card payments)'], ['mobile', 'BAATS Mobile'], ['import', 'Data import'], ['backup', 'Backup and restore'], ['subscription', 'Subscription'], ['operator', 'Service operator (SaaS)'], ['security', 'My sessions and password'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audittrail', 'Audit trail'], ['apitester', 'API tester']];
 let current = 'overview';
 const after = {};
 
@@ -2225,7 +2225,7 @@ Object.assign(after, {
 });
 
 // ---------- Phase 7a: data import, backup and restore, sessions and passwords ----------
-const IMPORT_ORDER = ['customers', 'suppliers', 'items', 'employees', 'opening_balances', 'open_invoices', 'open_bills'];
+const IMPORT_ORDER = ['customers', 'suppliers', 'items', 'employees', 'fixed_assets', 'open_invoices', 'open_bills', 'open_purchase_orders', 'open_sales_orders', 'opening_balances'];
 const IMPORT_HELP = {
   customers: 'One row per customer. Codes already in BAATS are skipped, so the same file can be imported again safely. Country and currency default to the company\'s.',
   suppliers: 'One row per supplier, as for customers.',
@@ -2234,6 +2234,9 @@ const IMPORT_HELP = {
   opening_balances: 'The trial balance on the cut-over date, one row per account. It must balance. Receivables (1100), payables (2000) and inventory (1300) are not posted from this file: import the open invoices, open bills and items first, and BAATS checks that their totals match the rows here. Everything else is posted as one opening journal (OB-...). Only one opening balance import is allowed per company.',
   open_invoices: 'Customer invoices not yet fully paid on the cut-over date: one row per invoice with what is still owed. Each becomes an open invoice you can receive money against, posted against opening balance equity (3200). Foreign currency invoices need fx_rate (base currency per unit).',
   open_bills: 'Supplier bills not yet fully paid on the cut-over date, as for open invoices.',
+  fixed_assets: 'The fixed asset register on the cut-over date, one row per asset: what it cost, when it was bought, its useful life in months and the depreciation charged so far. Each is posted to 1500 and 1590 against opening balance equity, and BAATS depreciates it from the next month. The trial balance is then checked against this register instead of posting 1500 and 1590 again. cost_center is a unit code.',
+  open_purchase_orders: 'Purchase orders already approved but not fully received: one row per line with the quantity still to come. Lines of the same order share its number. They come in approved, with a BAATS PO number, ready to receive and bill. Stock items need the warehouse, unless the company has only one.',
+  open_sales_orders: 'Confirmed sales orders not yet delivered: one row per line with the quantity still to deliver; discount is an amount off the line. They come in confirmed, with a BAATS SO number, and the customer\'s credit limit is checked as for any order.',
 };
 const readText = (file) => new Promise((resolve, reject) => {
   if (!file) return reject(new Error('choose a file first'));
@@ -2291,10 +2294,11 @@ Object.assign(pages, {
     return `<div class="card"><h3>Backups</h3><p>BAATS makes a backup of all your data once a day while it runs, and keeps the last ${b.keepAuto} daily backups. Make one by hand before a big change, such as an import. A backup holds everything: every company, user, document and the audit trail, exactly as it was.</p>
       <p class="muted">They are kept on this computer in <code>${esc(b.dir)}</code>. If this computer breaks, they go with it: download a backup now and then and keep it somewhere else (a USB drive or cloud storage). Each backup file holds all your data, so keep it as safe as the computer itself.</p>
       <div class="row"><button class="btn" id="bk-make" ${b.busy ? 'disabled' : ''}>Make a backup now</button>${b.busy ? ' <span class="muted">A backup or restore is running...</span>' : ''}</div>
-      ${b.backups.length ? '<div class="tbl"><table><tr><th>Made</th><th>Kind</th><th style="text-align:right">Size</th><th></th></tr>' + b.backups.map((x) => `<tr><td>${esc(when(x.at))}</td><td>${esc(kindName[x.kind] || x.kind)}</td><td style="text-align:right">${bytes(x.bytes)}</td><td>${act('Download', 'bk-get', esc(x.name), 1)} ${act('Restore', 'bk-restore', esc(x.name), 1)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No backups yet. The first daily backup is made a minute after BAATS starts.</div>'}</div>
+      ${b.backups.length ? '<div class="tbl"><table><tr><th>Made</th><th>Kind</th><th style="text-align:right">Size</th><th></th></tr>' + b.backups.map((x) => `<tr><td>${esc(when(x.at))}</td><td>${esc(kindName[x.kind] || x.kind)}</td><td style="text-align:right">${bytes(x.bytes)}${x.encrypted ? ' &#128274;' : ''}</td><td>${act('Download', 'bk-get', esc(x.name), 1)} ${act('Restore drill', 'bk-drill', esc(x.name), 1)} ${act('Restore', 'bk-restore', esc(x.name), 1)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No backups yet. The first daily backup is made a minute after BAATS starts.</div>'}</div>
     <div class="card"><h3>Restore</h3><p>Restoring puts all the data back as it was when the backup was made: everything done since is undone, for every user. BAATS makes a backup of the data as it is now first, so a restore can itself be undone by restoring that one. Everyone is signed out, and BAATS is unavailable for the few seconds it takes.</p>
       <p class="muted">A backup from an earlier version of BAATS is brought up to this version as it is restored. A backup from a later version needs that version.</p>
-      <div class="row"><label>Restore from a backup file (.baatsbak)<input type="file" id="bk-file" accept=".baatsbak"></label><button class="btn sec" id="bk-upload">Restore this file</button></div><div id="bk-out"></div></div>`;
+      <div class="row"><label>Restore from a backup file (.baatsbak)<input type="file" id="bk-file" accept=".baatsbak"></label><label>Its passphrase, if it is encrypted with another one<input type="password" id="bk-pass" autocomplete="off"></label><button class="btn sec" id="bk-upload">Restore this file</button></div><div id="bk-out"></div></div>
+    ${backupExtras(b)}`;
   },
 
   async security() {
@@ -2386,12 +2390,14 @@ Object.assign(after, {
       if (!confirmRestore(f.name)) return;
       up.disabled = true; $('#bk-out').innerHTML = '<p class="muted">Sending the file and restoring...</p>';
       try {
-        const r = await fetch('/local/restore?confirm=RESTORE', { method: 'POST', headers: { authorization: 'Bearer ' + S.token, 'content-type': 'application/octet-stream' }, body: f });
+        const pass = $('#bk-pass').value;
+        const r = await fetch('/local/restore?confirm=RESTORE', { method: 'POST', headers: { authorization: 'Bearer ' + S.token, 'content-type': 'application/octet-stream', ...(pass ? { 'x-backup-passphrase': pass } : {}) }, body: f });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.message || 'HTTP ' + r.status);
         done(d);
       } catch (e) { up.disabled = false; $('#bk-out').innerHTML = ''; toast(e.message, false); }
     };
+    bindBackupExtras(m, ok);
   },
 
   async security(m, ok) {
@@ -2693,6 +2699,101 @@ Object.assign(after, {
   },
 });
 
+// ---------- Running BAATS as a service: backups that leave this PC, subscription, the operator's pages ----------
+function backupExtras(b) {
+  const d = b.drills || [];
+  return `<div class="card"><h3>Encryption and a second copy</h3>
+    <p>${b.encrypting ? '<b style="color:var(--ok)">Backups are encrypted.</b> A downloaded or copied backup cannot be read without the passphrase; keep it somewhere safe, away from this computer, because without it the backups cannot be restored anywhere else.' : '<b>Backups are not encrypted.</b> Anyone with a backup file can read all your data. Set a passphrase to encrypt the next ones (AES-256).'}</p>
+    <form id="f-bkpass"><div class="grid">${field('passphrase', b.encrypting ? 'New passphrase (12 characters or more)' : 'Passphrase (12 characters or more)', 'type="password" minlength="12" autocomplete="new-password"')}${field('again', 'The passphrase again', 'type="password" autocomplete="new-password"')}</div>
+      <div class="row"><button class="btn sec">${b.encrypting ? 'Change the passphrase' : 'Encrypt backups'}</button>${b.encrypting ? ' <button type="button" class="btn sec" id="bk-plain">Stop encrypting</button>' : ''}</div></form>
+    <p>${b.copyDir ? `Every backup is also copied to <code>${esc(b.copyDir)}</code>.` : 'Backups are only on this computer.'} Choose a folder on another disk, a network share, or a OneDrive, Google Drive or Dropbox folder, so a copy survives if this computer does not.</p>
+    <form id="f-bkcopy"><div class="grid">${field('copyDir', 'Second folder (full path, e.g. D:\\\\BAATS backups)', `value="${esc(b.copyDir || '')}"`)}</div><div class="row"><button class="btn sec">Save the folder</button>${b.copyDir ? ' <button type="button" class="btn sec" id="bk-nocopy">Stop copying</button>' : ''}</div></form></div>
+  <div class="card"><h3>Restore drills</h3><p>A backup is only worth something if it can be restored. A drill restores a backup beside your data (which is not touched), recomputes every organization's audit trail and checks that every posted journal balances, then removes it again. BAATS runs one on the newest backup every week; run one now with "Restore drill" on any backup above.</p>
+    ${d.length ? '<div class="tbl"><table><tr><th>When</th><th>Backup</th><th>Result</th><th style="text-align:right">Records</th><th style="text-align:right">Seconds</th><th>Checked</th></tr>' + d.map((x) => `<tr><td>${esc(when(x.at))}</td><td>${esc(x.backup)}</td><td>${x.ok ? '<b style="color:var(--ok)">passed</b>' : `<b style="color:var(--bad)">failed</b> ${esc((x.problems || []).join('; '))}`}</td><td style="text-align:right">${x.rows ? x.rows.toLocaleString() : ''}</td><td style="text-align:right">${x.seconds ?? ''}</td><td>${(x.tenants || []).map((t) => `${esc(t.code)}: ${t.auditEntries} audit entries`).join(', ')}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No drill yet.</div>'}</div>`;
+}
+function bindBackupExtras(m, ok) {
+  bindForm('f-bkpass', async (b) => {
+    if (!b.passphrase || b.passphrase.length < 12) throw new Error('the passphrase needs at least 12 characters');
+    if (b.passphrase !== b.again) throw new Error('the two passphrases are not the same');
+    await api('POST', '/local/backups/settings', { passphrase: b.passphrase }); ok('Saved. The next backups are encrypted with this passphrase.');
+  });
+  const plain = $('#bk-plain'); if (plain) plain.onclick = async () => { if (!confirm('Stop encrypting backups? The next ones can be read by anyone who has the file.')) return; try { await api('POST', '/local/backups/settings', { passphrase: null }); ok('Backups are no longer encrypted'); } catch (e) { toast(e.message, false); } };
+  bindForm('f-bkcopy', async (b) => { if (!b.copyDir) throw new Error('give the folder'); await api('POST', '/local/backups/settings', { copyDir: b.copyDir }); ok('Every backup is now copied there too'); });
+  const nc = $('#bk-nocopy'); if (nc) nc.onclick = async () => { try { await api('POST', '/local/backups/settings', { copyDir: null }); ok('No more copies'); } catch (e) { toast(e.message, false); } };
+  m.querySelectorAll('[data-bk-drill]').forEach((el) => el.onclick = async () => {
+    el.disabled = true; el.textContent = 'Restoring and checking...';
+    try { const r = await api('POST', `/local/backups/drill?name=${encodeURIComponent(el.dataset.bkDrill)}`); if (r.ok) ok(`Drill passed: ${r.rows.toLocaleString()} records restored and checked in ${r.seconds} s`); else { toast(`Drill failed: ${(r.problems || []).join('; ')}`, false); show(current); } } catch (e) { el.disabled = false; toast(e.message, false); }
+  });
+}
+
+const PLAN_STATUS = { trial: 'free trial', active: 'active', past_due: 'payment overdue', suspended: 'suspended', cancelled: 'cancelled' };
+const usersOf = (p) => `${p.included_users} users included${p.extra_user_price ? `, then ${money(p.extra_user_price, p.currency)} ${esc(p.currency)} each` : ''}${p.max_users ? ` (up to ${p.max_users})` : ''}`;
+Object.assign(pages, {
+  async subscription() {
+    const s = await api('GET', '/v1/subscription');
+    const days = s.trialEndsAt ? Math.ceil((Date.parse(s.trialEndsAt) - Date.now()) / 86_400_000) : null;
+    return `<div class="card"><h3>Your subscription: ${esc(s.plan.name)}</h3>
+      <p>Status: <b style="color:${s.writable ? 'var(--ok)' : 'var(--bad)'}">${esc(PLAN_STATUS[s.status] || s.status)}</b>${s.status === 'trial' ? (days > 0 ? `, ${days} day${days === 1 ? '' : 's'} left (until ${esc(s.trialEndsAt.slice(0, 10))})` : '') : ''}${s.billingEmail ? ` · invoices go to ${esc(s.billingEmail)}` : ''}</p>
+      ${s.reason ? `<p style="color:var(--bad)">${esc(s.reason)}. Everything can still be read, reported and exported; nothing can be changed until then.</p>` : ''}
+      <p class="muted">${s.plan.billable ? `${money(s.plan.monthly_price, s.plan.currency)} ${esc(s.plan.currency)} a month, ${usersOf(s.plan)}` : esc(s.plan.name)}${s.plan.max_companies ? `; up to ${s.plan.max_companies} ${s.plan.max_companies === 1 ? 'company' : 'companies'} with books` : ''}.</p>
+      <h4>Use this month</h4>${report([{ ...s.usage, documentBytes: bytes(s.usage.documentBytes) }], [['users', 'Active users'], ['usersSignedIn', 'Signed in this month'], ['companies', 'Companies with books'], ['invoices', 'Invoices posted'], ['journals', 'Journals posted'], ['documentBytes', 'Documents stored']])}</div>
+    <div class="card"><h3>Invoices from BAATS</h3>${s.invoices.length ? report(s.invoices.map((i) => ({ ...i, issued_on: d10(i.issued_on), due_on: d10(i.due_on), status: i.status === 'open' && i.due_on.slice(0, 10) < today() ? 'overdue' : i.status })),
+      [['no', 'Invoice'], ['period', 'Month'], ['plan_code', 'Plan'], ['users', 'Users'], ['extra_users', 'Extra users'], ['issued_on', 'Issued'], ['due_on', 'Due'], ['status', 'Status'], ['total', 'Total', 1]]) : '<div class="empty">None yet.</div>'}</div>
+    <div class="card"><h3>Plans</h3>${report(s.plans.filter((p) => p.billable).map((p) => ({ ...p, users: usersOf(p), companies: p.max_companies ?? 'any number' })), [['name', 'Plan'], ['users', 'Users'], ['companies', 'Companies'], ['monthly_price', 'A month', 1]])}
+      <p class="muted">To change plan, contact BAATS; the change takes effect at once and the next invoice follows it.</p></div>`;
+  },
+  async operator() {
+    let ts;
+    try { ts = await api('GET', '/local/platform/tenants'); } catch (e) {
+      return `<div class="card"><h3>Service operator</h3><p>${/sys\.platform/.test(e.message) ? 'Only someone with the sys.platform permission can operate the service.' : 'The operator pages work in the BAATS ERP program on the computer that runs it. On a server, use the platform API with the platform key (see the README).'}</p></div>`;
+    }
+    const [plans, invs] = await Promise.all([api('GET', '/local/platform/plans'), api('GET', '/local/platform/billing/invoices')]);
+    const last = new Date(); last.setDate(0);
+    return `<div class="card"><h3>Organizations on this server</h3><p class="muted">Each organization (tenant) has a subscription. Trials end by themselves; an invoice not paid by its due date makes the subscription "payment overdue", and ${14} days later it is suspended: the organization can still read and export everything but change nothing, until it pays. Organizations made in this trial program are on the on-premises licence, which has no limits.</p>
+      <div class="tbl"><table><tr><th>Code</th><th>Name</th><th>Plan</th><th>Status</th><th>Trial ends</th><th style="text-align:right">Users</th><th style="text-align:right">Companies</th><th style="text-align:right">Invoices this month</th><th style="text-align:right">Owed</th><th></th></tr>
+      ${ts.map((t) => `<tr><td>${esc(t.code)}</td><td>${esc(t.name)}</td><td>${esc(t.subscription?.planName || '')}</td><td>${esc(PLAN_STATUS[t.subscription?.status] || '')}${t.subscription && !t.subscription.writable ? ' <b style="color:var(--bad)">(read-only)</b>' : ''}</td><td>${esc((t.subscription?.trialEndsAt || '').slice(0, 10))}</td><td style="text-align:right">${t.usage.users}</td><td style="text-align:right">${t.usage.companies}</td><td style="text-align:right">${t.usage.invoices}</td><td style="text-align:right">${t.owed ? money(t.owed) : ''}</td><td>${act('Change', 'op-sub', t.id, 1)}</td></tr>`).join('')}</table></div>
+      <form id="f-opsub" style="display:none"><h4 id="opsub-title"></h4><div class="grid">${pick('plan', 'Plan', [['', '(keep)'], ...plans.filter((p) => p.active).map((p) => [p.code, p.name])])}${pick('status', 'Status', [['', '(keep)'], ['active', 'Active'], ['trial', 'Free trial'], ['suspended', 'Suspended'], ['cancelled', 'Cancelled']])}${field('trialEndsAt', 'Trial ends', 'type="date"')}${field('billingEmail', 'Billing email', 'type="email"')}</div><input type="hidden" name="tenant"><div class="row"><button class="btn">Save</button></div></form></div>
+    <div class="card"><h3>Billing</h3><p class="muted">Bill a month: every organization on a paid plan that is active or overdue gets one invoice for the plan and the users above what it includes. A month is billed once; running it again adds nothing. On a server, AUTO_BILLING=true bills last month by itself.</p>
+      <form id="f-bill"><div class="grid">${field('period', 'Month', `type="month" required value="${last.toISOString().slice(0, 7)}"`)}</div><div class="row"><button class="btn">Bill this month</button><button type="button" class="btn sec" id="op-sweep">Update overdue subscriptions now</button></div></form>
+      ${invs.length ? '<div class="tbl"><table><tr><th>Invoice</th><th>Organization</th><th>Month</th><th>Plan</th><th style="text-align:right">Users</th><th style="text-align:right">Total</th><th>Due</th><th>Status</th><th></th></tr>' + invs.map((i) => `<tr><td>${esc(i.no)}</td><td>${esc(i.tenantName)}</td><td>${esc(i.period)}</td><td>${esc(i.plan_code)}</td><td style="text-align:right">${i.users}${i.extra_users ? ` (+${i.extra_users})` : ''}</td><td style="text-align:right">${money(i.total, i.currency)} ${esc(i.currency)}</td><td>${d10(i.due_on)}</td><td>${esc(i.status)}${i.payment_ref ? ' · ' + esc(i.payment_ref) : ''}</td><td>${i.status === 'open' ? `<button class="btn sec" data-op-paid="${i.id}" data-tenant="${i.tenantId}">Mark paid</button> <button class="btn sec" data-op-void="${i.id}" data-tenant="${i.tenantId}">Void</button>` : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No invoices yet.</div>'}</div>
+    <div class="card"><h3>Plans</h3>${report(plans.map((p) => ({ ...p, users: usersOf(p), companies: p.max_companies ?? 'any', trial: p.trial_days ? `${p.trial_days} days` : '', on: p.active ? 'yes' : 'no', billed: p.billable ? 'yes' : 'no' })), [['code', 'Code'], ['name', 'Name'], ['users', 'Users'], ['companies', 'Companies'], ['trial', 'Trial'], ['billed', 'Billed'], ['on', 'Offered'], ['monthly_price', 'A month', 1]])}
+      <form id="f-plan"><h4>Add or change a plan</h4><div class="grid">${field('code', 'Code (e.g. BUSINESS)', 'required pattern="[A-Z][A-Z0-9_]{1,30}"')}${field('name', 'Name')}${field('monthlyPrice', 'Price a month', 'type="number" step="any" min="0"')}${field('currency', 'Currency', 'maxlength="3" value="AED"')}${field('includedUsers', 'Users included', 'type="number" min="0"')}${field('extraUserPrice', 'Price per extra user', 'type="number" step="any" min="0"')}${field('maxUsers', 'Most users (empty: no limit)', 'type="number" min="1"')}${field('maxCompanies', 'Most companies (empty: no limit)', 'type="number" min="1"')}${field('trialDays', 'Trial days', 'type="number" min="0"')}${check('active', 'Offered', true)}</div><div class="row"><button class="btn sec">Save plan</button></div></form></div>`;
+  },
+});
+Object.assign(after, {
+  async subscription() {},
+  async operator(m, ok) {
+    const f = $('#f-opsub');
+    m.querySelectorAll('[data-op-sub]').forEach((el) => el.onclick = () => { f.style.display = ''; f.tenant.value = el.dataset.opSub; $('#opsub-title').textContent = `Change ${el.closest('tr').children[1].textContent}`; f.scrollIntoView({ behavior: 'smooth' }); });
+    bindForm('f-opsub', async (b) => { const id = b.tenant; delete b.tenant; if (!Object.keys(b).length) throw new Error('change something first'); await api('PATCH', `/local/platform/tenants/${id}/subscription`, b); ok('Subscription changed'); });
+    bindForm('f-bill', async (b) => { const r = await api('POST', '/local/platform/billing/run', { period: b.period }); ok(r.invoices.length ? `Billed ${b.period}: ${r.invoices.length} invoice${r.invoices.length === 1 ? '' : 's'}` : `Nothing to bill for ${b.period}`); });
+    $('#op-sweep').onclick = async () => { try { const r = await api('POST', '/local/platform/billing/sweep'); ok(r.changed.length ? r.changed.map((c) => `${c.tenant}: ${PLAN_STATUS[c.status]}`).join(', ') : 'Nothing changed'); } catch (e) { toast(e.message, false); } };
+    m.querySelectorAll('[data-op-paid],[data-op-void]').forEach((el) => el.onclick = async () => {
+      const paid = !!el.dataset.opPaid; const id = el.dataset.opPaid || el.dataset.opVoid;
+      const reference = paid ? prompt('Payment reference (bank transfer, cheque number)', '') : null; if (paid && reference === null) return;
+      if (!paid && !confirm('Void this invoice?')) return;
+      try { await api('POST', `/local/platform/tenants/${el.dataset.tenant}/invoices/${id}/settle`, { action: paid ? 'paid' : 'void', ...(reference ? { reference } : {}) }); ok(paid ? 'Marked paid' : 'Voided'); } catch (e) { toast(e.message, false); }
+    });
+    bindForm('f-plan', async (b) => {
+      const code = b.code; const body = { active: b.active };
+      if (b.name) body.name = b.name; if (b.currency) body.currency = b.currency.toUpperCase();
+      for (const k of ['monthlyPrice', 'extraUserPrice']) if (b[k] !== undefined) body[k] = Number(b[k]);
+      for (const k of ['includedUsers', 'maxUsers', 'maxCompanies', 'trialDays']) if (b[k] !== undefined) body[k] = Number(b[k]);
+      await api('PUT', `/local/platform/plans/${code}`, body); ok(`Plan ${code} saved`);
+    });
+  },
+});
+/** A bar over every page while the organization cannot change data, or its trial is ending. */
+async function subscriptionBar() {
+  const bar = $('#subbar'); if (!bar || !S) return;
+  try {
+    const s = await api('GET', '/v1/subscription');
+    const days = s.trialEndsAt ? Math.ceil((Date.parse(s.trialEndsAt) - Date.now()) / 86_400_000) : null;
+    const msg = !s.writable ? `${s.reason}. You can read and export everything, but not change anything.` : s.status === 'trial' && days <= 7 ? `Your free trial ends in ${days} day${days === 1 ? '' : 's'}.` : s.status === 'past_due' ? 'An invoice from BAATS is overdue; please pay it to avoid suspension.' : '';
+    bar.style.display = msg ? '' : 'none'; bar.textContent = msg;
+  } catch { bar.style.display = 'none'; }
+}
+
 function render() {
   const a = $('#app');
   $('#logout').style.display = S ? '' : 'none';
@@ -2701,9 +2802,10 @@ function render() {
   if (!S && CARD_RETURN) { a.innerHTML = cardReturnView(); $('#card-done').onclick = () => { CARD_RETURN = null; render(); }; return; }
   if (!S) { a.innerHTML = authView(); afterAuthBind(); return; }
   if (!S.email) api('GET', '/v1/me').then((me) => { S.email = me.user.email; sessionStorage.setItem('baats', JSON.stringify(S)); $('#who').textContent = `${S.email} @ ${S.tenant}`; }).catch(() => {});
-  a.innerHTML = `<div class="wrap"><nav>${MENU.map(([k, t]) => `<button data-p="${k}">${t}</button>`).join('')}</nav><main></main></div>`;
+  a.innerHTML = `<div id="subbar" style="display:none;background:var(--bad);color:#fff;padding:8px 16px"></div><div class="wrap"><nav>${MENU.map(([k, t]) => `<button data-p="${k}">${t}</button>`).join('')}</nav><main></main></div>`;
   a.querySelectorAll('nav button').forEach((b) => b.onclick = () => show(b.dataset.p));
   show(current);
+  subscriptionBar();
 }
 $('#logout').onclick = async () => { try { await api('POST', '/v1/auth/logout'); } catch { /* ignore */ } S = null; sessionStorage.removeItem('baats'); render(); };
 fetch('/local/ping').then((r) => r.json()).then((d) => { $('#ver').textContent = 'Trial console · ' + d.version; }).catch(() => {});

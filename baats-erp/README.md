@@ -67,6 +67,9 @@ This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (fi
 | Card payment links (Phase 6d) | A Stripe Checkout link for the open amount of a posted sales invoice (amounts in fils and baisa where the currency has three decimals), put in the invoice email. When the customer pays, the receipt is recorded and allocated to the invoice in a card clearing account (1040), at the invoice's exchange rate. Payment is confirmed by asking Stripe about open links every two minutes, or at once by Stripe's signed notice (`/v1/pay/stripe/notice`, checked with the webhook secret, five minutes' tolerance) where the server is reachable from the internet. Needs `fin.payment.link` and `fin.payment.post` |
 | Invoice PDF (Phase 6d) | Posted invoices and credit notes as a PDF made by BAATS itself (no external tool): seller and customer with their tax numbers, lines, VAT by rate, totals, open amount and the payment link |
 | Excel import (Phase 6d) | Data import reads Excel workbooks (.xlsx) directly, any visible sheet, with dates and formulas' values, through exactly the same checks as CSV |
+| Subscriptions and billing (Phase 7b) | Plans (users included, price per extra user, most users and companies, trial days), one subscription per organization, and the operator's monthly invoices to each organization (plan plus extra users, counted when billed; one invoice per month). A new organization starts on a 30-day trial (DEFAULT_PLAN). Seats and companies are checked when users are added or re-enabled and books are set up. An ended trial, or a subscription suspended 14 days after an unpaid invoice's due date (or by the operator), keeps everything readable and exportable but answers `402` to changes; paying lifts an unpaid suspension. Operator API under `/v1/platform/` with the platform key; each organization sees its own plan, use and invoices (`sys.subscription.read`) |
+| Operations (Phase 7b) | `/metrics` in the Prometheus format (requests and times by route, 5xx answers, database pool and ping, memory, uptime, email waiting) behind a token; `/health?deep=1` asks the database. Encrypted backups (AES-256-GCM, key from a passphrase with scrypt; the tag at the end proves the file unchanged), restore drills that rebuild a backup beside the live database and check every audit chain and that every posted journal balances, a second backup folder and a weekly drill in the Windows trial. Imports of fixed assets (checked against the trial balance), open purchase orders (approved) and open sales orders (confirmed) |
+| Security self-tests (Phase 7b) | `test/security.test.ts`: row level security on, forced and with a policy on every tenant table; no other table the application can write except the plan list; the application role is not a superuser, owns nothing and cannot bypass row security; every owner-rights function pins its search path; the audit trail is append-only; every route but the listed public ones answers 401 without a session or with a forged token or API key; one organization cannot read or change another's records by id. Scope and rules for an outside penetration test: `docs/07-security-testing.md` |
 | API | REST `/v1` with schema validation for all of the above |
 
 ## Run it
@@ -103,7 +106,7 @@ curl -X POST localhost:3000/v1/auth/login -H 'content-type: application/json' \
 ```
 db/migrations/    SQL schema: tenants, org, iam, audit, mdm, wf, RLS policies, triggers, reference data
 src/core/         database access (tenant-bound transactions), errors, rules engine, migrations
-src/platform/     tenant onboarding; backup and restore (backup.ts)
+src/platform/     tenant onboarding; backup, restore and drills (backup.ts); plans, subscriptions and billing (billing.ts); metrics
 src/mig/          data import from CSV, Excel workbooks (xlsx.ts) and BAATS Accounting books
 src/org/          organization engine
 src/iam/          authentication, authorization, roles, SoD, delegation, single sign-on (sso.ts)
@@ -142,6 +145,9 @@ test/             unit, integration (real PostgreSQL) and API tests
 | `TRUST_PROXY` | server | Behind a reverse proxy: `true`, or the proxy's addresses, so limits and sessions see the client's address from `X-Forwarded-For` |
 | `PUBLIC_URL` | server | The address people reach this server at (`https://erp.example.com`); used for sign-in return addresses, card payment return pages and the redirect address shown to administrators. Without it, the address of each request is used |
 | `SSO_ALLOW_HTTP` | server | `true` allows an OpenID provider on http:// (on-premises identity servers, tests) |
+| `DEFAULT_PLAN` | server | The plan a new organization starts on (default `TRIAL`, 30 days); the Windows trial uses `ONPREM` (no limits) |
+| `AUTO_BILLING` | server | `true` bills last month for every organization on a paid plan at the first hourly run of each month |
+| `METRICS_TOKEN` | server | Bearer token for `/metrics` (the platform key also works); without either, `/metrics` answers 401 |
 | `MIGRATION_DATABASE_URL` | migrate | Owner connection |
 | `APP_DB_PASSWORD` | migrate | Enables login for `baats_app` with this password |
 | `TEST_ADMIN_DATABASE_URL` | tests | Superuser connection used to create per-file test databases |

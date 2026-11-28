@@ -191,7 +191,9 @@ async function main() {
   const { buildServer } = await import(pathToFileURL(join(APP_DIR, 'src', 'api', 'server.ts')).href);
   const db = new Db({ connectionString: `postgres://baats_app:${encodeURIComponent(cfg.appDbPassword)}@127.0.0.1:${cfg.pgPort}/baats` });
   const app = buildServer({ db, platformAdminKey: cfg.platformAdminKey, logger: false, ai: { secretKey: cfg.secretKey, allowPrivateUrls: true },
-    limits: { apiPerMinute: Number(cfg.apiRequestsPerMinute) || undefined, loginsPer5Min: Number(cfg.loginsPer5Minutes) || undefined } });
+    limits: { apiPerMinute: Number(cfg.apiRequestsPerMinute) || undefined, loginsPer5Min: Number(cfg.loginsPer5Minutes) || undefined },
+    // publicUrl: the address people reach this PC at, when it is published (sign-in return and card payment pages).
+    connectors: { publicUrl: typeof cfg.publicUrl === 'string' && cfg.publicUrl ? cfg.publicUrl : undefined, ssoAllowHttp: cfg.ssoAllowHttp === true } });
 
   const consoleHtml = readFileSync(join(HERE, 'console.html'), 'utf8');
   const version = (() => { try { return readFileSync(join(ROOT, 'VERSION.txt'), 'utf8').trim(); } catch { return 'dev'; } })();
@@ -199,7 +201,7 @@ async function main() {
   const shutdown = async (why) => {
     if (shuttingDown) return; shuttingDown = true;
     say(`Stopping BAATS (${why})...`);
-    clearInterval(timer); clearInterval(hookTimer); clearInterval(backupTimer);
+    clearInterval(timer); clearInterval(hookTimer); clearInterval(backupTimer); clearInterval(mailTimer); clearInterval(linkTimer);
     try { server.close(); closePhoneAccess(); } catch { /* ignore */ }
     try { await app.close(); } catch { /* ignore */ }
     try { await db.close(); } catch { /* ignore */ }
@@ -378,6 +380,21 @@ async function main() {
     dispatching = true;
     try { await dispatchAll(db, hookOpts); } catch { /* next time */ } finally { dispatching = false; }
   }, 30_000);
+
+  // Email every half minute, and card payment links every two minutes, as in src/main.ts.
+  const { dispatchMailAll } = await import(pathToFileURL(join(APP_DIR, 'src', 'int', 'mail.ts')).href);
+  const { checkOpenLinks } = await import(pathToFileURL(join(APP_DIR, 'src', 'fin', 'paylinks.ts')).href);
+  let mailing = false, checkingLinks = false;
+  const mailTimer = setInterval(async () => {
+    if (mailing) return;
+    mailing = true;
+    try { await dispatchMailAll(db, hookOpts); } catch { /* next time */ } finally { mailing = false; }
+  }, 30_000);
+  const linkTimer = setInterval(async () => {
+    if (checkingLinks) return;
+    checkingLinks = true;
+    try { const n = await checkOpenLinks(db, hookOpts); if (n) say(`Card payments received: ${n}`); } catch { /* next time */ } finally { checkingLinks = false; }
+  }, 120_000);
 
   // Escalation sweep, as in src/main.ts
   const { runEscalations } = await import(pathToFileURL(join(APP_DIR, 'src', 'workflow', 'engine.ts')).href);

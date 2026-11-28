@@ -91,7 +91,8 @@ function authView() {
     ${field('tenant', 'Company code', 'required value="' + esc(localStorage.getItem('baatsTenant') || '') + '"')}
     ${field('email', 'Email', 'type="email" required')}${field('password', 'Password', 'type="password" required')}
     ${field('totp', 'MFA code (only if enabled)')}</div>
-    <div class="row"><button class="btn">Sign in</button></div></form></div>
+    <div class="row"><button class="btn">Sign in</button></div></form>
+    ${SSO_ERROR ? `<p style="color:var(--bad)">Sign-in with your work account did not work: ${esc(SSO_ERROR)}</p>` : ''}<div id="sso-box"></div></div>
   <div class="card"><h3>New here? Create your company</h3><p class="muted">This sets up a company with its own head office unit, an administrator account and a default approval workflow.</p>
     <form id="f-company"><div class="grid">
     ${field('code', 'Company code (short, e.g. acme)', 'required pattern="[a-z0-9\\-]+" title="lowercase letters, numbers and dashes"')}
@@ -104,6 +105,9 @@ function authView() {
     </div><div class="row"><button class="btn">Create company</button></div></form></div></div>`;
 }
 async function afterAuthBind() {
+  const tIn = $('#f-login [name=tenant]'); let tT;
+  tIn.addEventListener('input', () => { clearTimeout(tT); tT = setTimeout(() => showSsoButtons(tIn.value.trim()), 400); });
+  showSsoButtons(tIn.value.trim());
   bindForm('f-login', async (b) => {
     const r = await api('POST', '/v1/auth/login', b);
     const sess = r.session || r; if (!sess.token) throw new Error(r.message || 'Sign in failed');
@@ -174,7 +178,7 @@ const pages = {
     return `<div class="card"><h3>Customers and suppliers</h3><p class="muted">New records start as drafts. "Submit" sends one for approval, and someone other than you must approve it. So before submitting, add a second user under Users and roles and give them the Tenant administrator role.</p>
       ${parties.length ? '<div class="tbl"><table><tr><th>code</th><th>name</th><th>customer</th><th>supplier</th><th>country</th><th>credit limit</th><th>status</th><th></th></tr>' + parties.map((p) => `<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${p.is_customer ? 'yes' : ''}</td><td>${p.is_supplier ? 'yes' : ''}</td><td>${esc(p.country_code)}</td><td>${esc(p.credit_limit)}</td><td>${esc(p.status)}${p.blocked ? ' (blocked)' : ''}</td><td>${p.status === 'draft' ? `<button class="btn sec" data-submit="${p.id}">Submit</button>` : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">Nothing here yet.</div>'}
       <form id="f-party"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${check('isCustomer', 'Customer', true)}${check('isSupplier', 'Supplier')}
-      ${field('countryCode', 'Country', 'required value="AE" maxlength="2"')}${field('currencyCode', 'Currency', 'maxlength="3"')}${field('taxRegistrationNo', 'Tax reg. no.')}${field('creditLimit', 'Credit limit', 'type="number" min="0"')}${pick('ownerUnitId', 'Owning unit', unitOpts(us))}${field('street', 'Street (for e-invoices)')}${field('city', 'City')}${field('emirate', 'Emirate code (UAE: DXB, AUH...)', 'maxlength="3"')}${field('building_no', 'Building no. (Saudi, 4 digits)', 'pattern="[0-9]{4}"')}${field('district', 'District (Saudi)')}${field('postal_code', 'Postal code (Saudi, 5 digits)', 'pattern="[0-9]{5}"')}${field('cr_no', 'Commercial registration no. (Saudi)')}
+      ${field('countryCode', 'Country', 'required value="AE" maxlength="2"')}${field('currencyCode', 'Currency', 'maxlength="3"')}${field('taxRegistrationNo', 'Tax reg. no.')}${field('creditLimit', 'Credit limit', 'type="number" min="0"')}${pick('ownerUnitId', 'Owning unit', unitOpts(us))}${field('street', 'Street (for e-invoices)')}${field('city', 'City')}${field('emirate', 'Emirate code (UAE: DXB, AUH...)', 'maxlength="3"')}${field('building_no', 'Building no. (Saudi, 4 digits)', 'pattern="[0-9]{4}"')}${field('district', 'District (Saudi)')}${field('postal_code', 'Postal code (Saudi, 5 digits)', 'pattern="[0-9]{5}"')}${field('cr_no', 'Commercial registration no. (Saudi)')}${field('email', 'Email (invoices are sent here)', 'type="email"')}${field('iban', 'IBAN (suppliers, for payment files)')}${field('bic', 'BIC / SWIFT (optional)')}
       </div><div class="row"><button class="btn">Add customer / supplier</button></div></form></div>
     <div class="card"><h3>Items</h3>${table(items, ['code', 'name', 'item_type', 'base_uom', 'barcode', 'status'].filter((c) => !items[0] || c in items[0]))}
       <form id="f-item"><div class="grid">${field('code', 'Code', 'required')}${field('name', 'Name', 'required')}${pick('itemType', 'Type', [['stock', 'Stock'], ['service', 'Service'], ['non_stock', 'Non-stock'], ['asset', 'Asset']])}${uoms.length ? pick('baseUom', 'Unit of measure', uoms.map((u) => [u.code, `${u.code} - ${u.name}`])) : '<label>Unit of measure<input disabled placeholder="Add one below first"></label>'}${field('barcode', 'Barcode')}</div><div class="row"><button class="btn">Add item</button></div></form></div>
@@ -198,7 +202,7 @@ const pages = {
       <label style="margin-top:10px">JSON body<textarea name="body"></textarea></label><div class="row"><button class="btn">Send</button></div></form><pre id="api-out"></pre></div>`;
   },
 };
-const MENU = [['overview', 'Overview'], ['assistant', 'AI assistant'], ['analytics', 'Interactive dashboard'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['expenses', 'HR: expense claims'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['aisettings', 'Assistant settings'], ['integrations', 'Integrations (API keys, webhooks)'], ['mobile', 'BAATS Mobile'], ['import', 'Data import'], ['backup', 'Backup and restore'], ['security', 'My sessions and password'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audittrail', 'Audit trail'], ['apitester', 'API tester']];
+const MENU = [['overview', 'Overview'], ['assistant', 'AI assistant'], ['analytics', 'Interactive dashboard'], ['dashboard', 'Executive dashboard'], ['reportbuilder', 'Report builder'], ['scorecard', 'Strategy scorecard'], ['esg', 'Sustainability (ESG)'], ['anomalies', 'Anomaly checks'], ['books', 'Finance: setup'], ['invoices', 'Finance: sales and purchases'], ['journals', 'Finance: journals'], ['vat', 'Finance: VAT return'], ['reports', 'Finance: reports'], ['einvoicing', 'Finance: e-invoicing'], ['bank', 'Finance: bank'], ['assets', 'Finance: fixed assets'], ['inventory', 'Inventory'], ['purchasing', 'Purchasing'], ['sales', 'Sales and CRM'], ['hr', 'HR and payroll'], ['expenses', 'HR: expense claims'], ['projects', 'Projects'], ['manufacturing', 'Manufacturing'], ['maintenance', 'Maintenance'], ['fleet', 'Fleet'], ['documents', 'Documents'], ['contracts', 'Legal and contracts'], ['risk', 'Risk and compliance'], ['audit', 'Internal audit'], ['actions', 'Corrective actions'], ['servicedesk', 'Service desk'], ['quality', 'Quality'], ['safety', 'Health and safety'], ['facilities', 'Facilities'], ['organization', 'Organization'], ['employees', 'Employees'], ['access', 'Users and roles'], ['aisettings', 'Assistant settings'], ['integrations', 'Integrations (API keys, webhooks)'], ['connectors', 'Connectors (email, sign-in, card payments)'], ['mobile', 'BAATS Mobile'], ['import', 'Data import'], ['backup', 'Backup and restore'], ['security', 'My sessions and password'], ['masterdata', 'Master data'], ['approvals', 'Approvals'], ['audittrail', 'Audit trail'], ['apitester', 'API tester']];
 let current = 'overview';
 const after = {};
 
@@ -220,7 +224,7 @@ async function show(page) {
   bindForm('f-check', async (b) => { const r = await api('POST', '/v1/iam/check', b); const o = $('#check-out'); o.style.display = 'block'; o.textContent = JSON.stringify(r, null, 2); });
   bindForm('f-party', async (b) => {
     if (b.creditLimit) b.creditLimit = Number(b.creditLimit);
-    const attributes = {}; for (const k of ['street', 'city', 'emirate', 'building_no', 'district', 'postal_code', 'cr_no']) if (b[k]) { attributes[k] = k === 'emirate' ? b[k].toUpperCase() : b[k]; delete b[k]; }
+    const attributes = {}; for (const k of ['street', 'city', 'emirate', 'building_no', 'district', 'postal_code', 'cr_no', 'email', 'iban', 'bic']) if (b[k]) { attributes[k] = ['emirate', 'bic'].includes(k) ? b[k].toUpperCase() : k === 'iban' ? b[k].replace(/\s+/g, '').toUpperCase() : b[k]; delete b[k]; }
     await api('POST', '/v1/mdm/parties', { ...b, attributes }); ok('Saved as draft');
   });
   bindForm('f-item', async (b) => { await api('POST', '/v1/mdm/items', b); ok('Item added'); });
@@ -316,7 +320,7 @@ Object.assign(pages, {
     const taxOpts = taxes.map((t) => [t.code, `${t.code} - ${t.name}`]);
     const line = (i) => `<div class="grid" style="margin-top:6px">${field(`d${i}`, `Line ${i + 1}: description`, i ? '' : 'required')}${field(`q${i}`, 'Quantity', `type="number" step="any" ${i ? '' : 'required value="1"'}`)}${field(`p${i}`, 'Unit price', `type="number" step="any" ${i ? '' : 'required'}`)}${pick(`t${i}`, 'VAT', taxOpts)}<label>Account<select name="a${i}" class="acct"></select></label></div>`;
     return companyBar(cs) + `<div class="card"><h3>Invoices and credit notes</h3>
-      ${invs.length ? '<div class="tbl"><table><tr><th>no</th><th>kind</th><th>party</th><th>date</th><th>due</th><th style="text-align:right">total</th><th style="text-align:right">open</th><th>status</th><th></th></tr>' + invs.map((v) => `<tr><td>${esc(v.no || '(draft)')}</td><td>${esc(v.kind.replace('_', ' '))}</td><td>${esc(v.party_name)}</td><td>${esc(String(v.date).slice(0, 10))}</td><td>${esc(String(v.due_date || '').slice(0, 10))}</td><td style="text-align:right">${money(v.gross_total)} ${esc(v.currency)}</td><td style="text-align:right">${v.status === 'posted' ? money(v.outstanding) : ''}</td><td>${esc(v.status)}</td><td>${v.status === 'draft' ? `<button class="btn" data-post="${v.id}">Post</button> <button class="btn sec" data-del="${v.id}">Delete</button>` : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No invoices yet.</div>'}</div>
+      ${invs.length ? '<div class="tbl"><table><tr><th>no</th><th>kind</th><th>party</th><th>date</th><th>due</th><th style="text-align:right">total</th><th style="text-align:right">open</th><th>status</th><th></th></tr>' + invs.map((v) => `<tr><td>${esc(v.no || '(draft)')}</td><td>${esc(v.kind.replace('_', ' '))}</td><td>${esc(v.party_name)}</td><td>${esc(String(v.date).slice(0, 10))}</td><td>${esc(String(v.due_date || '').slice(0, 10))}</td><td style="text-align:right">${money(v.gross_total)} ${esc(v.currency)}</td><td style="text-align:right">${v.status === 'posted' ? money(v.outstanding) : ''}</td><td>${esc(v.status)}</td><td>${v.status === 'draft' ? `<button class="btn" data-post="${v.id}">Post</button> <button class="btn sec" data-del="${v.id}">Delete</button>` : invActions(v)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No invoices yet.</div>'}<div id="inv-out"></div></div>
     <div class="card"><h3>New invoice</h3>${custs.length || supps.length ? '' : '<p class="muted">You need an approved customer or supplier first (Master data, then Approvals), or use Load demo data under Finance: setup.</p>'}
       <form id="f-inv"><div class="grid">${pick('kind', 'Type', [['sales_invoice', 'Sales invoice'], ['purchase_invoice', 'Purchase bill'], ['sales_credit', 'Sales credit note'], ['purchase_credit', 'Purchase credit note']])}
       <label>Customer / supplier<select name="partyId" required></select></label>${field('date', 'Date', `type="date" required value="${today()}"`)}${field('dueDate', 'Due date', 'type="date"')}${field('supplierRef', "Supplier's invoice no. (bills)")}
@@ -379,6 +383,7 @@ Object.assign(after, {
       const invs = (await api('GET', `/v1/fin/companies/${S.company}/invoices?kind=${kind}&status=posted&partyId=${pf.partyId.value}`).catch(() => [])).filter((v) => Number(v.outstanding) > 0);
       pf.invoiceId.innerHTML = '<option value="">(none, keep as advance)</option>' + invs.map((v) => `<option value="${v.id}" data-open="${v.outstanding}">${esc(v.no)} open ${money(v.outstanding)}</option>`).join('');
     };
+    bindInvoiceActions(m, ok);
     f.kind.onchange = () => fill(f); pf.kind.onchange = () => fill(pf); pf.partyId.onchange = fillInv;
     pf.invoiceId.onchange = () => { const o = pf.invoiceId.selectedOptions[0]; if (o?.dataset.open) pf.amount.value = o.dataset.open; };
     fill(f); fill(pf);
@@ -717,9 +722,9 @@ Object.assign(pages, {
       <p>Ledger balance <b>${money(rec.ledgerBalance)}</b> · plus items only on the statement <b>${money(rec.notYetInLedger)}</b> · less items only in the ledger <b>${money(rec.outstandingInLedger)}</b> · = <b>${money(rec.adjustedBalance)}</b>${rec.statementClosingBalance !== null ? ` · bank's closing balance <b>${money(rec.statementClosingBalance)}</b> ${rec.statementClosingBalance === rec.adjustedBalance ? '<span class="pill">reconciled</span>' : '<span class="pill" style="color:var(--bad)">difference ' + money(rec.adjustedBalance - rec.statementClosingBalance) + '</span>'}` : ''}</p>
       <h4>On the statement, not in the ledger</h4>${rec.onStatementOnly.length ? '<div class="tbl"><table><tr><th>date</th><th>description</th><th style="text-align:right">amount</th><th>post to</th><th></th></tr>' + rec.onStatementOnly.map((l) => `<tr><td>${d10(l.date)}</td><td>${esc(l.description)}</td><td style="text-align:right">${money(l.amount)}</td><td><select data-acc="${l.id}">${accountOpts(expense).map(([v, t]) => `<option value="${v}" ${v === (l.amount < 0 ? '5900' : '2900') ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></td><td>${act('Post and match', 'bl-post', l.id)}</td></tr>`).join('') + '</table></div>' : '<div class="empty">None.</div>'}
       <h4>In the ledger, not yet on a statement</h4>${report(rec.inLedgerOnly.map((l) => ({ ...l, date: d10(l.date) })), [['date', 'Date'], ['no', 'Journal'], ['memo', 'Memo'], ['amount', 'Amount', 1]])}</div>
-    <div class="card"><h3>Import a statement (CSV)</h3><p class="muted">The first row must name the columns: Date, Description and either Amount or Debit and Credit (Reference optional). Dates like 05/02/2026 are read day first. Lines already imported are skipped, and lines that match the ledger by amount within 5 days are matched straight away.</p>
-      <form id="f-stmt"><div class="grid"><label>CSV file<input type="file" name="file" accept=".csv,text/csv" required></label>${field('closingBalance', "Bank's closing balance (optional)", 'type="number" step="any"')}</div><div class="row"><button class="btn">Import</button></div></form></div>
-    <div class="card"><h3>Statement lines</h3>${lines.length ? '<div class="tbl"><table><tr><th>date</th><th>description</th><th>reference</th><th style="text-align:right">amount</th><th>status</th><th>journal</th><th></th></tr>' + lines.map((l) => `<tr><td>${d10(l.date)}</td><td>${esc(l.description)}</td><td>${esc(l.reference)}</td><td style="text-align:right">${money(l.amount)}</td><td>${esc(l.status)}</td><td>${esc(l.matched_journal)}</td><td>${l.status === 'matched' ? act('Unmatch', 'bl-unmatch', l.id, 1) : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No statements imported yet.</div>'}</div>`;
+    <div class="card"><h3>Import a statement</h3><p class="muted">Download the statement from your online banking as <b>MT940</b> (.sta, .mt940, .txt) or <b>CAMT.053</b> (.xml); most GCC banks offer one or both. Its opening and closing balances come with it, and the account is recognised by its IBAN (bank details below). A <b>CSV</b> file also works: the first row must name the columns Date, Description and either Amount or Debit and Credit (Reference optional), with dates like 05/02/2026 read day first. Lines already imported are skipped, and lines that match the ledger by amount within 5 days are matched straight away.</p>
+      <form id="f-stmt"><div class="grid"><label>Statement file<input type="file" name="file" accept=".sta,.mt940,.940,.txt,.xml,.csv,text/csv,application/xml,text/xml" required></label>${field('closingBalance', "Bank's closing balance (CSV only, optional)", 'type="number" step="any"')}</div><div class="row"><button class="btn">Import</button></div></form></div>
+    <div class="card"><h3>Statement lines</h3>${lines.length ? '<div class="tbl"><table><tr><th>date</th><th>description</th><th>reference</th><th style="text-align:right">amount</th><th>status</th><th>journal</th><th></th></tr>' + lines.map((l) => `<tr><td>${d10(l.date)}</td><td>${esc(l.description)}</td><td>${esc(l.reference)}</td><td style="text-align:right">${money(l.amount)}</td><td>${esc(l.status)}</td><td>${esc(l.matched_journal)}</td><td>${l.status === 'matched' ? act('Unmatch', 'bl-unmatch', l.id, 1) : ''}</td></tr>`).join('') + '</table></div>' : '<div class="empty">No statements imported yet.</div>'}</div>` + await bankExtras();
   },
   async assets() {
     const cs = await companies(); if (!cs.length) return noBooks;
@@ -779,15 +784,19 @@ Object.assign(after, {
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
       try {
-        const file = f.file.files[0]; const csv = await file.text();
-        const body = { bankAccount: S.bankAcc, csv, fileName: file.name, ...(f.closingBalance.value ? { closingBalance: Number(f.closingBalance.value) } : {}) };
-        const r = await api('POST', `/v1/fin/companies/${S.company}/bank-statements`, body);
-        ok(`Imported ${r.added} lines (${r.skipped} already there), ${r.autoMatched} matched automatically`);
+        const file = f.file.files[0];
+        let r;
+        if (/\.csv$/i.test(file.name)) {
+          const body = { bankAccount: S.bankAcc, csv: await file.text(), fileName: file.name, ...(f.closingBalance.value ? { closingBalance: Number(f.closingBalance.value) } : {}) };
+          r = await api('POST', `/v1/fin/companies/${S.company}/bank-statements`, body);
+        } else r = await api('POST', `/v1/fin/companies/${S.company}/bank-statement-files`, { bankAccount: S.bankAcc, fileName: file.name, fileBase64: await readBase64(file) });
+        ok(`Imported ${r.format && r.format !== 'csv' ? r.format.toUpperCase() + ' statement: ' : ''}${r.added} lines (${r.skipped} already there), ${r.autoMatched} matched automatically${r.closingBalance != null ? `; closing balance ${money(r.closingBalance)}` : ''}`);
       } catch (err) { toast(err.message, false); }
     });
     const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
     on('bl-post', async (id) => { const acc = m.querySelector(`[data-acc="${id}"]`).value; const r = await api('POST', `/v1/fin/bank-lines/${id}/post`, { account: acc }); ok(`Posted ${r.no} and matched`); });
     on('bl-unmatch', async (id) => { await api('POST', `/v1/fin/bank-lines/${id}/unmatch`); ok('Unmatched'); });
+    bindBankExtras(m, ok);
   },
   async assets(m, ok) {
     bindCompanyPick();
@@ -2229,8 +2238,15 @@ const IMPORT_HELP = {
 const readText = (file) => new Promise((resolve, reject) => {
   if (!file) return reject(new Error('choose a file first'));
   if (file.size > 15 * 1048576) return reject(new Error('the file is larger than 15 MB; split it into smaller files'));
-  if (/\.xlsx?$/i.test(file.name)) return reject(new Error('this is an Excel workbook. In Excel use File, Save As, "CSV UTF-8 (Comma delimited)", and choose that file'));
+  if (/\.xls$/i.test(file.name)) return reject(new Error('this is an old Excel file (.xls). In Excel use File, Save As, "Excel Workbook (.xlsx)" or "CSV UTF-8 (Comma delimited)", and choose that file'));
+  if (/\.xlsx$/i.test(file.name)) return reject(new Error('this is an Excel workbook; this file has to be JSON or CSV'));
   const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(new Error('could not read the file')); r.readAsText(file, 'utf-8');
+});
+/** A file as base64, for JSON uploads. */
+const readBase64 = (file, maxMb = 15) => new Promise((resolve, reject) => {
+  if (!file) return reject(new Error('choose a file first'));
+  if (file.size > maxMb * 1048576) return reject(new Error(`the file is larger than ${maxMb} MB`));
+  const r = new FileReader(); r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, '')); r.onerror = () => reject(new Error('could not read the file')); r.readAsDataURL(file);
 });
 const saveBlob = (url, name) => { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10000); };
 const bytes = (n) => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
@@ -2251,10 +2267,10 @@ Object.assign(pages, {
     S.impKind = S.impKind || 'customers';
     const k = kinds[S.impKind];
     return companyBar(cs) + `<div class="card"><h3>Bring your data into BAATS</h3><p>When you start using BAATS, bring in what you already have from Excel or your old system, in this order: customers and suppliers, items with their stock, employees, then the balances on the day you switch over (the cut-over date): open customer invoices, open supplier bills, and the trial balance. Each file is checked first and nothing is saved until every row is right; then it is saved all at once.</p>
-      <p class="muted">Start from the template, fill it in Excel, and save it with File, Save As, <b>CSV UTF-8 (Comma delimited)</b>. Dates can be 2026-12-31 or 31/12/2026, amounts can have thousands commas. Columns marked * must be filled.</p>
+      <p class="muted">Start from the template and fill it in Excel. Choose the Excel workbook (.xlsx) itself, or save it as <b>CSV UTF-8 (Comma delimited)</b>; with a workbook, pick the sheet that holds the rows (the first row names the columns). Dates can be 2026-12-31 or 31/12/2026, amounts can have thousands commas. Columns marked * must be filled.</p>
       <form id="f-imp"><div class="grid">${pick('kind', 'What to import', IMPORT_ORDER.map((x) => [x, `${IMPORT_ORDER.indexOf(x) + 1}. ${kinds[x].title}`]), 'id="imp-kind"')}
         ${field('asOf', 'Cut-over date', `type="date" required value="${esc(S.impAsOf || today())}" id="imp-asof"`)}
-        <label>File (CSV)<input type="file" id="imp-file" accept=".csv,.txt,text/csv"></label></div>
+        <label>File (CSV or Excel .xlsx)<input type="file" id="imp-file" accept=".csv,.txt,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label><label id="imp-sheet-l" style="display:none">Sheet<select id="imp-sheet"></select></label></div>
         <p class="muted" id="imp-help">${esc(IMPORT_HELP[S.impKind])}</p>
         <p class="muted">Columns: ${k.columns.map((c) => `<code>${esc(c)}</code>`).join(' ')}</p>
         <div class="row"><button class="btn">Check the file</button> <button type="button" class="btn sec" id="imp-template">Download the template</button></div></form>
@@ -2321,7 +2337,19 @@ Object.assign(after, {
         } catch (e) { go.disabled = false; toast(e.message, false); }
       };
     };
-    bindForm('f-imp', async () => { const f = $('#imp-file').files[0]; const csv = await readText(f); await check(csv, f.name, S.impKind); });
+    // An Excel workbook is read on the server into the same CSV text, so it goes through exactly the same checks.
+    const fileIn = $('#imp-file'); const sheetSel = $('#imp-sheet');
+    const readWorkbook = async (f, sheet) => api('POST', '/v1/mig/xlsx', { fileBase64: await readBase64(f, 20), ...(sheet ? { sheet } : {}) });
+    fileIn.onchange = async () => {
+      const f = fileIn.files[0]; $('#imp-sheet-l').style.display = 'none'; sheetSel.innerHTML = '';
+      if (!f || !/\.xlsx$/i.test(f.name)) return;
+      try { const r = await readWorkbook(f); sheetSel.innerHTML = r.sheets.map((x) => `<option>${esc(x)}</option>`).join(''); $('#imp-sheet-l').style.display = r.sheets.length > 1 ? '' : 'none'; } catch (e) { toast(e.message, false); }
+    };
+    bindForm('f-imp', async () => {
+      const f = fileIn.files[0];
+      if (f && /\.xlsx$/i.test(f.name)) { const r = await readWorkbook(f, sheetSel.value); await check(r.csv, `${f.name} (${r.sheet})`, S.impKind); return; }
+      const csv = await readText(f); await check(csv, f.name, S.impKind);
+    });
     $('#ba-read').onclick = async () => {
       try {
         const json = await readText($('#ba-file').files[0]);
@@ -2404,6 +2432,14 @@ function demoReceipt(lines) {
   return { fileName: 'receipt.jpg', contentType: 'image/jpeg', dataBase64: cv.toDataURL('image/jpeg', 0.85).split(',')[1] };
 }
 
+async function loadConnectorsDemo(step, co) {
+  step('Connectors: bank details, a supplier IBAN and a supplier payment for a payment file...');
+  await api('PUT', `/v1/fin/companies/${co}/bank-details`, { bankAccount: '1010', bankName: 'Emirates Demo Bank', iban: 'AE070331234567890123456', bic: 'EBILAEAD', currency: 'AED' });
+  const supp = (await api('GET', '/v1/mdm/parties')).find((p) => p.code === 'DEMO-S1'); if (!supp) return;
+  await api('PATCH', `/v1/mdm/parties/${supp.id}`, { attributes: { iban: 'AE940260001015555555555', bic: 'NBADAEAA', email: 'billing@dubaioffice.example' } });
+  const bills = (await api('GET', `/v1/fin/companies/${co}/invoices?kind=purchase_invoice&status=posted&partyId=${supp.id}`)).filter((v) => Number(v.outstanding) > 0);
+  if (bills.length) await api('POST', `/v1/fin/companies/${co}/payments`, { kind: 'payment', partyId: supp.id, date: today(), bankAccount: '1010', amount: Number(bills[0].outstanding), reference: `Bill ${bills[0].supplier_ref || bills[0].no}`, allocations: [{ invoiceId: bills[0].id, amount: Number(bills[0].outstanding) }] });
+}
 async function loadPhase6Demo(step, co, root) {
   step('BAATS Mobile: two employees who can sign in on a phone, and expense claims...');
   const pw = 'Mobile-Demo-2026';
@@ -2491,15 +2527,180 @@ async function loadDemo(step) {
   await loadPhase4Demo(step, co, root, asApprover);
   await loadPhase5Demo(step, co, root, asApprover);
   await loadPhase6Demo(step, co, root);
+  await loadConnectorsDemo(step, co);
   step(`Done. Second user: ${appEmail} / ${pw}. Phone users: priya@${S.tenant}.demo and omar@${S.tenant}.demo / Mobile-Demo-2026`);
   toast(`Demo loaded. The approver can sign in as ${appEmail} with password ${pw}`);
 }
+
+// ---------- Connectors: invoice PDF, email and card links; bank files; email, sign-in and card settings ----------
+/** Coming back from a sign-in provider (#sso_token) or from a card payment page (?card=1&paid=...). */
+let SSO_ERROR = null, CARD_RETURN = null;
+(() => {
+  const h = new URLSearchParams(location.hash.slice(1)); const q = new URLSearchParams(location.search);
+  if (h.get('sso_token') && h.get('tenant')) {
+    S = { token: h.get('sso_token'), tenant: h.get('tenant'), email: '' };
+    sessionStorage.setItem('baats', JSON.stringify(S)); localStorage.setItem('baatsTenant', S.tenant);
+  }
+  if (h.get('sso_error')) SSO_ERROR = h.get('sso_error');
+  if (q.get('card')) CARD_RETURN = { paid: q.get('paid') };
+  if (h.get('sso_token') || h.get('sso_error') || q.get('card')) history.replaceState(null, '', location.pathname);
+})();
+const SSO_LABEL = { microsoft: 'Microsoft 365', google: 'Google', oidc: 'single sign-on' };
+async function showSsoButtons(tenant) {
+  const box = $('#sso-box'); if (!box) return;
+  if (!tenant) { box.innerHTML = ''; return; }
+  const list = await fetch(`/v1/auth/sso/providers?tenant=${encodeURIComponent(tenant)}`).then((r) => r.ok ? r.json() : []).catch(() => []);
+  box.innerHTML = list.length ? `<p class="muted" style="margin:10px 0 6px">Or sign in with your work account:</p><div class="row">${list.map((p) =>
+    `<a class="btn sec" href="/v1/auth/sso/start?${new URLSearchParams({ tenant, provider: p.id, returnTo: '/' })}">Sign in with ${esc(p.name || SSO_LABEL[p.kind])}</a>`).join(' ')}</div>` : '';
+}
+function cardReturnView() {
+  return `<div class="auth"><div class="card"><h3>${CARD_RETURN.paid ? 'Thank you, your payment went through' : 'The payment was not completed'}</h3>
+    <p>${CARD_RETURN.paid ? `Your card payment for invoice <b>${esc(CARD_RETURN.paid)}</b> has been received. You can close this page.` : 'Nothing was charged. You can close this page, or open the payment link again to pay.'}</p>
+    <div class="row"><button class="btn sec" id="card-done">Go to sign in</button></div></div></div>`;
+}
+
+function invActions(v) {
+  const b = [act('PDF', 'inv-pdf', v.id, 1)];
+  if (v.kind.startsWith('sales')) b.push(act('Email', 'inv-mail', v.id, 1));
+  if (v.kind === 'sales_invoice' && Number(v.outstanding) > 0) b.push(act('Card payment link', 'inv-link', v.id, 1));
+  return b.join(' ');
+}
+async function downloadFile(path, fallbackName) {
+  const r = await fetch(path, { headers: { authorization: 'Bearer ' + S.token } });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.message || 'HTTP ' + r.status); }
+  const name = /filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '')?.[1] || fallbackName;
+  saveBlob(URL.createObjectURL(await r.blob()), name);
+}
+function linkBox(l) {
+  return `<div class="card" style="margin-top:10px"><h4>Card payment link for ${esc(l.invoice_no || '')} ${money(l.amount, l.currency)} ${esc(l.currency)}</h4>
+    <p class="muted">Send this address to the customer. It is valid until ${esc(String(l.expires_at).slice(0, 16).replace('T', ' '))}. When they pay, the receipt is recorded against the invoice on its own (BAATS checks every two minutes), or press Check payment.</p>
+    <div class="row"><input readonly value="${esc(l.url)}" style="flex:1;min-width:240px" id="link-url"> <button class="btn sec" id="link-copy">Copy</button> ${act('Check payment', 'pl-check', l.id, 1)} ${act('Cancel link', 'pl-cancel', l.id, 1)}</div></div>`;
+}
+function bindLinkActions(root, ok) {
+  const on = (attr, fn) => root.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
+  on('pl-check', async (id) => { const r = await api('POST', `/v1/fin/payment-links/${id}/check`); if (r.status === 'paid') ok(`Paid. Receipt ${r.receiptNo || ''} recorded`); else toast(r.status === 'open' ? 'Not paid yet' : `The link is ${r.status}`); });
+  on('pl-cancel', async (id) => { if (!confirm('Cancel this payment link? The customer can no longer pay with it.')) return; await api('POST', `/v1/fin/payment-links/${id}/cancel`); ok('Link cancelled'); });
+  const copy = root.querySelector('#link-copy'); if (copy) copy.onclick = async () => { const i = $('#link-url'); i.select(); try { await navigator.clipboard.writeText(i.value); toast('Copied'); } catch { document.execCommand('copy'); toast('Copied'); } };
+}
+function bindInvoiceActions(m, ok) {
+  const out = $('#inv-out');
+  const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { el.disabled = true; try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } finally { el.disabled = false; } });
+  on('inv-pdf', (id) => downloadFile(`/v1/fin/invoices/${id}/pdf`, 'invoice.pdf'));
+  on('inv-mail', async (id) => {
+    const to = prompt("Send it to which email address? Leave empty to use the customer's email on file. Separate several with commas.", ''); if (to === null) return;
+    const message = prompt('A short message to go with it (optional)', '') || undefined;
+    const list = to.split(/[,;\s]+/).filter(Boolean);
+    const r = await api('POST', `/v1/fin/invoices/${id}/email`, { ...(list.length ? { to: list } : {}), ...(message ? { message } : {}) });
+    toast(`Queued to ${r.to.join(', ')} with ${r.attachments.join(' and ')}. It goes out within a minute; Connectors shows the outbox.`);
+  });
+  on('inv-link', async (id) => { const l = await api('POST', `/v1/fin/invoices/${id}/payment-link`, { returnPath: '/?card=1' }); const v = (await api('GET', `/v1/fin/companies/${S.company}/payment-links?invoiceId=${id}`)).find((x) => x.id === l.id) || l; out.innerHTML = linkBox(v); bindLinkActions(out, ok); out.scrollIntoView({ behavior: 'smooth' }); });
+}
+
+// Bank page: details, statement files and payment files (added to the page built in Finance: bank).
+async function bankExtras() {
+  const [details, payable, files] = await Promise.all([api('GET', `/v1/fin/companies/${S.company}/bank-details`).catch(() => []),
+    api('GET', `/v1/fin/companies/${S.company}/payment-files/payable?bankAccount=${S.bankAcc}`).catch(() => null),
+    api('GET', `/v1/fin/companies/${S.company}/payment-files`).catch(() => null)]);
+  const d = details.find((x) => x.code === S.bankAcc) || {};
+  const mine = (files || []).filter((f) => f.bank_account === S.bankAcc);
+  return `<div class="card"><h3>Bank details for account ${esc(S.bankAcc)}</h3><p class="muted">The IBAN lets BAATS recognise this account's statement files (MT940, CAMT.053) and is the account supplier payments are paid from.</p>
+    <form id="f-bankd"><div class="grid">${field('bankName', 'Bank name', `required value="${esc(d.bank_name || '')}"`)}${field('iban', 'IBAN', `value="${esc(d.iban || '')}"`)}${field('bic', 'BIC / SWIFT', `value="${esc(d.bic || '')}"`)}${field('accountNo', 'Account no. (if no IBAN)', `value="${esc(d.account_no || '')}"`)}${field('currency', 'Currency', `maxlength="3" value="${esc(d.currency || ccy())}"`)}</div>
+    <div class="row"><button class="btn sec">Save bank details</button></div></form></div>
+  <div class="card"><h3>Supplier payment file (ISO 20022)</h3>${payable === null ? '<p class="muted">Making payment files needs the fin.payment.file permission (Finance controller).</p>' : `
+    <p class="muted">Record supplier payments as usual (Finance: sales and purchases, paid from this account), then put them into one file to upload to your bank's online banking (pain.001.001.03, accepted by UAE, Saudi and other GCC banks). Each supplier needs an IBAN under Master data. A payment goes into one file only, unless that file is cancelled.</p>
+    ${payable.length ? `<form id="f-pf"><div class="tbl"><table><tr><th></th><th>no</th><th>date</th><th>supplier</th><th>IBAN</th><th style="text-align:right">amount</th><th>problem</th></tr>${payable.map((p) => `<tr><td><input type="checkbox" name="pay_${p.id}" ${p.problem ? 'disabled' : 'checked'}></td><td>${esc(p.no)}</td><td>${d10(p.date)}</td><td>${esc(p.supplier)}</td><td>${esc(p.iban || '')}</td><td style="text-align:right">${money(p.amount, p.currency)} ${esc(p.currency)}</td><td style="color:var(--bad)">${esc(p.problem || '')}</td></tr>`).join('')}</table></div>
+      <div class="grid">${field('executionDate', 'Pay on', `type="date" required value="${today()}"`)}</div><div class="row"><button class="btn">Make the payment file</button></div></form>` : '<div class="empty">No supplier payments from this account are waiting for a file.</div>'}
+    <h4>Payment files</h4>${mine.length ? `<div class="tbl"><table><tr><th>no</th><th>pay on</th><th>payments</th><th style="text-align:right">total</th><th>status</th><th>made by</th><th></th></tr>${mine.map((f) => `<tr><td>${esc(f.no)}</td><td>${d10(f.execution_date)}</td><td>${f.payments}</td><td style="text-align:right">${money(f.total, f.currency)} ${esc(f.currency)}</td><td>${esc(f.status)}</td><td>${esc(f.by || '')}</td><td>${act('Download XML', 'pf-xml', f.id, 1)} ${f.status === 'created' ? `${act('Mark as sent to bank', 'pf-sent', f.id, 1)} ${act('Cancel', 'pf-cancel', f.id, 1)}` : ''}</td></tr>`).join('')}</table></div>` : '<div class="empty">None yet.</div>'}`}</div>`;
+}
+function bindBankExtras(m, ok) {
+  bindForm('f-bankd', async (b) => { if (b.currency) b.currency = b.currency.toUpperCase(); await api('PUT', `/v1/fin/companies/${S.company}/bank-details`, { bankAccount: S.bankAcc, ...b }); ok('Bank details saved'); });
+  bindForm('f-pf', async (b) => {
+    const ids = Object.keys(b).filter((k) => k.startsWith('pay_') && b[k] === true).map((k) => k.slice(4));
+    if (!ids.length) throw new Error('tick at least one payment');
+    const r = await api('POST', `/v1/fin/companies/${S.company}/payment-files`, { bankAccount: S.bankAcc, paymentIds: ids, executionDate: b.executionDate });
+    await downloadFile(`/v1/fin/payment-files/${r.id}/xml`, `${r.no}.xml`); ok(`Made ${r.no} with ${r.payments} payments; it is downloading. Upload it in your online banking.`);
+  });
+  const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
+  on('pf-xml', (id) => downloadFile(`/v1/fin/payment-files/${id}/xml`, 'payments.xml'));
+  on('pf-sent', async (id) => { await api('POST', `/v1/fin/payment-files/${id}/status`, { status: 'sent' }); ok('Marked as sent'); });
+  on('pf-cancel', async (id) => { if (!confirm('Cancel this file? Its payments can then go into a new file. Only do this if the bank did not receive it.')) return; await api('POST', `/v1/fin/payment-files/${id}/status`, { status: 'cancelled' }); ok('File cancelled'); });
+}
+
+Object.assign(pages, {
+  async connectors() {
+    const [settings, outbox, providers, redirect, cs] = await Promise.all([api('GET', '/v1/int/mail/settings'), api('GET', '/v1/int/mail/outbox'), api('GET', '/v1/iam/sso-providers'), api('GET', '/v1/iam/sso-redirect-uri'), companies()]);
+    cache.mailSettings = settings;
+    const s = settings || { transport: 'smtp', port: 587, security: 'starttls', notify_approvals: true, active: true };
+    let card = '<div class="card"><h3>Card payments</h3><p class="muted">Set up books for a company first (Finance: setup).</p></div>';
+    if (cs.length) {
+      const [g, links] = await Promise.all([api('GET', `/v1/fin/companies/${S.company}/payment-gateway`), api('GET', `/v1/fin/companies/${S.company}/payment-links`)]);
+      card = companyBar(cs) + `<div class="card"><h3>Card payments (Stripe) for ${esc(company().name)}</h3>
+        <p class="muted">With a Stripe account, every posted sales invoice can get a payment link (Finance: sales and purchases, Card payment link) that is also put in the invoice email. When the customer pays, BAATS records the receipt against the invoice in a clearing account (1040 Card Payments Clearing); Stripe's payout to your bank is then matched from the bank statement. Find the secret key in the Stripe dashboard under Developers, API keys; a test key (sk_test_...) lets you try it with Stripe's test cards.</p>
+        <p>${g ? `<b style="color:${g.active ? 'var(--ok)' : 'var(--bad)'}">${g.active ? 'On' : 'Off'}</b> · ${g.live ? 'live key' : 'test key'} · clearing account ${esc(g.clearing_account)} · signed notices ${g.has_webhook_secret ? 'on' : 'off'}` : 'Not set up.'}</p>
+        <form id="f-gw"><div class="grid">${field('secretKey', g ? 'New secret key (leave empty to keep)' : 'Secret key (sk_test_... or sk_live_...)', `type="password" autocomplete="off" ${g ? '' : 'required'}`)}${field('webhookSecret', 'Webhook signing secret (whsec_..., only if this server is reachable from the internet)', 'type="password" autocomplete="off"')}${check('active', 'Card payments on', g ? g.active : true)}</div>
+        <div class="row"><button class="btn">Save</button></div></form>
+        <p class="muted">Stripe can only send its payment notices (webhook) to a server it can reach: ${esc(location.origin)}/v1/pay/stripe/notice, event checkout.session.completed. On a PC that is not reachable from the internet, BAATS asks Stripe about open links every two minutes instead.</p>
+        <h4>Payment links</h4>${links.length ? `<div class="tbl"><table><tr><th>invoice</th><th style="text-align:right">amount</th><th>status</th><th>valid until</th><th>paid</th><th>receipt</th><th></th></tr>${links.map((l) => `<tr><td>${esc(l.invoice_no)}</td><td style="text-align:right">${money(l.amount, l.currency)} ${esc(l.currency)}</td><td>${esc(l.status)}</td><td>${esc(String(l.expires_at).slice(0, 16).replace('T', ' '))}</td><td>${esc(String(l.paid_at || '').slice(0, 16).replace('T', ' '))}</td><td>${esc(l.receipt_no || '')}</td><td>${l.status === 'open' ? `${act('Check payment', 'pl-check', l.id, 1)} ${act('Cancel link', 'pl-cancel', l.id, 1)}` : ''}</td></tr>`).join('')}</table></div>` : '<div class="empty">No links yet.</div>'}</div>`;
+    }
+    return `<div class="card"><h3>Email</h3><p class="muted">Used to send invoices (with the PDF and e-invoice XML) and to tell approvers when something is waiting for them. Use your own mail server or Microsoft 365. Passwords and secrets are kept encrypted.</p>
+      <form id="f-mail"><div class="grid">${pick('transport', 'Send through', [['smtp', 'Mail server (SMTP)'], ['microsoft365', 'Microsoft 365 (Graph)']], 'id="mail-transport"')}
+        ${field('fromAddress', 'Sender address', `type="email" required value="${esc(s.from_address || '')}"`)}${field('fromName', 'Sender name', `required value="${esc(s.from_name || '')}"`)}${field('replyTo', 'Reply-to address (optional)', `type="email" value="${esc(s.reply_to || '')}"`)}</div>
+        <div class="grid mail-smtp">${field('host', 'Mail server (e.g. smtp.office365.com, smtp.gmail.com)', `value="${esc(s.host || '')}"`)}${field('port', 'Port', `type="number" value="${esc(s.port || 587)}"`)}${pick('security', 'Security', [['starttls', 'STARTTLS (port 587)'], ['tls', 'TLS (port 465)'], ['none', 'None (internal relay only)']], 'id="mail-security"')}${field('username', 'User name', `autocomplete="off" value="${esc(s.username || '')}"`)}${field('password', s.has_secret ? 'Password (leave empty to keep)' : 'Password', 'type="password" autocomplete="new-password"')}</div>
+        <div class="grid mail-ms">${field('msTenant', 'Directory (tenant) id', `value="${esc(s.ms_tenant || '')}"`)}${field('msClientId', 'Application (client) id', `value="${esc(s.ms_client_id || '')}"`)}${field('msClientSecret', s.has_secret ? 'Client secret (leave empty to keep)' : 'Client secret', 'type="password" autocomplete="new-password"')}</div>
+        <p class="muted mail-ms">In Microsoft Entra, register an application, give it the application permission Mail.Send (with admin consent) and make a client secret. The sender address must be a mailbox in your Microsoft 365.</p>
+        <div class="grid">${check('notifyApprovals', 'Email approvers when something waits for them', s.notify_approvals)}${check('active', 'Email on', s.active)}</div>
+        <div class="row"><button class="btn">Save email settings</button></div></form>
+      ${settings ? `<form id="f-mailtest"><div class="grid">${field('to', 'Send a test email to', 'type="email" required')}</div><div class="row"><button class="btn sec">Send test</button><span id="mail-test-out" class="muted"></span></div></form>` : ''}
+      <h4>Outbox</h4><p class="muted">Emails are sent within 30 seconds. If the server refuses, BAATS tries again after 1, 4, 16 and 64 minutes, then gives up.</p>
+      ${outbox.length ? `<div class="tbl"><table><tr><th>when</th><th>what</th><th>to</th><th>subject</th><th>status</th><th>tries</th><th>last error</th><th></th></tr>${outbox.map((x) => `<tr><td>${esc(String(x.created_at).slice(0, 16).replace('T', ' '))}</td><td>${esc(x.kind)}</td><td>${esc((x.to_addresses || []).join(', '))}</td><td>${esc(x.subject)}</td><td>${esc(x.status)}</td><td>${x.attempts}</td><td title="${esc(x.last_error || '')}">${esc(x.last_error || '')}</td><td>${x.status === 'failed' ? act('Try again', 'mail-resend', x.id, 1) : ''}</td></tr>`).join('')}</table></div>` : '<div class="empty">Nothing sent yet.</div>'}</div>
+    <div class="card"><h3>Sign in with Microsoft 365 or Google</h3><p class="muted">People then sign in with their work account instead of a BAATS password. Only people who already have a BAATS user with the same email can sign in, and only from the email domains you allow. If someone has the BAATS authenticator app turned on, their Microsoft or Google sign-in must use multi-factor authentication too.</p>
+      <p>Redirect address to register with the provider: <code>${esc(redirect.redirectUri)}</code></p>
+      <p class="muted">Microsoft: in Microsoft Entra, App registrations, New registration, add the redirect address as a Web platform, then make a client secret. Google: in Google Cloud console, APIs and Services, Credentials, OAuth client ID, Web application, add the redirect address. Google accepts http only for localhost, so on this PC sign in at http://localhost:${esc(location.port || '80')}.</p>
+      ${providers.length ? `<div class="tbl"><table><tr><th>provider</th><th>name</th><th>issuer</th><th>allowed domains</th><th>on</th><th>sign-ins</th><th></th></tr>${providers.map((p) => `<tr><td>${esc(p.kind)}</td><td>${esc(p.name)}</td><td title="${esc(p.issuer)}">${esc(p.issuer)}</td><td>${esc((p.allowed_domains || []).join(', '))}</td><td>${p.active ? 'yes' : 'no'}</td><td>${p.sign_ins}</td><td>${act(p.active ? 'Turn off' : 'Turn on', p.active ? 'sso-off' : 'sso-on', p.id, 1)} ${act('Remove', 'sso-del', p.id, 1)}</td></tr>`).join('')}</table></div>` : ''}
+      <form id="f-sso"><div class="grid">${pick('kind', 'Provider', [['microsoft', 'Microsoft 365 (Entra ID)'], ['google', 'Google Workspace'], ['oidc', 'Other (OpenID Connect)']])}${field('name', 'Button name (optional)')}
+        ${field('msTenant', 'Microsoft: directory (tenant) id or domain')}${field('issuer', 'Other: issuer address (https://...)')}${field('clientId', 'Client id', 'required')}${field('clientSecret', 'Client secret', 'type="password" required autocomplete="new-password"')}${field('allowedDomains', 'Allowed email domains (comma separated; required for Google and Other)')}</div>
+        <div class="row"><button class="btn">Add sign-in provider</button></div></form></div>
+    ${card}`;
+  },
+});
+Object.assign(after, {
+  async connectors(m, ok) {
+    bindCompanyPick();
+    const settings = cache.mailSettings;
+    const f = $('#f-mail'); const tr = $('#mail-transport');
+    tr.value = settings?.transport || 'smtp'; $('#mail-security').value = settings?.security || 'starttls';
+    const sync = () => { m.querySelectorAll('.mail-smtp').forEach((e) => e.style.display = tr.value === 'smtp' ? '' : 'none'); m.querySelectorAll('.mail-ms').forEach((e) => e.style.display = tr.value === 'smtp' ? 'none' : ''); };
+    tr.onchange = sync; sync();
+    bindForm('f-mail', async (b) => {
+      const body = { transport: b.transport, fromAddress: b.fromAddress, fromName: b.fromName, notifyApprovals: b.notifyApprovals, active: b.active, ...(b.replyTo ? { replyTo: b.replyTo } : {}) };
+      if (b.transport === 'smtp') Object.assign(body, { host: b.host, port: Number(b.port), security: b.security, ...(b.username ? { username: b.username } : {}), ...(b.password ? { password: b.password } : {}) });
+      else Object.assign(body, { msTenant: b.msTenant, msClientId: b.msClientId, ...(b.msClientSecret ? { msClientSecret: b.msClientSecret } : {}) });
+      await api('PUT', '/v1/int/mail/settings', body); ok('Email settings saved. Send a test to check them.');
+    });
+    bindForm('f-mailtest', async (b) => { const o = $('#mail-test-out'); o.textContent = 'Sending...'; const r = await api('POST', '/v1/int/mail/test', { to: b.to }); o.innerHTML = r.sent ? `<span style="color:var(--ok)">Sent.</span> ${esc(r.answer || '')}` : `<span style="color:var(--bad)">Not sent: ${esc(r.answer)}</span>`; });
+    bindForm('f-sso', async (b) => {
+      const body = { kind: b.kind, clientId: b.clientId, clientSecret: b.clientSecret, ...(b.name ? { name: b.name } : {}), ...(b.msTenant ? { msTenant: b.msTenant } : {}), ...(b.issuer ? { issuer: b.issuer } : {}) };
+      if (b.allowedDomains) body.allowedDomains = b.allowedDomains.split(/[,;\s]+/).filter(Boolean);
+      await api('POST', '/v1/iam/sso-providers', body); ok('Sign-in provider added. Its button shows on the sign-in page.');
+    });
+    bindForm('f-gw', async (b) => { const body = { active: b.active, ...(b.secretKey ? { secretKey: b.secretKey } : {}), ...(b.webhookSecret ? { webhookSecret: b.webhookSecret } : {}) }; await api('PUT', `/v1/fin/companies/${S.company}/payment-gateway`, body); ok('Card payments saved'); });
+    const on = (attr, fn) => m.querySelectorAll(`[data-${attr}]`).forEach((el) => el.onclick = async () => { try { await fn(el.getAttribute(`data-${attr}`)); } catch (e) { toast(e.message, false); } });
+    on('mail-resend', async (id) => { await api('POST', `/v1/int/mail/${id}/resend`); ok('Queued again'); });
+    on('sso-off', async (id) => { await api('PATCH', `/v1/iam/sso-providers/${id}`, { active: false }); ok('Turned off'); });
+    on('sso-on', async (id) => { await api('PATCH', `/v1/iam/sso-providers/${id}`, { active: true }); ok('Turned on'); });
+    on('sso-del', async (id) => { if (!confirm('Remove this sign-in provider? People who use it will need a BAATS password.')) return; await api('DELETE', `/v1/iam/sso-providers/${id}`); ok('Removed'); });
+    bindLinkActions(m, ok);
+  },
+});
 
 function render() {
   const a = $('#app');
   $('#logout').style.display = S ? '' : 'none';
   $('#who').textContent = S ? `${S.email} @ ${S.tenant}` : '';
+  if (CARD_RETURN && S) { toast(CARD_RETURN.paid ? `The card payment for ${CARD_RETURN.paid} went through. The receipt is recorded within two minutes.` : 'The card payment was not completed.'); CARD_RETURN = null; }
+  if (!S && CARD_RETURN) { a.innerHTML = cardReturnView(); $('#card-done').onclick = () => { CARD_RETURN = null; render(); }; return; }
   if (!S) { a.innerHTML = authView(); afterAuthBind(); return; }
+  if (!S.email) api('GET', '/v1/me').then((me) => { S.email = me.user.email; sessionStorage.setItem('baats', JSON.stringify(S)); $('#who').textContent = `${S.email} @ ${S.tenant}`; }).catch(() => {});
   a.innerHTML = `<div class="wrap"><nav>${MENU.map(([k, t]) => `<button data-p="${k}">${t}</button>`).join('')}</nav><main></main></div>`;
   a.querySelectorAll('nav button').forEach((b) => b.onclick = () => show(b.dataset.p));
   show(current);

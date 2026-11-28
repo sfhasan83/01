@@ -61,6 +61,12 @@ This folder holds the **Phase 1 enterprise core**, **Phase 2 core business** (fi
 | Data import (Phase 7a) | Customers, suppliers, items with opening stock per warehouse, employees with their contracts, open customer invoices and supplier bills (with FX), and the opening trial balance, from CSV files as Excel saves them (comma, semicolon or tab; dates as 2026-12-31 or 31/12/2026; thousands commas). Each file is checked first, row by row, and saved all at once or not at all. Existing codes are skipped, so a file can be imported again. The trial balance must balance; receivables, payables and inventory are checked against the open items and stock already imported instead of being posted twice; the rest goes to one opening journal (OB-) and opening balance equity (3200) ends at zero. A BAATS Accounting book (Import / Export, All) is turned into the customer, supplier and item files. Every import is recorded with the file's SHA-256 and who ran it; importing needs `mig.import` |
 | Backup and restore (Phase 7a) | A backup of the whole database while it runs, in one consistent snapshot, without pg_dump: a gzip file of the rows exactly as PostgreSQL holds them, with the schema version. A restore builds a new database from the backup's own schema version, loads the rows with triggers off (so the audit hash chain and every total come back exactly), brings it up to the installed version, and only then swaps it in; the replaced database is kept. A backup from a newer BAATS is refused. In the Windows trial: one backup a day (14 kept), backups by hand, download, and restore of a kept or uploaded backup, all needing `sys.backup` |
 | Sign-in protection (Phase 7a) | Failed sign-ins limited per address (30 in 5 minutes) and per account (10), on top of the lockout after 5 wrong passwords; successful sign-ins are not counted. Each session or API key is limited to 1,200 requests a minute (`429` with `Retry-After`). Sign-ins say when an authenticator code is needed, only once the password is right. Security headers on every answer and `no-store` on the API. Users see where they are signed in (address and device) and can end those sessions, change their password (ending the other sessions) and set up an authenticator app; administrators can set a password, which unlocks the account and ends its sessions |
+| Bank files (Phase 6d) | Bank statements as MT940 or CAMT.053 (opening and closing balances, the account found by its IBAN or number, currency checked) as well as CSV, into the same reconciliation and auto-matching. Bank details per ledger bank account (bank, IBAN checked by mod 97, BIC, currency). Supplier payments put into ISO 20022 credit transfer files (pain.001.001.03) to upload to online banking: each supplier's IBAN is checked first, a payment goes into one live file only, the file is kept exactly as made with its SHA-256, and it can be marked sent or cancelled (which frees its payments); needs `fin.payment.file` |
+| Sign-in with Microsoft 365 and Google (Phase 6d) | OpenID Connect sign-in with Microsoft Entra ID, Google Workspace or any OpenID provider: code flow with PKCE, state and nonce, the ID token's RS256 signature checked against the provider's keys, issuer, audience and expiry. Only existing active BAATS users can sign in, only from the allowed email domains, and Google and other providers must say the email is verified. Someone with the BAATS authenticator app on must have used multi-factor sign-in at the provider. The session is the same as a password session and records the provider; the client secret is kept encrypted; managing providers needs `iam.sso.manage` |
+| Email (Phase 6d) | Through your own mail server (SMTP with STARTTLS or TLS, AUTH PLAIN or LOGIN) or Microsoft 365 (Graph sendMail with an app registration). Sales invoices and credit notes sent as a PDF, with the e-invoice XML when there is one and the card payment link when one is open; approvers told by email when a step waits for them. Every email goes through an outbox, tried again after 1, 4, 16 and 64 minutes, visible with its last error and can be sent again. Needs `int.mail.manage` to set up and `int.mail.send` to send invoices |
+| Card payment links (Phase 6d) | A Stripe Checkout link for the open amount of a posted sales invoice (amounts in fils and baisa where the currency has three decimals), put in the invoice email. When the customer pays, the receipt is recorded and allocated to the invoice in a card clearing account (1040), at the invoice's exchange rate. Payment is confirmed by asking Stripe about open links every two minutes, or at once by Stripe's signed notice (`/v1/pay/stripe/notice`, checked with the webhook secret, five minutes' tolerance) where the server is reachable from the internet. Needs `fin.payment.link` and `fin.payment.post` |
+| Invoice PDF (Phase 6d) | Posted invoices and credit notes as a PDF made by BAATS itself (no external tool): seller and customer with their tax numbers, lines, VAT by rate, totals, open amount and the payment link |
+| Excel import (Phase 6d) | Data import reads Excel workbooks (.xlsx) directly, any visible sheet, with dates and formulas' values, through exactly the same checks as CSV |
 | API | REST `/v1` with schema validation for all of the above |
 
 ## Run it
@@ -98,20 +104,20 @@ curl -X POST localhost:3000/v1/auth/login -H 'content-type: application/json' \
 db/migrations/    SQL schema: tenants, org, iam, audit, mdm, wf, RLS policies, triggers, reference data
 src/core/         database access (tenant-bound transactions), errors, rules engine, migrations
 src/platform/     tenant onboarding; backup and restore (backup.ts)
-src/mig/          data import from CSV and BAATS Accounting books
+src/mig/          data import from CSV, Excel workbooks (xlsx.ts) and BAATS Accounting books
 src/org/          organization engine
-src/iam/          authentication, authorization, roles, SoD, delegation
+src/iam/          authentication, authorization, roles, SoD, delegation, single sign-on (sso.ts)
 src/workflow/     workflow and approval engine
 src/mdm/          master data
 src/audit/        audit queries and hash-chain verification
-src/fin/          accounting engine: chart of accounts, ledger, documents, tax, reports
+src/fin/          accounting engine: chart of accounts, ledger, documents, tax, reports; bank and payment files, invoice PDF, card payment links
 src/inv/          inventory
 src/pur/          procurement
 src/crm/          leads, opportunities, activities
 src/sal/          quotations, orders, deliveries, invoicing from orders
 src/hr/           contracts, leave, payroll, WPS, gratuity, expense claims
 src/ess/          employee self-service for BAATS Mobile
-src/int/          webhooks: event outbox, signing and delivery
+src/int/          webhooks: event outbox, signing and delivery; email (mail.ts)
 src/mobile/       BAATS Mobile (phone web app, served at /m/)
 installer/windows Windows trial installer (NSIS), launcher and trial console
 scripts/          load test (loadtest.ts)
@@ -125,7 +131,7 @@ test/             unit, integration (real PostgreSQL) and API tests
 |---|---|---|
 | `DATABASE_URL` | server | Connection as `baats_app` (never the owner) |
 | `PLATFORM_ADMIN_KEY` | server | Required header for tenant onboarding |
-| `BAATS_SECRET_KEY` | server | 32 bytes (base64 or hex) that encrypt AI provider API keys and webhook signing secrets at rest; without it, neither can be saved |
+| `BAATS_SECRET_KEY` | server | 32 bytes (base64 or hex) that encrypt AI provider API keys, webhook signing secrets, mail passwords, sign-in client secrets and Stripe keys at rest; without it, none of them can be saved |
 | `AI_ALLOW_PRIVATE_URLS` | server | `true` lets tenants point the assistant at http:// or private addresses (on-premises local models); leave unset for hosted, multi-tenant servers |
 | `PORT`, `HOST` | server | Listen address (default `0.0.0.0:3000`) |
 | `ESCALATION_SWEEP_SECONDS` | server | Escalation sweep interval (default 300) |
@@ -134,6 +140,8 @@ test/             unit, integration (real PostgreSQL) and API tests
 | `API_REQUESTS_PER_MINUTE` | server | Requests a minute for one session or API key (default 1200) |
 | `LOGINS_PER_5_MINUTES` | server | Failed sign-ins in 5 minutes from one address (default 30) |
 | `TRUST_PROXY` | server | Behind a reverse proxy: `true`, or the proxy's addresses, so limits and sessions see the client's address from `X-Forwarded-For` |
+| `PUBLIC_URL` | server | The address people reach this server at (`https://erp.example.com`); used for sign-in return addresses, card payment return pages and the redirect address shown to administrators. Without it, the address of each request is used |
+| `SSO_ALLOW_HTTP` | server | `true` allows an OpenID provider on http:// (on-premises identity servers, tests) |
 | `MIGRATION_DATABASE_URL` | migrate | Owner connection |
 | `APP_DB_PASSWORD` | migrate | Enables login for `baats_app` with this password |
 | `TEST_ADMIN_DATABASE_URL` | tests | Superuser connection used to create per-file test databases |

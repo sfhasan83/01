@@ -4,6 +4,7 @@ import { matches, validateCondition, type Condition } from '../core/rules.ts';
 import { authorize, decide } from '../iam/authz.ts';
 import { activeDelegate } from '../iam/service.ts';
 import { managerChain } from '../org/service.ts';
+import { notifyApprovers } from '../int/mail.ts';
 
 /**
  * Workflow and approval engine. A definition is JSON data, versioned per tenant:
@@ -211,6 +212,7 @@ async function activateFrom(tx: Tx, inst: Instance, def: WorkflowDef, from: numb
     await tx.query('UPDATE wf.instances SET current_step = $2 WHERE id = $1', [inst.id, i]);
     inst.current_step = i;
     await history(tx, inst.id, null, i, 'step_started', null, { step: step.key, assignees });
+    await notifyApprovers(tx, inst.id, assignees.map((a) => a.assignee));
     return;
   }
   await finish(tx, inst, 'approved');
@@ -324,6 +326,7 @@ export async function runEscalations(tx: Tx, now = new Date()): Promise<number> 
         VALUES (app.tenant(), $1, $2, $3, $4, $5)`, [inst.id, t.step_index, t.step_key, a.assignee, a.onBehalfOf]);
     }
     await history(tx, inst.id, null, t.step_index, 'escalated', null, { from: t.assignee_user_id, to: targets });
+    await notifyApprovers(tx, inst.id, targets.map((a) => a.assignee));
     escalated++;
   }
   return escalated;

@@ -19,6 +19,7 @@ import { registerPhase5 } from './phase5.ts';
 import { registerAssistant } from './assistant.ts';
 import { MOBILE_PATHS, registerPhase6 } from './phase6.ts';
 import { registerPhase7 } from './phase7.ts';
+import { CONNECTOR_PUBLIC_PATHS, registerPhase8, type ConnectorOptions } from './phase8.ts';
 import { parseSecretKey } from '../ai/secrets.ts';
 import type { AiOptions } from '../ai/assistant.ts';
 
@@ -32,6 +33,8 @@ export interface ServerOptions {
   ai?: { secretKey?: string; allowPrivateUrls?: boolean; providerFactory?: AiOptions['providerFactory'] };
   /** Requests a minute for one session or API key (default 1200), and sign-in attempts per 5 minutes from one address (default 30). */
   limits?: { apiPerMinute?: number; loginsPer5Min?: number };
+  /** Connectors: the public address, and (for tests) where the outside services are. The secret key comes from ai.secretKey. */
+  connectors?: Omit<ConnectorOptions, 'secretKey'>;
   /** Behind a reverse proxy: take the client's address from X-Forwarded-For (the proxy's addresses, or true for any). */
   trustProxy?: boolean | string;
 }
@@ -58,7 +61,7 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
 
   app.decorateRequest('ctx', null as unknown as Ctx);
   app.decorateRequest('token', '');
-  const PUBLIC = new Set(['/v1/auth/login', '/v1/platform/tenants', '/health', ...MOBILE_PATHS]);
+  const PUBLIC = new Set(['/v1/auth/login', '/v1/platform/tenants', '/health', ...MOBILE_PATHS, ...CONNECTOR_PUBLIC_PATHS]);
   // Guessing passwords: failed sign-ins are limited per address and per account (on top of the lockout
   // after 5 failures). Successful ones are not counted, so a whole office behind one address can sign in.
   const loginsByIp = new RateLimiter(opts.limits?.loginsPer5Min ?? 30, 5 * 60_000, 'failed sign-ins from this address');
@@ -243,6 +246,7 @@ export function buildServer(opts: ServerOptions): FastifyInstance {
   registerAssistant(app, run, db, { secretKey, allowPrivateUrls, providerFactory: opts.ai?.providerFactory });
   registerPhase6(app, run, { secretKey, allowPrivateUrls });
   registerPhase7(app, run);
+  registerPhase8(app, run, db, { ...opts.connectors, secretKey });
 
   return app;
 }

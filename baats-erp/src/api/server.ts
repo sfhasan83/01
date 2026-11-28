@@ -1,0 +1,281 @@
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import { AppError, TooManyRequestsError, UnauthenticatedError } from '../core/errors.ts';
+import { RateLimiter } from '../core/ratelimit.ts';
+import type { Ctx, Db, Tx } from '../core/db.ts';
+import { authorize, decide } from '../iam/authz.ts';
+import * as auth from '../iam/auth.ts';
+import * as iam from '../iam/service.ts';
+import * as org from '../org/service.ts';
+import * as mdm from '../mdm/service.ts';
+import * as wf from '../workflow/engine.ts';
+import * as audit from '../audit/service.ts';
+import { onboardTenant } from '../platform/onboarding.ts';
+import { registerFinance } from './finance.ts';
+import { registerOperations } from './operations.ts';
+import { registerPhase3 } from './phase3.ts';
+import { registerPhase4 } from './phase4.ts';
+import { registerPhase5 } from './phase5.ts';
+import { registerAssistant } from './assistant.ts';
+import { MOBILE_PATHS, registerPhase6 } from './phase6.ts';
+import { registerPhase7 } from './phase7.ts';
+import { CONNECTOR_PUBLIC_PATHS, registerPhase8, type ConnectorOptions } from './phase8.ts';
+import { OPERATOR_PUBLIC_PATHS, keyMatches, registerPhase9 } from './phase9.ts';
+import { WriteGate } from '../platform/billing.ts';
+import { Metrics } from '../platform/metrics.ts';
+import { parseSecretKey } from '../ai/secrets.ts';
+import type { AiOptions } from '../ai/assistant.ts';
+
+declare module 'fastify' {
+  interface FastifyRequest { ctx: Ctx; token: string }
+}
+
+export interface ServerOptions {
+  db: Db; platformAdminKey?: string; logger?: boolean;
+  /** secretKey (32 bytes, base64 or hex) seals AI provider keys and webhook secrets; allowPrivateUrls permits local model servers and webhook receivers on the local network. */
+  ai?: { secretKey?: string; allowPrivateUrls?: boolean; providerFactory?: AiOptions['providerFactory'] };
+  /** Requests a minute for one session or API key (default 1200), and sign-in attempts per 5 minutes from one address (default 30). */
+  limits?: { apiPerMinute?: number; loginsPer5Min?: number };
+  /** Connectors: the public address, and (for tests) where the outside services are. The secret key comes from ai.secretKey. */
+  connectors?: Omit<ConnectorOptions, 'secretKey'>;
+  /** Behind a reverse proxy: take the client's address from X-Forwarded-For (the proxy's addresses, or true for any). */
+  trustProxy?: boolean | string;
+  /** The plan a new organization starts on (default TRIAL; the Windows trial uses ONPREM). */
+  defaultPlan?: string;
+  /** Bearer token for /metrics (the platform key works too). */
+  metricsToken?: string;
+}
+
+/**
+ * Changes that are allowed while a subscription is inactive: signing out, the
+ * user's own password and sessions, and requests that only read (queries,
+ * previews and checks sent as POST).
+ */
+const ALLOWED_WHILE_READ_ONLY = new Set(['/v1/auth/logout', '/v1/me/password', '/v1/me/sessions/revoke-others', '/v1/me/sessions/:id',
+  '/v1/bi/query', '/v1/bi/query.csv', '/v1/iam/check', '/v1/mig/xlsx', '/v1/mig/baats-accounting']);
+
+const str = { type: 'string', minLength: 1 } as const;
+const uuid = { type: 'string', format: 'uuid' } as const;
+const obj = (required: string[], properties: Record<string, object>) =>
+  ({ body: { type: 'object', required, properties, additionalProperties: false } });
+
+export interface RouteInfo { method: string; url: string; public: boolean }
+/** Every route of a server and whether it is reached without a session (for the security self-tests). */
+export const ROUTES = new WeakMap<FastifyInstance, RouteInfo[]>();
+
+/** HTTP API (v1). Every route except login and onboarding needs a bearer session token. */
+export function buildServer(opts: ServerOptions): FastifyInstance {
+  const { db } = opts;
+  const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 1_048_576, trustProxy: opts.trustProxy ?? false });
+  const routes: RouteInfo[] = [];
+  app.addHook('onRoute', (r) => { for (const m of [r.method].flat()) if (m !== 'HEAD') routes.push({ method: m, url: r.url, public: PUBLIC.has(r.url) }); });
+  ROUTES.set(app, routes);
+
+  app.setErrorHandler((err, _req, reply) => {
+    if (err instanceof TooManyRequestsError) reply.header('retry-after', String(err.retryAfter));
+    if (err instanceof AppError) return reply.status(err.status).send({ error: err.code, message: err.message, details: err.details });
+    const e = err as { validation?: unknown; statusCode?: number; message: string };
+    if (e.validation) return reply.status(400).send({ error: 'bad_request', message: e.message });
+    if (e.statusCode && e.statusCode < 500) return reply.status(e.statusCode).send({ error: 'bad_request', message: e.message });
+    app.log.error(err);
+    return reply.status(500).send({ error: 'internal', message: 'internal error' });
+  });
+
+  app.decorateRequest('ctx', null as unknown as Ctx);
+  app.decorateRequest('token', '');
+  const PUBLIC = new Set(['/v1/auth/login', '/v1/platform/tenants', '/health', ...MOBILE_PATHS, ...CONNECTOR_PUBLIC_PATHS, ...OPERATOR_PUBLIC_PATHS]);
+  const gate = new WriteGate(db);
+  const metrics = new Metrics();
+  // Guessing passwords: failed sign-ins are limited per address and per account (on top of the lockout
+  // after 5 failures). Successful ones are not counted, so a whole office behind one address can sign in.
+  const loginsByIp = new RateLimiter(opts.limits?.loginsPer5Min ?? 30, 5 * 60_000, 'failed sign-ins from this address');
+  const loginsByAccount = new RateLimiter(10, 5 * 60_000, 'failed sign-ins for this account');
+  const calls = new RateLimiter(opts.limits?.apiPerMinute ?? 1200, 60_000, 'requests');
+  app.addHook('onRequest', async (req: FastifyRequest) => {
+    const url = req.routeOptions.url ?? '';
+    if (url === '/v1/auth/login') { loginsByIp.check(req.ip); return; }
+    if (PUBLIC.has(url)) return;
+    const h = req.headers.authorization;
+    if (!h?.startsWith('Bearer ')) throw new UnauthenticatedError();
+    req.token = h.slice(7);
+    calls.hit(req.token.slice(-24));
+    req.ctx = await auth.authenticate(db, req.token);
+    // An ended trial or a suspended subscription: everything can be read and exported, nothing changed.
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !ALLOWED_WHILE_READ_ONLY.has(url)) await gate.check(req.ctx.tenantId);
+  });
+  app.addHook('onResponse', async (req, reply) => {
+    metrics.record(req.method, req.routeOptions.url ?? 'unmatched', reply.statusCode, reply.elapsedTime / 1000);
+  });
+  // Every answer: no sniffing, no framing, no referrer; API answers are never cached.
+  app.addHook('onSend', async (req, reply) => {
+    reply.header('x-content-type-options', 'nosniff').header('referrer-policy', 'no-referrer');
+    if (!reply.hasHeader('content-security-policy')) reply.header('x-frame-options', 'DENY');
+    if ((req.url ?? '').startsWith('/v1/') && !reply.hasHeader('cache-control')) reply.header('cache-control', 'no-store');
+  });
+  const run = <T>(req: FastifyRequest, fn: (tx: Tx, ctx: Ctx) => Promise<T>) => db.withTenant(req.ctx, (tx) => fn(tx, req.ctx));
+  type B = any; // request bodies are validated by the route schemas below
+  type P = { id: string };
+
+  // ?deep=1 also asks the database, for load balancers that should take a server out when its database is gone.
+  app.get('/health', async (req, reply) => {
+    if (!(req.query as B)?.deep) return { ok: true };
+    try { await db.pool.query('SELECT 1'); return { ok: true, database: 'up' }; } catch { reply.status(503); return { ok: false, database: 'down' }; }
+  });
+
+  // --- Platform ---------------------------------------------------------------
+  app.post('/v1/platform/tenants', {
+    schema: obj(['code', 'name', 'baseCurrency', 'countryCode', 'admin'], {
+      code: str, name: str, baseCurrency: str, countryCode: str, plan: str, billingEmail: str,
+      admin: { type: 'object', required: ['email', 'displayName', 'password'], properties: { email: str, displayName: str, password: str } },
+    }),
+  }, async (req, reply) => {
+    if (!keyMatches(String(req.headers['x-platform-admin-key'] ?? ''), opts.platformAdminKey)) throw new UnauthenticatedError('platform administrator key required');
+    reply.status(201);
+    return onboardTenant(db, req.body as B, opts.defaultPlan ?? 'TRIAL');
+  });
+
+  // --- Auth and self-service ----------------------------------------------------
+  app.post('/v1/auth/login', { schema: obj(['tenant', 'email', 'password'], { tenant: str, email: str, password: str, totp: str }) },
+    async (req) => {
+      const b = req.body as B;
+      const account = `${String(b.tenant).toLowerCase()}/${String(b.email).toLowerCase()}`;
+      loginsByAccount.check(account);
+      try {
+        return await auth.login(db, b, { ip: req.ip, userAgent: String(req.headers['user-agent'] ?? '') });
+      } catch (err) {
+        if (err instanceof UnauthenticatedError) { loginsByIp.hit(req.ip); loginsByAccount.hit(account); }
+        throw err;
+      }
+    });
+  app.post('/v1/auth/logout', async (req, reply) => { await auth.logout(db, req.token); reply.status(204); });
+  app.post('/v1/auth/mfa/enrol', async (req) => run(req, (tx, ctx) => auth.beginMfaEnrolment(tx, ctx)));
+  app.post('/v1/auth/mfa/confirm', { schema: obj(['code'], { code: str }) },
+    async (req, reply) => { await run(req, (tx, ctx) => auth.confirmMfaEnrolment(tx, ctx, (req.body as B).code)); reply.status(204); });
+  app.get('/v1/me', async (req) => run(req, async (tx, ctx) => ({
+    user: (await tx.query('SELECT id, email, display_name, employee_id, mfa_enabled FROM iam.users WHERE id = $1', [ctx.userId])).rows[0],
+    permissions: await iam.effectivePermissions(tx, ctx.userId!),
+    inbox: await wf.inbox(tx, ctx),
+  })));
+  app.post('/v1/me/delegations', { schema: obj(['delegateUserId', 'validFrom', 'validTo'], { delegateUserId: uuid, validFrom: str, validTo: str, reason: str }) },
+    async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => iam.createDelegation(tx, ctx, req.body as B)); });
+
+  // --- Organization ----------------------------------------------------------------
+  app.get('/v1/org/unit-types', async (req) => run(req, (tx) => org.listUnitTypes(tx)));
+  app.post('/v1/org/unit-types', { schema: obj(['code', 'name', 'rank'], { code: str, name: str, rank: { type: 'integer' }, isLegalEntity: { type: 'boolean' } }) },
+    async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => org.createUnitType(tx, ctx, req.body as B)); });
+  app.get('/v1/org/units', async (req) => run(req, (tx, ctx) => org.listUnits(tx, ctx, (req.query as B).root)));
+  app.post('/v1/org/units', {
+    schema: obj(['typeCode', 'parentId', 'code', 'name'], {
+      typeCode: str, parentId: uuid, code: str, name: str, countryCode: str, currencyCode: str,
+      isCostCenter: { type: 'boolean' }, isProfitCenter: { type: 'boolean' }, attributes: { type: 'object' },
+    }),
+  }, async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => org.createUnit(tx, ctx, req.body as B)); });
+  app.patch<{ Params: P }>('/v1/org/units/:id', {
+    schema: obj([], { name: str, parentId: uuid, headEmployeeId: { type: ['string', 'null'] }, status: str, isCostCenter: { type: 'boolean' }, isProfitCenter: { type: 'boolean' } }),
+  }, async (req) => run(req, async (tx, ctx) => {
+    const { parentId, ...rest } = req.body as B;
+    if (parentId) await org.moveUnit(tx, ctx, req.params.id, parentId);
+    return org.updateUnit(tx, ctx, req.params.id, rest);
+  }));
+  app.post('/v1/org/designations', { schema: obj(['code', 'title'], { code: str, title: str, grade: str }) },
+    async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => org.createDesignation(tx, ctx, req.body as B)); });
+  app.get('/v1/org/employees', async (req) => run(req, (tx, ctx) => {
+    const q = req.query as B;
+    return org.listEmployees(tx, ctx, { unitId: q.unitId, limit: q.limit ? Number(q.limit) : undefined, offset: q.offset ? Number(q.offset) : undefined });
+  }));
+  app.post('/v1/org/employees', {
+    schema: obj(['employeeNo', 'firstName', 'lastName', 'unitId'], {
+      employeeNo: str, firstName: str, lastName: str, email: str, unitId: uuid, designationId: uuid, managerId: uuid, hireDate: str, attributes: { type: 'object' },
+      nationality: { type: 'string', pattern: '^[A-Z]{2}$' },
+    }),
+  }, async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => org.createEmployee(tx, ctx, req.body as B)); });
+  app.patch<{ Params: P }>('/v1/org/employees/:id', { schema: obj([], { unitId: uuid, managerId: { type: ['string', 'null'] }, designationId: uuid, status: str, nationality: { type: 'string', pattern: '^[A-Z]{2}$' } }) },
+    async (req) => run(req, (tx, ctx) => org.updateEmployee(tx, ctx, req.params.id, req.body as B)));
+  app.get<{ Params: P }>('/v1/org/employees/:id/reports', async (req) => run(req, (tx, ctx) => org.directReports(tx, ctx, req.params.id)));
+
+  // --- Identity and access ------------------------------------------------------------
+  app.get('/v1/iam/users', async (req) => run(req, (tx, ctx) => iam.listUsers(tx, ctx)));
+  app.post('/v1/iam/users', { schema: obj(['email', 'displayName'], { email: str, displayName: str, password: str, employeeId: uuid }) },
+    async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => iam.createUser(tx, ctx, req.body as B)); });
+  app.post<{ Params: P }>('/v1/iam/users/:id/status', { schema: obj(['status'], { status: { enum: ['active', 'disabled'] } }) },
+    async (req) => run(req, (tx, ctx) => iam.setUserStatus(tx, ctx, req.params.id, (req.body as B).status)));
+  app.get('/v1/iam/roles', async (req) => run(req, (tx, ctx) => iam.listRoles(tx, ctx)));
+  app.post('/v1/iam/roles', { schema: obj(['code', 'name'], { code: str, name: str }) },
+    async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => iam.createRole(tx, ctx, req.body as B)); });
+  app.put<{ Params: P & { perm: string } }>('/v1/iam/roles/:id/permissions/:perm', { schema: obj([], { conditions: { type: 'object' } }) },
+    async (req) => run(req, (tx, ctx) => iam.grantPermission(tx, ctx, req.params.id, req.params.perm, (req.body as B)?.conditions ?? {})));
+  app.delete<{ Params: P & { perm: string } }>('/v1/iam/roles/:id/permissions/:perm',
+    async (req, reply) => { await run(req, (tx, ctx) => iam.revokePermission(tx, ctx, req.params.id, req.params.perm)); reply.status(204); });
+  app.post('/v1/iam/assignments', {
+    schema: obj(['userId', 'roleId', 'scopeUnitId'], { userId: uuid, roleId: uuid, scopeUnitId: uuid, includeDescendants: { type: 'boolean' }, validFrom: str, validTo: str }),
+  }, async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => iam.assignRole(tx, ctx, req.body as B)); });
+  app.delete<{ Params: P }>('/v1/iam/assignments/:id', async (req, reply) => { await run(req, (tx, ctx) => iam.removeAssignment(tx, ctx, req.params.id)); reply.status(204); });
+  app.post('/v1/iam/sod-rules', { schema: obj(['name', 'permissionA', 'permissionB'], { name: str, permissionA: str, permissionB: str }) },
+    async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => iam.createSodRule(tx, ctx, req.body as B)); });
+  app.post('/v1/iam/delegations', {
+    schema: obj(['delegatorUserId', 'delegateUserId', 'validFrom', 'validTo'], { delegatorUserId: uuid, delegateUserId: uuid, validFrom: str, validTo: str, reason: str }),
+  }, async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => iam.createDelegation(tx, ctx, req.body as B)); });
+  // Explain an access decision for the caller ("why can't I...?").
+  app.post('/v1/iam/check', { schema: obj(['permission'], { permission: str, unitId: uuid, attrs: { type: 'object' } }) },
+    async (req) => run(req, (tx, ctx) => { const b = req.body as B; return decide(tx, ctx.userId!, b.permission, { unitId: b.unitId, attrs: b.attrs }); }));
+
+  // --- Master data -----------------------------------------------------------------------
+  app.get('/v1/mdm/uoms', async (req) => run(req, (tx) => mdm.listUoms(tx)));
+  app.post('/v1/mdm/uoms', { schema: obj(['code', 'name'], { code: str, name: str }) },
+    async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => mdm.createUom(tx, ctx, req.body as B)); });
+  app.get('/v1/mdm/items', async (req) => run(req, (tx, ctx) => mdm.listItems(tx, ctx, (req.query as B).q)));
+  app.post('/v1/mdm/items', {
+    schema: obj(['code', 'name', 'itemType', 'baseUom'], { code: str, name: str, itemType: { enum: ['stock', 'service', 'non_stock', 'asset'] }, baseUom: str, barcode: str, attributes: { type: 'object' } }),
+  }, async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => mdm.createItem(tx, ctx, req.body as B)); });
+  app.get('/v1/mdm/parties', async (req) => run(req, (tx, ctx) => mdm.listParties(tx, ctx, req.query as B)));
+  app.post('/v1/mdm/parties', {
+    schema: obj(['code', 'name', 'countryCode', 'ownerUnitId'], {
+      code: str, name: str, isCustomer: { type: 'boolean' }, isSupplier: { type: 'boolean' }, countryCode: str, currencyCode: str,
+      taxRegistrationNo: str, creditLimit: { type: 'number', minimum: 0 }, ownerUnitId: uuid, attributes: { type: 'object' },
+    }),
+  }, async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => mdm.createParty(tx, ctx, req.body as B)); });
+  app.patch<{ Params: P }>('/v1/mdm/parties/:id', { schema: obj([], { name: str, creditLimit: { type: 'number', minimum: 0 }, taxRegistrationNo: str, attributes: { type: 'object' } }) },
+    async (req) => run(req, (tx, ctx) => mdm.updateParty(tx, ctx, req.params.id, req.body as B)));
+  app.post<{ Params: P }>('/v1/mdm/parties/:id/submit', async (req) => run(req, (tx, ctx) => mdm.submitParty(tx, ctx, req.params.id)));
+  app.post<{ Params: P }>('/v1/mdm/parties/:id/block', { schema: obj(['blocked'], { blocked: { type: 'boolean' } }) },
+    async (req) => run(req, (tx, ctx) => mdm.setPartyBlocked(tx, ctx, req.params.id, (req.body as B).blocked)));
+
+  // --- Workflow ------------------------------------------------------------------------
+  app.get('/v1/wf/definitions', async (req) => run(req, (tx) => wf.listDefinitions(tx)));
+  app.post('/v1/wf/definitions', { schema: obj(['code', 'name', 'entityType', 'definition'], { code: str, name: str, entityType: str, definition: { type: 'object' } }) },
+    async (req, reply) => { reply.status(201); return run(req, (tx, ctx) => wf.publishDefinition(tx, ctx, req.body as B)); });
+  app.get('/v1/wf/inbox', async (req) => run(req, (tx, ctx) => wf.inbox(tx, ctx)));
+  app.get<{ Params: P }>('/v1/wf/instances/:id', async (req) => run(req, (tx, ctx) => wf.getInstance(tx, ctx, req.params.id)));
+  app.post<{ Params: P }>('/v1/wf/instances/:id/withdraw', { schema: obj(['reason'], { reason: str }) },
+    async (req, reply) => { await run(req, (tx, ctx) => wf.cancel(tx, ctx, req.params.id, (req.body as B).reason)); reply.status(204); });
+  app.post<{ Params: P }>('/v1/wf/tasks/:id/approve', { schema: obj([], { comment: str }) },
+    async (req) => run(req, (tx, ctx) => wf.act(tx, ctx, req.params.id, 'approve', (req.body as B)?.comment)));
+  app.post<{ Params: P }>('/v1/wf/tasks/:id/reject', { schema: obj(['comment'], { comment: str }) },
+    async (req) => run(req, (tx, ctx) => wf.act(tx, ctx, req.params.id, 'reject', (req.body as B).comment)));
+
+  app.post('/v1/wf/escalations/run', async (req) => run(req, async (tx, ctx) => {
+    await authorize(tx, ctx, 'wf.escalation.run');
+    return { escalated: await wf.runEscalations(tx) };
+  }));
+
+  // --- Audit -------------------------------------------------------------------------
+  app.get('/v1/audit/entries', async (req) => run(req, (tx, ctx) => {
+    const q = req.query as B;
+    return audit.queryAudit(tx, ctx, { ...q, limit: q.limit ? Number(q.limit) : undefined, beforeSeq: q.beforeSeq ? Number(q.beforeSeq) : undefined });
+  }));
+  app.get('/v1/audit/verify', async (req) => run(req, (tx, ctx) => audit.verifyChain(tx, ctx)));
+
+  registerFinance(app, run);
+  registerOperations(app, run);
+  registerPhase3(app, run);
+  registerPhase4(app, run);
+  registerPhase5(app, run);
+  const secretKey = parseSecretKey(opts.ai?.secretKey);
+  const allowPrivateUrls = opts.ai?.allowPrivateUrls ?? false;
+  registerAssistant(app, run, db, { secretKey, allowPrivateUrls, providerFactory: opts.ai?.providerFactory });
+  registerPhase6(app, run, { secretKey, allowPrivateUrls });
+  registerPhase7(app, run);
+  registerPhase8(app, run, db, { ...opts.connectors, secretKey });
+  registerPhase9(app, run, db, { platformAdminKey: opts.platformAdminKey, metricsToken: opts.metricsToken, metrics, gate });
+
+  return app;
+}

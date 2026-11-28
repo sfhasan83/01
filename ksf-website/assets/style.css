@@ -487,14 +487,16 @@ form.enquiry .note { font-size: 13px; color: var(--muted-ink); margin: 0; }
 /* ---------- WhatsApp ---------- */
 .wa-float {
   position: fixed; inset-inline-end: 18px; bottom: 18px; z-index: 60;
-  display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px 12px 14px;
-  border-radius: 999px; background: #25d366; color: #0b2e17; font-weight: 800; font-size: 15px;
+  width: 56px; height: 56px; display: grid; place-items: center;
+  border-radius: 50%; background: #25d366; color: #fff;
   box-shadow: 0 14px 34px -12px rgba(37, 211, 102, .8), 0 2px 8px rgba(0,0,0,.25);
   transition: transform .3s var(--ease);
 }
 .wa-float:hover { transform: translateY(-3px); }
-.wa-float svg { width: 24px; height: 24px; }
-@media (max-width: 560px) { .wa-float span { display: none; } .wa-float { padding: 14px; } }
+.wa-float svg { width: 28px; height: 28px; }
+.wa-float span { display: none; }
+/* keep the last footer line clear of the round WhatsApp button */
+.site-footer { padding-bottom: 96px; }
 .wa-card { background: linear-gradient(135deg, #25d366, #128c4a); color: #0b2e17; }
 .wa-card .addr svg { width: 26px; height: 26px; }
 .btn svg[viewBox="0 0 24 24"][fill="currentColor"] { width: 20px; height: 20px; }

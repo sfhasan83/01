@@ -69,7 +69,7 @@
         '<rect x="18" y="262" width="164" height="22" rx="5" fill="' + f.bag[1] + '"/>' +
         '<path d="' + crimp(6) + crimp(262) + '" stroke="rgba(0,0,0,.18)" stroke-width="1.4"/>' +
       '</g>' +
-      '<image href="/assets/ksf-logo.webp" x="52" y="32" width="96" height="74"/>' +
+      '<image href="/assets/ksf-logo-188.webp" x="52" y="32" width="96" height="74"/>' +
       '<text x="100" y="117" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="8" letter-spacing="1.6" fill="#fff" opacity=".9">' + (isPops ? "CORN PUFFS" : "FLAVORED POTATO CHIPS") + '</text>' +
       '<text x="100" y="' + (f.l2 ? 140 : 152) + '" text-anchor="middle" font-family="Bricolage Grotesque, Arial Black, sans-serif" font-weight="800" font-size="' + fs + '" fill="#fff" stroke="#120d08" stroke-width="3" paint-order="stroke">' + f.l1 + '</text>' +
       '<text x="100" y="162" text-anchor="middle" font-family="Bricolage Grotesque, Arial Black, sans-serif" font-weight="800" font-size="' + fs + '" fill="#ffd23f" stroke="#120d08" stroke-width="3" paint-order="stroke">' + f.l2 + '</text>' +
